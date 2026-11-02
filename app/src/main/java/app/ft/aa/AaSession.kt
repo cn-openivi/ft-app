@@ -201,7 +201,8 @@ class AaSession(
                     AaMessages.serviceDiscoveryResponse(prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
                         true, prefs.carName, prefs.aaControlsLeft,
                         advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
-                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA && prefs.aaGearTest)
+                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA &&
+                            (prefs.aaGearTest || prefs.aaForcePark))
                 )
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
@@ -331,7 +332,8 @@ class AaSession(
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
                     AaProtocol.SENSOR_NIGHT_MODE -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorNightMode(false))
                     AaProtocol.SENSOR_GEAR -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA && prefs.aaGearTest)
+                        if (prefs.carProtocol == CarProtocol.ICCOA &&
+                            (prefs.aaGearTest || prefs.aaForcePark))
                             startCarGear(ProtoReader(body).long(2, 500L))
                         else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGear.sensorError(3))
@@ -392,9 +394,10 @@ class AaSession(
     }
 
     /**
-     * Truthful OEM gear only: never imply Park from zero speed, never reuse stale
-     * GearInfo, never send Android Auto a guessed gear enum. Phone subscription
-     * is mandatory; merely advertising the sensor does not send an event.
+     * Normally send truthful OEM gear only; the owner-enabled isolated override
+     * can supply PARK to Android Auto regardless of the real transmission.
+     * This does not modify vehicle sensors or physical gear state.
+     * Phone subscription remains mandatory.
      */
     private fun startCarGear(requestedMs: Long) {
         carGearJob?.cancel()
@@ -402,26 +405,33 @@ class AaSession(
         val interval = requestedMs.coerceIn(100L, 1_000L)
         carGearJob = scope.launch(Dispatchers.IO) {
             var lastSent: Int? = null
+            var lastSentAtMs = 0L
             var unavailable = false
             var delivered = 0L
-            while (isActive && lifecycle.running && carGearSubscribed && prefs.aaGearTest) {
+            while (isActive && lifecycle.running && carGearSubscribed &&
+                (prefs.aaGearTest || prefs.aaForcePark)) {
                 val now = System.currentTimeMillis()
                 val position = VehicleTelemetry.current.value
-                val gear = AaCarGear.aaGear(position, now)
+                val gear = AaCarGear.aaGear(position, now, forcePark = prefs.aaForcePark)
                 if (gear != null) {
                     if (unavailable) {
                         sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGear.sensorError(1))
                         DiagLog.i(tag, "car GEAR source recovered")
                     }
-                    if (gear != lastSent || unavailable) {
-                        val event = AaCarGear.event(position, now)
+                    // In force-P mode, refresh once per second even if the
+                    // physical selector changes. Other modes remain event-driven.
+                    if (gear != lastSent || unavailable ||
+                        (prefs.aaForcePark && now - lastSentAtMs >= 1_000L)) {
+                        val event = AaCarGear.event(position, now, forcePark = prefs.aaForcePark)
                         if (event != null) {
                             sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, event)
                             lastSent = gear
+                            lastSentAtMs = now
                             delivered++
                             if (delivered <= 3L || delivered % 100L == 0L)
-                                DiagLog.i(tag, "car GEAR reported to subscribed AA client; count=$delivered")
+                                DiagLog.i(tag, "car GEAR reported to subscribed AA client; " +
+                                    "count=$delivered overridePark=${prefs.aaForcePark}")
                         }
                     }
                     unavailable = false
@@ -434,7 +444,7 @@ class AaSession(
                 delay(interval)
             }
         }
-        DiagLog.i(tag, "AA subscribed to truthful OEM GEAR; interval=${interval}ms")
+        DiagLog.i(tag, "AA subscribed to GEAR; overridePark=${prefs.aaForcePark} interval=${interval}ms")
     }
 
     private fun handleAudioSink(channel: Int, id: Int, body: ByteArray) {

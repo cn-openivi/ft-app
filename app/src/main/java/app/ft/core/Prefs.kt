@@ -73,6 +73,8 @@ class Prefs(context: Context) {
     var aaMatchCar: Boolean get() = bool("aaMatchCar", true); set(v) = set("aaMatchCar", v)
     // Explicit opt-in for experimental car GEAR subscription. Defaults OFF.
     var aaGearTest: Boolean get() = bool("aaGearTest", false); set(v) = set("aaGearTest", v)
+    // Owner-approved isolated experiment. Off by default and distinct from OEM telemetry.
+    var aaForcePark: Boolean get() = bool("aaForcePark", false); set(v) = set("aaForcePark", v)
 
     var videoSize: Int get() = int("pictureSize", VideoPlans.SIZE_CAR); set(v) = setVideo("pictureSize", v)
     var videoWidth: Int get() = int("videoWidth", 0); set(v) = setVideo("videoWidth", v)

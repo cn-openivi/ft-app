@@ -55,28 +55,40 @@ allocation, so never blindly change FT's observed channel 2.
    Transient SENSOR_ERROR when unavailable; recovery status on returning live
    GearInfo. **Never advertise unsupported speed or parking-brake capability.**
 
-## 2026-11-02 — Owner request: switch for constant PARK while driving
+## 2026-11-02 — Separate opt-in constant PARK experiment
 
-Owner specifically asks for a persistent user-toggle, default OFF, that would
-announce Gear=P to Android Auto even when vehicle is moving, aiming to unlock
-keyboard search in Yandex Maps. This is a **requested behavior, NOT implemented**.
-It would defeat the car interface's driver-distraction restriction while
-moving, and it would be unreliable: the FT167 live phone requested
-DRIVING_STATUS and NIGHT_MODE but did not request GEAR, and Yandex's actual
-restriction decision remains unknown. Do not record it as an accepted fix.
+Owner clarification: FT's large central passenger screen is used by occupants
+while driver relies on instrument cluster; owner explicitly requests an OFF-by-
+default toggle to send PARK to Android Auto regardless of real gear, specifically
+to test keyboard search restrictions in Yandex Maps. This is separate from the
+existing truthful GEAR diagnostic toggle.
 
-Instead, the current offline development adds a **separate opt-in GEAR
-compatibility diagnostic toggle, default OFF**, in Android Auto settings.
-When ON (requires AA reconnection), the HU advertises GEAR type 8 and reports
-only the real, fresh OEM Toyota GearInfo translated to the AA enum; it never
-creates a false Park signal. When OFF, do not advertise GEAR, and reject an
-unsolicited subscription request. The setting also gates the background gear
-forwarding loop if disabled mid-session.
+Source-only implementation:
+- New persisted `Prefs.aaForcePark`, **default false**, distinct from
+  `Prefs.aaGearTest` (also default false).
+- In Android Auto settings: independent `Android Auto: всегда передавать P
+  (эксперимент)` switch; require reconnecting AA to renegotiate capabilities.
+- If ON with ICCOA protocol, include sensor type `GEAR=8` in AA SDP even if
+  normal gear diagnostics is OFF; only if the AA phone SUBSCRIBES `GEAR`, send
+  `SensorEventIndication` gear 101 (AA PARK), every 1s while enabled, even if
+  the latest OEM GearInfo says DRIVE, REVERSE or is stale/unavailable.
+- Do not change OEM ICCOA GearInfo, actual vehicle state, HFP, car display
+  controls or existing GPS. If OFF, normal mode gives actual fresh OEM gear when
+  `aaGearTest` is enabled, or does not advertise gear at all when both
+  switches are OFF.
+- Added regression tests proving override with DRIVE/REVERSE/unknown/no sample,
+  correct AA protobuf encoding and lack of mutation of OEM telemetry.
 
-This isolates the actual research question: does the AA phone subscribe to
-GEAR=8, and if so does genuine PARK=101 change Yandex Maps search restrictions
-while the physical selector is in P? The answer requires the combined
-owner-controlled stationary test later, not a speculative claim now.
+**Runtime limitation:** Previous Samsung FT167 logs show AA subscribing to
+NIGHT_MODE and DRIVING_STATUS, but *not* to GEAR. If AA does not subscribe
+to `GEAR`, the override sends nothing; it is not proof that Yandex Maps
+allows keyboard, and Yandex may apply its own policy. The protocol semantics
+are not the same as the physical transmission selector. Restrict passenger
+screen interactions to passengers when vehicle is moving.
+
+FT169 in owner/Xiaomi field acceptance is untouched; no APK/CI triggered by
+this development branch. Combined physical acceptance and Android unit tests
+remain pending. Both canonical Nexus plans' protected edges unchanged.
 
 ## Unit-test matrix added to development branch
 

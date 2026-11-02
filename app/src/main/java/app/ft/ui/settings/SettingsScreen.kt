@@ -301,6 +301,11 @@ private fun PageContent(page: SettingsPage) {
                 p.aaGearTest,
                 detail = "По умолчанию выключено. Передаёт только реальную свежую передачу автомобиля, без подмены P в движении. Для изменения подписки нужно переподключить Android Auto."
             ) { p.aaGearTest = it }
+            BoolSetting(
+                "Android Auto: всегда передавать P (эксперимент)",
+                p.aaForcePark,
+                detail = "По умолчанию выключено. Включает передачу P в Android Auto независимо от реальной передачи. Для корректного применения включи до соединения и переподключи Android Auto. Не изменяет состояние автомобиля."
+            ) { p.aaForcePark = it }
             BoolSetting(stringResource(R.string.aa_controls_left), p.aaControlsLeft) { p.aaControlsLeft = it }
             IntSetting(stringResource(R.string.aa_port), p.aaPort) { p.aaPort = it }
             IntSetting(stringResource(R.string.aa_width), p.aaWidth) { p.aaWidth = it }

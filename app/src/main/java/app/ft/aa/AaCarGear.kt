@@ -6,15 +6,17 @@ import app.ft.iccoa.IccoaGearState
 
 /**
  * Translate only an OEM-verified, fresh GearInfo enum to the AA gear schema.
- * No stationary spoof and no speed-unit conversion. Do not infer PARK from
- * zero raw speed: the actual gear must be explicitly supplied by the car.
+ * No speed-unit conversion. In normal mode, the actual gear must be explicitly
+ * supplied by the car. The isolated, opt-in forcePark experiment intentionally
+ * overrides only the Android Auto GEAR payload; it never modifies OEM telemetry.
  */
 internal object AaCarGear {
     const val SENSOR_TYPE = 8
     private const val MAX_AGE_MS = 3_000L
 
     /** Android Auto Gear enum, independent of Toyota's GearState. */
-    fun aaGear(location: VehicleLocation?, nowMs: Long): Int? {
+    fun aaGear(location: VehicleLocation?, nowMs: Long, forcePark: Boolean = false): Int? {
+        if (forcePark) return 101
         if (location?.source != "ICCOA" || location.gearAtMs <= 0L ||
             nowMs < location.gearAtMs || nowMs - location.gearAtMs > MAX_AGE_MS) return null
         return when (IccoaGearState.fromRaw(location.gearRaw)) {
@@ -26,8 +28,8 @@ internal object AaCarGear {
         }
     }
 
-    fun event(location: VehicleLocation?, nowMs: Long): ByteArray? {
-        val gear = aaGear(location, nowMs) ?: return null
+    fun event(location: VehicleLocation?, nowMs: Long, forcePark: Boolean = false): ByteArray? {
+        val gear = aaGear(location, nowMs, forcePark) ?: return null
         // SensorEventIndication.gear_data is repeated field 8;
         // GearData.gear is enum field 1.
         return ProtoWriter().message(SENSOR_TYPE,
