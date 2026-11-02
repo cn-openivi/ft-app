@@ -16,6 +16,20 @@ internal class IccoaDropRecovery {
 
     val active: Boolean get() = recovering
 
+    /**
+     * An already remembered car selected by normal discovery is a bounded
+     * initial automatic attempt, even if no live projection existed yet.
+     * This does not grant permission to retry a PIN, missing credential,
+     * denied Wi-Fi consent or cryptographic failure.
+     */
+    fun onInitialRememberedCarAutoSelect(): Int {
+        if (!recovering) {
+            recovering = true
+            attempts = 1
+        }
+        return attempts
+    }
+
     /** Returns the numbered attempt to start, or null when automation must stop. */
     fun onFailure(
         wasConnected: Boolean,
