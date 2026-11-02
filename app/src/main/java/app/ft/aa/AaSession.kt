@@ -250,8 +250,17 @@ class AaSession(
             }
             AaProtocol.CHANNEL_OPEN_REQUEST -> {
                 val sid = AaMessages.channelOpenServiceId(body)
+                if (channel == AaProtocol.CH_SENSOR) {
+                    // A second OPEN starts a fresh subscription lifetime; old
+                    // LOCATION/GEAR jobs and request counters cannot carry over.
+                    if (sensorChannelOpened) {
+                        stopCarSensorStreams()
+                        sensorSubscriptions.reset()
+                        DiagLog.i(tag, "AA SENSOR reopened; previous subscriptions invalidated")
+                    }
+                    sensorChannelOpened = true
+                }
                 openChannels += channel
-                if (channel == AaProtocol.CH_SENSOR) sensorChannelOpened = true
                 DiagLog.i(tag, "channel open ${AaProtocol.channelName(channel)} (service $sid)")
                 sendEnc(channel, AaProtocol.CHANNEL_OPEN_RESPONSE, AaMessages.channelOpenResponse(), true)
                 if (channel == AaProtocol.CH_NAVIGATION) {
@@ -365,6 +374,12 @@ class AaSession(
     }
 
     private fun handleSensor(id: Int, body: ByteArray) {
+        if (!sensorChannelOpened || AaProtocol.CH_SENSOR !in openChannels) {
+            // Late requests for a closed sensor channel must never restart
+            // GPS/GEAR streams after CHANNEL_CLOSE_NOTIFICATION.
+            DiagLog.w(tag, "dropping sensor request on unopened/closed channel")
+            return
+        }
         when (id) {
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
@@ -421,7 +436,7 @@ class AaSession(
             var lastSeenAt = System.currentTimeMillis()
             var unavailable = false
             var sent = 0L
-            while (isActive && lifecycle.running && carGpsSubscribed) {
+            while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
                 val now = System.currentTimeMillis()
                 val car = VehicleTelemetry.current.value
                 val packet = gpsGate.accept(car, now)
@@ -463,7 +478,7 @@ class AaSession(
             var lastSentAtMs = 0L
             var unavailable = false
             var delivered = 0L
-            while (isActive && lifecycle.running && carGearSubscribed &&
+            while (isActive && lifecycle.running && carGearSubscribed && sensorChannelOpened &&
                 (prefs.aaGearTest || prefs.aaForcePark)) {
                 val now = System.currentTimeMillis()
                 val position = VehicleTelemetry.current.value
@@ -498,7 +513,7 @@ class AaSession(
                 }
                 delay(interval)
             }
-            if (lifecycle.running && carGearSubscribed &&
+            if (lifecycle.running && carGearSubscribed && sensorChannelOpened &&
                 !prefs.aaGearTest && !prefs.aaForcePark) {
                 // Switching both settings off must not leave an old PARK frame
                 // latched on the phone while the current session remains alive.
