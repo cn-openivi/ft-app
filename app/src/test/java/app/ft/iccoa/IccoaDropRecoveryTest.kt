@@ -7,6 +7,27 @@ class IccoaDropRecoveryTest {
     private fun lost(guard: IccoaDropRecovery, connected: Boolean = false, transport: Boolean = true) =
         guard.onFailure(connected, autoConnectEnabled = true, retryableTransportFailure = transport)
 
+    @Test fun initialRememberedCarAutoConnectAlsoGetsThreeTransportAttempts() {
+        val guard = IccoaDropRecovery()
+        assertEquals(1, guard.onInitialRememberedCarAutoSelect())
+        assertEquals(2, lost(guard))
+        assertEquals(2, guard.onInitialRememberedCarAutoSelect())
+        assertEquals(3, lost(guard))
+        assertNull(lost(guard))
+        assertFalse(guard.active)
+    }
+
+    @Test fun initialAutoConnectStillStopsOnPinPromptAndAuthRejection() {
+        val prompt = IccoaDropRecovery()
+        assertEquals(1, prompt.onInitialRememberedCarAutoSelect())
+        prompt.onPinRequired()
+        assertNull(lost(prompt))
+        val rejected = IccoaDropRecovery()
+        assertEquals(1, rejected.onInitialRememberedCarAutoSelect())
+        assertNull(lost(rejected, transport = false))
+        assertFalse(rejected.active)
+    }
+
     @Test fun firstEstablishedLossStartsAttemptOneOfThree() {
         val guard = IccoaDropRecovery()
         assertEquals(3, IccoaDropRecovery.MAX_ATTEMPTS)
