@@ -86,14 +86,34 @@ class IccoaProjection(
     private var ownsAa = false
     private var savedRotation: Pair<Int, Int>? = null
     private var capturedSize: Pair<Int, Int>? = null
+    private var lastMirrorGeometry = ""
+    /** Capture/phone/surface dimensions only: no location, taps, or app content. */
+    private fun auditMirrorGeometry(reason: String) {
+        if (!mirror.ready) return
+        val (phoneW, phoneH) = phoneSize()
+        val frame = MirrorSink.frame.value
+        val state = "phoneDisplay=${phoneW}x$phoneH captured=$capturedSize " +
+            "mirrorSource=${mirror.width}x${mirror.height} output=${frame.width}x${frame.height}"
+        if (state == lastMirrorGeometry) return
+        lastMirrorGeometry = state
+        DiagLog.i("Mirror", "geometry after $reason: $state")
+        if (mirror.width > 0 && mirror.height > 0 &&
+            (mirror.width > mirror.height) != (phoneW > phoneH)) {
+            DiagLog.w("Mirror", "capture/phone orientation mismatch after $reason; " +
+                "inspect geometry before attributing persistent touch offset to calibration")
+        }
+    }
     private val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
     private val rotationListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) = Unit
         override fun onDisplayRemoved(displayId: Int) = Unit
         override fun onDisplayChanged(displayId: Int) {
-            if (displayId == Display.DEFAULT_DISPLAY && mirror.ready && capturedSize == null) {
-                val (w, h) = phoneSize()
-                if (mirror.resize(w, h)) MirrorSink.surface.value?.let { mirror.show(it) }
+            if (displayId == Display.DEFAULT_DISPLAY && mirror.ready) {
+                if (capturedSize == null) {
+                    val (w, h) = phoneSize()
+                    if (mirror.resize(w, h)) MirrorSink.surface.value?.let { mirror.show(it) }
+                }
+                auditMirrorGeometry("display change")
             }
         }
     }
@@ -200,6 +220,7 @@ class IccoaProjection(
             state.value.mirroring -> {
                 if (!mirror.active || t.action !in 0..2) return@onMain
                 val frame = MirrorSink.frame.value
+                if (t.action == CarTouch.DOWN) auditMirrorGeometry("mirror touch")
                 val viewport = MirrorTouchMap(
                     display.width, display.height, frame.width, frame.height,
                     mirror.width, mirror.height
@@ -288,6 +309,7 @@ class IccoaProjection(
                         capturedSize = width to height
                         DiagLog.i("Mirror", "actual Android capture content size=${width}x${height}")
                         if (mirror.resize(width, height)) MirrorSink.surface.value?.let { mirror.show(it) }
+                        auditMirrorGeometry("capture resize")
                     }
                 }
                 override fun onStop() {
@@ -475,6 +497,7 @@ class IccoaProjection(
         audio.stop()
         mirror.close()
         capturedSize = null
+        lastMirrorGeometry = ""
         val mp = projection
         projection = null
         if (mp != null) {
