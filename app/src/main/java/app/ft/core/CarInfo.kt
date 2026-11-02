@@ -51,6 +51,16 @@ object CarInfo {
     private val _speed = MutableStateFlow(-1f)
     val speed: StateFlow<Float> = _speed
 
+    /** Fresh independent phone GNSS speed, captured only while the speed widget runs. */
+    internal data class SpeedFix(val kmh: Float, val receivedAtMs: Long)
+    private val phoneSpeedFix = MutableStateFlow<SpeedFix?>(null)
+
+    internal fun freshPhoneSpeedKmh(nowMs: Long): Float? =
+        phoneSpeedFix.value?.takeIf { fix ->
+            nowMs >= fix.receivedAtMs && nowMs - fix.receivedAtMs <= 2_000L &&
+                fix.kmh.isFinite() && fix.kmh in 0f..300f
+        }?.kmh
+
     private val _event = MutableStateFlow<Event?>(null)
     val event: StateFlow<Event?> = _event
 
@@ -98,6 +108,7 @@ object CarInfo {
         }
         speedWatch = null
         _speed.value = -1f
+        phoneSpeedFix.value = null
     }
 
     private fun granted(context: Context, permission: String) =
@@ -131,7 +142,10 @@ object CarInfo {
         if (needsLocation(context)) return
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
         val listener = LocationListener { location ->
-            _speed.value = if (location.hasSpeed()) location.speed * 3.6f else -1f
+            val kmh = if (location.hasSpeed()) location.speed * 3.6f else -1f
+            _speed.value = kmh
+            phoneSpeedFix.value = if (kmh.isFinite() && kmh in 0f..300f)
+                SpeedFix(kmh, System.currentTimeMillis()) else null
             remember(location)
         }
         val ok = try {
