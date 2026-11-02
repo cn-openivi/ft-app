@@ -60,14 +60,16 @@ class IccoaAuth(private val pin: String?, private val clientId: String, private 
         val result = fields.number(7)
         onProgress("receiver-result=$result")
         if (result != 0L) throw IccoaHandshakeException(IccoaHandshakeException.Reason.RESPONSE_RESULT, result)
-        val responseIdentity = fields.bytes(2)
+        // QUICK normally omits authPk in the OEM reply. Use only a previously
+        // authenticated pinned identity in that case; NORMAL still requires it.
+        val responseIdentity = fields.optionalBytes(2)
         val carIdentity = if (quick) {
             val known = pinnedCarIdentity ?: error("No pinned car key")
-            // Some OEM builds omit authPk during QUICK; if present it must match.
-            if (responseIdentity.isNotEmpty() && !MessageDigest.isEqual(responseIdentity, known))
+            if (responseIdentity != null && !MessageDigest.isEqual(responseIdentity, known))
                 throw IccoaHandshakeException(IccoaHandshakeException.Reason.TRUSTED_IDENTITY_MISMATCH)
             known
-        } else responseIdentity.also {
+        } else (responseIdentity
+            ?: throw IccoaHandshakeException(IccoaHandshakeException.Reason.IDENTITY_LENGTH)).also {
             if (it.size != 64) throw IccoaHandshakeException(IccoaHandshakeException.Reason.IDENTITY_LENGTH)
         }
         val carAgreement = fields.bytes(4).also { if (it.size != 64) throw IccoaHandshakeException(IccoaHandshakeException.Reason.AGREEMENT_LENGTH) }
