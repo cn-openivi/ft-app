@@ -338,7 +338,9 @@ class IccoaService : Service() {
                         onKeyframe = { current { projection?.requestKeyFrame() } },
                         onTouch = { touch -> current { projection?.touch(touch) } },
                         onKey = { code -> current { projection?.key(code) } },
-                        onClosed = { reason -> current { connectionFailed(reason) } })
+                        onClosed = { reason -> current {
+                            connectionFailed(reason, retryableTransportFailure = true)
+                        } })
                     transport.start()
                     media = transport
                 }
