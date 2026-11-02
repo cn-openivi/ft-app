@@ -78,6 +78,10 @@ Source-only implementation:
   switches are OFF.
 - Added regression tests proving override with DRIVE/REVERSE/unknown/no sample,
   correct AA protobuf encoding and lack of mutation of OEM telemetry.
+- Diagnostic logs explicitly flag when AA never subscribes to GEAR (nothing can
+  be forwarded to Yandex Maps then). If both gear switches are turned OFF
+  mid-session, send SENSOR_ERROR permanent/unavailable so Android Auto cannot
+  retain a stale synthetic PARK value; reconnect to renegotiate capabilities.
 
 **Runtime limitation:** Previous Samsung FT167 logs show AA subscribing to
 NIGHT_MODE and DRIVING_STATUS, but *not* to GEAR. If AA does not subscribe

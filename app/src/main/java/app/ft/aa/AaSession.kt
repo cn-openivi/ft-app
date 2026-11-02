@@ -213,6 +213,10 @@ class AaSession(
                             DiagLog.i(tag, "AA sensor subscription audit after 12s: ${sensorSubscriptions.summary()}")
                             if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION))
                                 DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
+                            if ((prefs.aaGearTest || prefs.aaForcePark) &&
+                                !sensorSubscriptions.has(AaProtocol.SENSOR_GEAR))
+                                DiagLog.w(tag, "AA phone did not request GEAR; " +
+                                    "park override and OEM gear cannot affect apps without subscription")
                         }
                     }
                 }
@@ -442,6 +446,15 @@ class AaSession(
                     DiagLog.w(tag, "car GEAR unavailable/stale; no synthetic PARK value supplied")
                 }
                 delay(interval)
+            }
+            if (lifecycle.running && carGearSubscribed &&
+                !prefs.aaGearTest && !prefs.aaForcePark) {
+                // Switching both settings off must not leave an old PARK frame
+                // latched on the phone while the current session remains alive.
+                sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                    AaCarGear.sensorError(3))
+                DiagLog.i(tag, "GEAR disabled by owner; sent unavailable, reconnect to renegotiate")
+                carGearSubscribed = false
             }
         }
         DiagLog.i(tag, "AA subscribed to GEAR; overridePark=${prefs.aaForcePark} interval=${interval}ms")
