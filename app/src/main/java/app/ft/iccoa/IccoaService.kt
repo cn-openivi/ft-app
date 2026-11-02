@@ -69,12 +69,11 @@ class IccoaService : Service() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
             val encoded = IccoaNavigation.encode(activation)
-            val now = android.os.SystemClock.elapsedRealtime()
-            // AA may refresh identical navigation records every second. Coalesce
-            // them, not state changes or genuinely new route instructions.
-            if (!navigationGate.shouldSend(encoded, now)) return
+            // State is synchronized when CONTROL opens and whenever it changes.
+            // OEM has no established refresh TTL; duplicates are suppressed.
+            if (!navigationGate.shouldSend(encoded)) return
             if (connection.sendControl(IccoaNavigation.CONTROL_METHOD, encoded)) {
-                navigationGate.accepted(encoded, now)
+                navigationGate.accepted(encoded)
                 navigationRetries = 0
                 DiagLog.i("ICCOA", "OEM sensor activation request: active=${activation.active} " +
                     "guided=${latestNavigation.active} aaConnected=$aaSensorAssist " +
@@ -82,19 +81,6 @@ class IccoaService : Service() {
             } else if (navigationRetries++ < 8) {
                 main.postDelayed(this, 500)
             }
-        }
-    }
-
-    // OEM Control11 is a stateful activation hint. Without this small heartbeat,
-    // a quiet AA/navigation session could stop refreshing an unchanged active
-    // state: the 15s gate alone only runs when a callback invokes navigationSend.
-    // Run only while a session exists; the gate handles duplicate suppression.
-    private val navigationHeartbeat = object : Runnable {
-        override fun run() {
-            if (session == null) return
-            if (aaSensorAssist || ftProjectionSensorAssist || latestNavigation.active)
-                navigationSend.run()
-            main.postDelayed(this, 5_000L)
         }
     }
 
@@ -317,10 +303,7 @@ class IccoaService : Service() {
                 navigationGate.reset()
                 navigationRetries = 0
                 main.removeCallbacks(navigationSend)
-                main.removeCallbacks(navigationHeartbeat)
                 navigationSend.run()
-                // Repeat due-check independently of phone navigation callbacks.
-                main.postDelayed(navigationHeartbeat, 5_000L)
             } },
             trustedCarName = trustedCarName,
             tryRememberedPin = known)
@@ -431,7 +414,6 @@ class IccoaService : Service() {
         main.removeCallbacks(requestConfig)
         main.removeCallbacks(microphoneRetry)
         main.removeCallbacks(navigationSend)
-        main.removeCallbacks(navigationHeartbeat)
         navigationGate.reset()
         if (AaHeadUnitService.onNavigation === navigationHook) AaHeadUnitService.onNavigation = null
         navigationHook = null
