@@ -118,7 +118,8 @@ class IccoaSession(
                     // The initial Bluetooth watchdog must stop once bootstrap is ready.
                     if (!attempt.servicesHandled && !attempt.wifiRequested) fail(attempt, "Тайм-аут подключения ICCOA по Bluetooth", transportFailure = true)
                 }
-            } catch (e: Exception) { fail(attempt, "Не удалось подключиться по Bluetooth (${e.javaClass.simpleName})", transportFailure = true) }
+            } catch (e: Exception) { fail(attempt, "Не удалось подключиться по Bluetooth (${e.javaClass.simpleName})",
+                transportFailure = e !is SecurityException && e.message != "Bluetooth disabled") }
         }
     }
 
@@ -206,7 +207,7 @@ class IccoaSession(
                     }
                 } catch (e: Exception) {
                     if (active(attempt)) DiagLog.w("ICCOA", "SEND category=$category method=$method ${IccoaTransportError.describe(e)}")
-                    fail(attempt, "Канал ICCOA $category закрыт (${e.javaClass.simpleName})")
+                    fail(attempt, "Канал ICCOA $category закрыт (${e.javaClass.simpleName})", transportFailure = true)
                 } finally {
                     copy.fill(0)
                     if (category == 4) attempt.audioWritingAt = 0 else attempt.controlWritingAt = 0
@@ -341,7 +342,9 @@ class IccoaSession(
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
                 networkReady(attempt, network, properties)
             }
-            override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут", transportFailure = true) }
+            // May mean the owner declined Android's Wi-Fi consent prompt.
+            // Do not repeat permission prompts automatically.
+            override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут") }
             override fun onLost(network: Network) { fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", transportFailure = true) }
         }
         attempt.wifiRequested = true
@@ -502,10 +505,14 @@ class IccoaSession(
                 if (port == IccoaLaneServer.CONTROL_PORT && active(attempt)) onControlReady()
             },
             onDisconnected = { socket ->
-                synchronized(attempt) {
-                    if (attempt.control === socket) attempt.control = null
+                val lostControl = synchronized(attempt) {
+                    val wasControl = attempt.control === socket
+                    if (wasControl) attempt.control = null
                     if (attempt.audio === socket) attempt.audio = null
+                    wasControl
                 }
+                if (lostControl && active(attempt))
+                    fail(attempt, "ICCOA CONTROL channel disconnected", transportFailure = true)
             },
             onFrame = { frame -> handleFrame(attempt, frame) },
             log = { message -> if (active(attempt)) DiagLog.i("ICCOA", message) })
@@ -513,7 +520,7 @@ class IccoaSession(
         worker(attempt) {
             try {
                 lane.run()
-            } catch (e: Exception) { fail(attempt, "Канал ICCOA $port закрыт (${e.javaClass.simpleName})") }
+            } catch (e: Exception) { fail(attempt, "Канал ICCOA $port закрыт (${e.javaClass.simpleName})", transportFailure = true) }
         }
     }
 
