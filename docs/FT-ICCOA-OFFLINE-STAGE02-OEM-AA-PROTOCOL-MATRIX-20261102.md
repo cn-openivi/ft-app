@@ -601,3 +601,71 @@ The phone not subscribing LOCATION remains the unclosed AA GPS P0 issue;
 physical HU reconnect, rotation touch, and navigation audio need the
 owner's combined acceptance. No cosmetic changes and no canonical plan
 edge advancement.
+
+## 2026-11-02 — owner-required low-end-phone performance gate
+
+**OWNER REQUIREMENT (release blocker):** FT shall not acquire freezes, jank,
+audio dropouts or excessive thermal/battery load on weaker Android devices as
+a side effect of critical ICCOA/AA features. This is a non-functional
+acceptance criterion under BOTH existing plans; no new architecture,
+priority reorder, extra APK, or canonical plan-stage advancement.
+
+**Low-overhead design constraints:**
+- Keep the existing hardware H.264 projection path; no additional
+  per-frame video copies, CPU blur compositor or unrestricted encoders.
+  Prioritize stable 30 fps over optional Blur Fit effects. Defer heavy
+  cosmetics until essential functionality is accepted.
+- No new unbounded background loop, service, timer or thread. BLE scanning
+  and reconnect must stay finite (three tries), interruptible, and inactive
+  while a healthy session is running. The owner-enabled repeated ICCOA
+  Control11 command remains OFF by default.
+- Android Auto GPS/GEAR coroutines are created only after an actual phone
+  sensor subscription; they must stop on channel closure. Avoid duplicate
+  protobuf and stale packet work inside their existing bounded 100–1000 ms
+  polling loops; do not invent or transmit synthetic location data.
+- Audio forwarding must not wait for diagnostic locks, buffers or disk I/O.
+  In diagnostic counters, only primitive arithmetic/atomics in the PCM
+  packet hot path; aggregate human-readable logs once on session shutdown.
+  Do not log each audio/video frame or touch movement.
+- No unconditional high-frequency logging. GPS diagnostic snapshots remain
+  <=1 Hz in temporary event windows / once per 10 s otherwise, and never
+  include coordinates unless owner enabled the explicit opt-in.
+- New optional features should default OFF if they add continuous work.
+  Avoid extra ADB/network probes or app catalog scans in the projection path.
+
+**Applied source performance fixes (source-only, no device benchmarks):**
+- `AaAudioRouteAudit.kt`: replaced monitor/synchronized packet counters
+  with `AtomicLong` and `AtomicLongArray`; exactly two primitive counter
+  updates per relevant PCM packet, no per-packet heap allocation/timer/log,
+  summary only at shutdown. Commit
+  `02e8a57951e3feed96d1c03251c1e05180781f4e`.
+- `AaGpsGate.accept` in `AaCarGps.kt`: unchanged, still-fresh ICCOA
+  position is rejected **before** nested LOCATION protobuf allocation;
+  retains full existing stale expiry, coordinate source/CRS validation and
+  three-fix consistency. Commit
+  `642d909a0966b964a836d73535a5114d462b0d1f`.
+  Existing `AaCarGpsTest` extended with a 10 Hz repeated-fix and stale
+  fallback/reacquisition test. Commit
+  `892c1ab80074344f4bfd43d41cc01d002586577d`.
+- None of these changes adds a thread, polling timer, network request,
+  permission, video frame pass or another decoder.
+
+**Mandatory combined low-end field/automation gate before accepting APK:**
+1. Full Android Gradle unit/compile/static and source compatibility audit
+   from FT153; confirm exact Android release branch/signing.
+2. Compare baseline FT169 versus candidate on a weaker Android phone (e.g.,
+   available owner Xiaomi tester) under identical AA projection, mirrored
+   navigation/voice, rotation/touch, USB/BT reconnect and extended drive
+   simulation. Record CPU %, per-thread CPU if possible, RSS/Java/native
+   heap, frame pacing/jank, dropped audio, GC frequency, reconnect latency,
+   battery/thermal indicators. Compare *deltas*, not unsupported claims
+   of exact universal CPU/battery thresholds.
+3. Include screen-on versus owner-requested *actually locked LCD/OLED*
+   scenarios only after that deferred feature exists; do not quietly
+   promise locked-phone projection on current Android.
+4. Reject or simplify any optional effect with sustained regression in
+   p95 UI/frame latency, growing memory, noticeable audio dropouts,
+   thermal throttling, or failed low-end-device stability. Leave Blur Fit
+   and new visual polish OFF until proven sufficiently inexpensive.
+5. A benchmark, performance PASS or new signed APK is **NOT** claimed
+   by this note. Combined owner HU acceptance remains deferred as agreed.
