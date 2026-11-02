@@ -59,7 +59,10 @@ object VehicleTelemetry {
         val decision = logSampler.accept(sample.source, now, hasFix) ?: return
         runCatching {
             DiagLog.i("VehicleGPS", VehicleCoordinateLog.format(
-                sample, decision, FTApp.instance.prefs.vehicleCoordinateLogging
+                sample, decision, FTApp.instance.prefs.vehicleCoordinateLogging,
+                phoneGpsSpeedKmh = if (sample.source == "ICCOA" &&
+                    (sample.gearSpeedRaw != null || sample.speedRaw != null))
+                    CarInfo.freshPhoneSpeedKmh(now) else null
             ))
         }
     }
