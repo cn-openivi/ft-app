@@ -36,8 +36,10 @@ class IccoaQuickAuthTest {
 
     @Test fun quickHasNoOldPinOrNormalIdentityOrUserConfirmed() {
         val request = IccoaControl.Fields(quick().request())
-        assertTrue(request.bytes(2).isEmpty())
-        assertTrue(request.bytes(3).isEmpty())
+        // Fields.bytes() deliberately throws for absent fields; omission is the
+        // expected wire shape for QUICK, not an empty protobuf value.
+        assertFalse(request.shape().contains("2:"))
+        assertFalse(request.shape().contains("3:"))
         assertEquals(0L, request.number(9))
         assertEquals(64, request.bytes(4).size)
         assertEquals(32, request.bytes(6).size)
