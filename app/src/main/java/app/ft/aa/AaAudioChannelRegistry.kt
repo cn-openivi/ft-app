@@ -15,6 +15,8 @@ internal class AaAudioChannelRegistry {
 
     @Synchronized fun session(channel: Int): Int = active[channel] ?: 0
 
+    @Synchronized fun isActive(channel: Int): Boolean = active.containsKey(channel)
+
     @Synchronized fun stop(channel: Int): Boolean = active.remove(channel) != null
 
     @Synchronized fun stopAll(): Set<Int> =
