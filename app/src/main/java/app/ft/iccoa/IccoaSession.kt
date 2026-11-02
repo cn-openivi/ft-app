@@ -159,16 +159,14 @@ class IccoaSession(
                 }
                 payload.fill(0)
                 if (!accepted) {
-                    if (fromCache) trustedPin.clear()
+                    // Local ATT queue failure is not a rejected credential.
                     return@post requestPin(attempt, "Не удалось отправить код. Введите текущий PIN")
                 }
                 later(attempt, 12_000) {
                     if (!attempt.wifiRequested && revision == attempt.pinAttempt) {
-                        if (attempt.reusingPin) {
-                            trustedPin.clear()
-                            DiagLog.w("ICCOA", "Remembered-car PIN rejected during BLE bootstrap, manual PIN required")
-                        }
-                        requestPin(attempt, "Автомобиль не принял код. Введите новый код с его экрана")
+                        if (attempt.reusingPin)
+                            DiagLog.w("ICCOA", "Remembered-car BLE response timed out; manual PIN required without discarding cached credential")
+                        requestPin(attempt, "Автомобиль не ответил вовремя. Введите текущий PIN")
                     }
                 }
             } catch (e: Exception) { fail(attempt, "Ошибка отправки кода ICCOA (${e.javaClass.simpleName})") }
@@ -270,11 +268,9 @@ class IccoaSession(
             if (gatt !== attempt.gatt) return@post
             DiagLog.i("ICCOA", "GATT characteristic write uuid=${characteristic.uuid} status=$status")
             if (gatt === attempt.gatt && characteristic.uuid == CLIENT_INFO && status != BluetoothGatt.GATT_SUCCESS && !attempt.wifiRequested) {
-                if (attempt.reusingPin) {
-                    trustedPin.clear()
-                    DiagLog.w("ICCOA", "Remembered-car BLE PIN rejected; requesting fresh PIN")
-                }
-                requestPin(attempt, "Автомобиль отклонил запись кода (status=$status)")
+                if (attempt.reusingPin)
+                    DiagLog.w("ICCOA", "Remembered-car GATT write failed; not proof of PIN rejection")
+                requestPin(attempt, "Ошибка записи кода ICCOA (status=$status). Введите текущий PIN")
             }
         }
 
@@ -461,8 +457,12 @@ class IccoaSession(
         } catch (e: Exception) {
             if (!active(attempt)) return
             if (attempt.reusingPin) {
-                trustedPin.clear()
-                DiagLog.w("ICCOA", "Remembered-car authentication rejected. Fresh PIN needed on next connection")
+                if (IccoaPinCachePolicy.shouldClearAfterAuthFailure(e)) {
+                    trustedPin.clear()
+                    DiagLog.w("ICCOA", "Remembered-car PIN rejected by authenticated protocol; cached credential cleared")
+                } else {
+                    DiagLog.w("ICCOA", "Remembered-car handshake/transport failed; cached PIN retained, no automatic auth retry")
+                }
             }
             // Exception messages may contain peer data. Log only our fixed codes and stack locations.
             val reason = (e as? IccoaHandshakeException)?.diagnostic ?: e.javaClass.simpleName
