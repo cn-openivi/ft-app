@@ -325,13 +325,10 @@ class IccoaSession(
                     DiagLog.i("ICCOA", "Quick Auth: verified car key found, no old PIN will be sent")
                     submitQuick(attempt, pinned)
                 } else {
-                    val cached = if (tryRememberedPin && !forceCurrentPin && trustedCarName.isNotBlank())
-                        trustedPin.load(attempt.profile.id, trustedCarName) else null
-                    if (cached != null) {
-                        attempt.pinReady = true
-                        DiagLog.i("ICCOA", "Legacy remembered PIN attempt (Normal)")
-                        submitPin(cached, fromCache = true)
-                    } else requestPin(attempt)
+                    // The HU issues a fresh six-digit PIN for every NORMAL pairing.
+                    // An older encrypted PIN must never be sent automatically just
+                    // because no trust key has been pinned yet.
+                    requestPin(attempt)
                 }
             } catch (e: Exception) { fail(attempt, "Устройство не предоставило канал ICCOA (${e.javaClass.simpleName})") }
         }
