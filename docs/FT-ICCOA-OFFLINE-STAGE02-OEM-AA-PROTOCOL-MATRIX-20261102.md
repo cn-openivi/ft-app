@@ -470,3 +470,90 @@ STATUS: All changes SOURCE ONLY; Gradle Android tests have not run;
 no new APK, signed release, physical HU P0 approval or protected Nexus
 plan-edge advancement. Owner requested combined acceptance after
 four critical directions.
+
+## 2026-11-02 — mandatory FT153→candidate full regression and release gate
+
+**Owner direction**: before creating the next single owner-signed APK, perform
+a comprehensive audit of everything modified or added from **FT153**,
+including faults, omissions, missed conditions and regression tests.
+Keep all four critical lines as release blockers; cosmetic work remains later.
+This is an acceptance gate under the existing two Nexus plans, not a
+renumbering, architecture change, topology expansion or premature closure.
+
+**Source inventory as of 2026-11-02**:
+- Repository `cn-openivi/ft-app`; experimental branch
+  `openivi/ft-xa60-iccoa-offline-work-20261102`. The verified FT169
+  source branch head `f258c74a6f5a9656a96f96fdf3bf67b00ac31e6c`
+  is **76 commits behind** the active work branch; compare currently
+  spans **39 changed files**.
+- The repository default `main` at
+  `5e308c6a9a8556eb8d2d612947e5a61545ce7432`
+  compares **257 commits / 262 files** behind the active branch.
+  **Do not equate main with FT153** without verifying the exact FT153
+  release/tag SHA. A proposed literal tag `xa60-ft153` returned
+  NOT_FOUND; the workflow file named `xa60-ft153.yml` is now the FT169
+  workflow and is not a trustworthy FT153 baseline by itself.
+- Current source tree has **101** `app/src/test/**/**Test.kt`
+  files: 18 AA, 28 ICCOA, 26 CarLife, 14 core, 10 projection,
+  3 UI, 2 other. This is **test source inventory**, not test PASS.
+- No release build, Actions job or signed APK was run from this branch.
+
+### Mandatory pre-release QA matrix
+
+| Scope | Required source audit / tests | Evidence state |
+| --- | --- | --- |
+| ICCOA BLE/GATT/PKI/PIN | Discovery races, stable remembered identity, 3 bounded retries, fresh encrypted PIN persistence only after CONTROL, invalid secret clearing only after protocol proof; callbacks exactly once | Source changes + Kotlin smoke available, full Android CI & real HU trust reuse pending |
+| ICCOA TCP/auth/transport | Network gateway, port handshakes, heartbeats, frame lengths/CRC/crypto, RTSP and socket close/error paths, no runaway reconnect | Source audit partial; global regression pending |
+| OEM GPS/SensorMgr | Real HU fix, Control11 opt-in, wrapper decoding, conversion/CRS unknowns, no synthetic fix, stale fallback, GearInfo units independent | OEM live GPS previously seen; AA location consumption P0 open |
+| Android Auto sensors/gear | Serialized advertised LOCATION/GEAR, actual phone SENSOR_START subscriptions, GEAR P override opt-in/off by default, real OEM telemetry unchanged; SENSOR close cancels both location+gear streams | Source tests present; missing phone LOCATION/GEAR subscription behavior not physically accepted |
+| Touch/input | FT UI accepted; MirrorTouchSequence complete tap and real drag; four-point calibration, Android rotation geometry, AA viewport, buttons, keyboard, swipe, owner-confirmed audio+video seek | Seek accepted, other touch cases P0 open |
+| WFD/codec/video | H264 connection stability, portrait/landscape capture, mirror fit, fallback, keyframe, orientation, CPU/load, callbacks and Android projection consent | Source changes partial, field acceptance pending |
+| Audio | Android Auto PCM MEDIA/SPEECH/SYSTEM, late packets and channel close, audio focus, voice/ducking; distinguish mirrored Yandex Navigator (Android playback capture restrictions) from AA speech path | Route evidence partial, navigator voice still unconfirmed |
+| UI/preferences | Default OFF optional GPS refresh, experimental P value, correct persistence, locale, settings, reset, no duplicated flags or unexpected activation | P toggle **already present**, state semantics code-verified, owner test pending |
+| Telemetry/privacy | No PIN or raw encrypted session keys in ZIP, GPS coordinates logged only on owner opt-in; stable unit and speed sample timestamps; no uncontrolled raw packet dumps | Source logging review partial |
+| CI/build/signing | All unit tests, source/lint/static analysis (include `lintVitalRelease` for final), debug/release compile, pinned PKCS12 signature/cert, versionCode & applicationId, non-debuggable, exact SHA-256, one prerelease APK and terminal job receipt | **NOT STARTED**; currently workflow hardcodes FT169 version 169 and excludes `lintVitalRelease`, and push trigger is old branch; revise gate before final run |
+
+### P0/P1 defects and decision limits
+
+- **P0 GPS:** actual ICCOA GPS is observed but Android Auto phone has
+  not requested LOCATION in available logs. Fixing codec without such
+  subscription cannot solve AA location; do not send unsolicited frames.
+- **P0 audio hypothesis:** Android `AudioPlaybackCaptureConfiguration`
+  only permits other-app playback with usage MEDIA/GAME/UNKNOWN and
+  allowed capture policy. If Yandex Navigator uses
+  `USAGE_ASSISTANCE_NAVIGATION_GUIDANCE` or `USAGE_NOTIFICATION`,
+  mirrored phone audio cannot be captured with this API; actual app usage
+  remains unverified. Separately investigate AA SPEECH/SYSTEM PCM
+  from the phone, not the AA NAVIGATION **metadata** channel.
+  Official Android reference:
+  https://developer.android.com/reference/android/media/AudioPlaybackCaptureConfiguration
+- **P1 audit instrumentation already committed**:
+  `AaAudioRouteAudit` counts **only** AA incoming MEDIA/SPEECH/SYSTEM
+  PCM packet counts and NAVIGATION message count, without collecting
+  user audio or route content; `AaSession` writes a bounded summary
+  on shutdown (source commits
+  `142395abb8a4d80932d010f2a2cf1f96adffdeea`,
+  `0854219e5dd35ebacfe9e163cab611c89ba73476`).
+  **Test-file creation was explicitly denied by platform safety**.
+  Stop that operation, do not bypass it by another path; current audit
+  helper is source-authored but without its intended new dedicated unit
+  tests. Do not claim tests or CI passed.
+- **P0 compatibility:** owner approved diagnostic permanent P on the
+  Android Auto **GEAR** sensor only; existing
+  `Prefs.aaForcePark` defaults OFF, existing SettingsScreen toggle
+  `Android Auto: всегда передавать P (эксперимент)`, and
+  `AaCarGear.aaGear(... forcePark=true)` encode 101 independent of OEM
+  physical gear. This does **not** modify the actual car and works only
+  when the AA phone requests `SENSOR_GEAR=8`. It does not guarantee
+  app-level search becomes available, since AA may use DRIVING_STATUS
+  and other motion restrictions. Leave OFF for ordinary driving;
+  do not change DRM/car safety gates.
+- **P0 PINless:** cached *previous* six-digit code is an experiment,
+  not confirmed OEM trust token or proven seamless reconnect.
+- **P0 owner combined HU acceptance**: one session after the complete
+  QA & single signed APK, not after every small source change.
+
+**Gate**: do not call this full audit PASSED until every listed required
+source/module check has its actual evidence and blockers are reconciled
+against the same candidate SHA; do not run the existing
+release-and-publish workflow as a substitute for preliminary audit.
