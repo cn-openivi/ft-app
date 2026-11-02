@@ -80,6 +80,8 @@ class IccoaProjection(
     private var touchBeside = false
     private val mirrorTouches = MirrorTouchSequence()
     private var active = false
+    /** Generation of the active H.264 projection; stale worker failures are ignored. */
+    private var displayEpoch = 0L
     private var displayPlan: VideoPlan? = null
     private var closed = false
     private var soundDeclined = false
@@ -134,6 +136,7 @@ class IccoaProjection(
             display.requestKeyframe()
             return@onMain
         }
+        val epoch = ++displayEpoch
         try {
             val firstStart = !active
             if (!active) {
@@ -147,7 +150,7 @@ class IccoaProjection(
             // Reconfigure only our encoded display. Keep the single-use projection grant,
             // its audio/mirror capture and the Android Auto session across PLAY/resume.
             display.start(plan, onConfig, { _, _ -> }, onTimedFrame,
-                onFailure = { projectionFailed(it) }) { CarScreen() }
+                onFailure = { projectionFailed(it, epoch) }) { CarScreen() }
             displayPlan = plan
             mutableState.update { it.copy(
                 phase = CarControls.Phase.PROJECTING, via = "ICCOA",
@@ -156,15 +159,14 @@ class IccoaProjection(
             startCapturedAudio()
             if (firstStart && app.prefs.aaAutoStart) startAa()
         } catch (t: Throwable) {
-            projectionFailed(t)
+            projectionFailed(t, epoch)
         }
     }
 
-    private fun projectionFailed(error: Throwable) = onMain {
-        // Encoder failures may arrive from a worker thread. Projection and
-        // touch/UI state belong to the main thread, and a second late failure
-        // must not tear down the next projection session.
-        if (!active) return@onMain
+    private fun projectionFailed(error: Throwable, epoch: Long) = onMain {
+        // Encoder failures may arrive from a worker thread. Teardown belongs
+        // to main and must affect only the display generation that failed.
+        if (!active || displayEpoch != epoch) return@onMain
         stopInternal()
         DiagLog.e("ICCOA", "could not create FT's car display", error)
         onFailure("Could not create FT's car display (${error.javaClass.simpleName})")
@@ -512,6 +514,7 @@ class IccoaProjection(
 
     fun stop() = onMain { stopInternal() }
     private fun stopInternal() {
+        displayEpoch++
         active = false
         displayPlan = null
         hideMirror()
