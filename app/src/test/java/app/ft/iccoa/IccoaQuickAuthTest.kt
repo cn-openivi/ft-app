@@ -88,6 +88,34 @@ class IccoaQuickAuthTest {
         }
     }
 
+    @Test fun quickDerivesSameAesKeyAsIndependentCarAndConfirmsSession() {
+        val client = quick()
+        val request = IccoaControl.Fields(client.request())
+        val ephemeralCar = IccoaAuth.newKeyPair()
+        val carNonce = ByteArray(32) { (it + 100).toByte() }
+        val carAgreement = IccoaAuth.publicBytes(ephemeralCar.public as ECPublicKey)
+        val carSignature = Signature.getInstance("SHA256withECDSA").run {
+            initSign(pinnedCar.private)
+            update(carAgreement + request.bytes(4) + carNonce + request.bytes(6))
+            sign()
+        }
+        val response = ProtoWriter().int32(1, 1793).bytes(4, carAgreement)
+            .bytes(5, carSignature).bytes(6, carNonce).int32(7, 0).toByteArray()
+        val session = client.accept(response)
+        val shared = KeyAgreement.getInstance("ECDH").run {
+            init(ephemeralCar.private)
+            doPhase(IccoaAuth.publicKey(request.bytes(4)), true)
+            generateSecret()
+        }
+        val key = IccoaAuth.hkdf(shared,
+            IccoaAuth.sha256(request.bytes(6) + carNonce), "session_key".toByteArray(), 16)
+        val confirm = IccoaControl.Fields(client.confirm(session, "192.168.50.20")).bytes(1)
+        val unsealed = IccoaControl.Cipher(key).decrypt(confirm)
+        assertEquals("192.168.50.20:0", unsealed.toString(Charsets.UTF_8))
+        shared.fill(0)
+        key.fill(0)
+    }
+
     @Test fun quickBleProfileDoesNotAdvertiseAnExpiredCode() {
         val profile = IccoaClientProfile("0f1234", "02:11:22:33:44:55")
         val json = JSONObject(profile.clientInfoQuick("SM-S916B", 36).toString(Charsets.UTF_8))
