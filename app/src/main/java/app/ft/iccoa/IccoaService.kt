@@ -266,6 +266,21 @@ class IccoaService : Service() {
         val prefs = FTApp.instance.prefs
         if (!prefs.autoConnect || prefs.carProtocol != CarProtocol.ICCOA ||
             autoConnectAttempted || _state.value.connecting || _state.value.connected) return
+        // A BLE scan error is not a usable remembered-peer advertisement.
+        // During a confirmed recovery episode it must consume a bounded
+        // transport retry instead of getting stuck forever on FAILED.
+        if (result.phase == IccoaPhase.FAILED) {
+            if (dropRecovery.active) {
+                val next = dropRecovery.onFailure(false, true, true)
+                if (next != null) scheduleRecoveryScan(next)
+                else DiagLog.w("ICCOA", "BLE discovery failed; recovery attempts exhausted")
+            }
+            return
+        }
+        // Missing permissions, disabled Bluetooth and pending inspection are
+        // never permission to retry or connect to a stale candidate.
+        if (result.phase != IccoaPhase.SCANNING &&
+            result.phase != IccoaPhase.SCAN_COMPLETE) return
         val car = rememberedCar.select(result.peers, result.phase == IccoaPhase.SCAN_COMPLETE)
         if (car == null) {
             // A BLE address may rotate or the car may temporarily disappear.
