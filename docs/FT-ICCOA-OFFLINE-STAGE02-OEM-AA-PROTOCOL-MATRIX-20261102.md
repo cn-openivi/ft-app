@@ -389,3 +389,34 @@ not request LOCATION in past owner field logs despite OEM car GPS producer
 being active and LOCATION advertised; do not claim that the source-only
 subscription instrumentation solves this. Mirror seek audio/video is
 already owner-confirmed working; no seek gesture rewrite.
+
+## 2026-11-02 — Android capture contract for missing navigator voice
+
+Source-verified OS restriction, not an inferred FT ICCOA codec failure:
+Android `AudioPlaybackCaptureConfiguration` may capture *other apps'
+playback* only when the player uses `AudioAttributes.USAGE_MEDIA`,
+`USAGE_GAME`, or `USAGE_UNKNOWN`, **and** the source app permits capture.
+`USAGE_ASSISTANCE_NAVIGATION_GUIDANCE` is not eligible for this Android
+MediaProjection playback-capture mechanism even if added to a matching-usage
+filter. Official evidence:
+https://developer.android.com/media/platform/av-capture
+and
+https://developer.android.com/reference/android/media/AudioPlaybackCaptureConfiguration
+
+FT `AudioCapture.kt` already matches exactly those three permitted usages.
+Thus adding NAVIGATION_GUIDANCE to its matching list would NOT repair a
+navigation app playing guidance with that attribute. Nor can changing
+ICCOA AAC/PCM packet fields recover audio Android never supplies.
+Do not disturb the working general media playback and owner-confirmed
+audio/video seek gesture.
+
+Owner observed some Yandex Navigator prompts playing on the phone
+instead of the car; **we have not independently verified the Yandex
+player's AudioAttributes at runtime**, so the specific cause remains P0
+open. Next evidence: distinguish mirrored phone guidance from speech
+inside Android Auto (AA SPEECH/SYSTEM lanes are distinct from Android
+playback capture), and whether OS sends any eligible PCM during the
+prompt. Any alternative routing needs independently approved/confirmed
+Android Bluetooth audio behavior; do not silently pair or change routes.
+
+No source-based audio workaround and no APK is claimed by this note.
