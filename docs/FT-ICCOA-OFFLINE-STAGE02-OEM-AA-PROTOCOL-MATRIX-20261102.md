@@ -153,3 +153,32 @@ and `AaSensorCapabilityTest` updated. No inference of vehicle speed units,
 location subscription by the AA phone, or Yandex restrictions.
 **NOT YET PASSED:** Android Gradle/JUnit execution and HU/phone acceptance.
 FT169 signed pilot remains unchanged; both Nexus plan edges protected.
+
+## 2026-11-02 — optional compatibility reactivation for non-Toyota ICCOA head units
+
+Owner requested preserving compatibility with other Chinese ICCOA head units,
+not assuming the Toyota Carlink.apk stateful behavior is universal.
+This is an **explicit user-facing option, OFF by default** in
+`Settings → Car → ICCOA` (`iccoaSensorRefresh`).
+
+- OFF: event-driven OEM Control11 once per authenticated CONTROL readiness,
+  immediate payload changes and bounded send-failure retries. Zero refresh
+  timer tasks in the successful steady state.
+- ON: after each successfully queued **active** navigation/sensor request,
+  schedule one refresh at 15 seconds; no 5-second polling, no refresh for
+  inactive/stop messages, and re-arm only on the next successful send.
+  Changed payloads and OFF transitions are not delayed. Disconnect resets
+  the gate and cancels pending timer.
+- The switch is read when the ICCOA CONTROL connection becomes ready. Change
+  it in settings and **reconnect ICCOA** to apply.
+- This is a compatibility experiment. Some units do not implement the
+  Toyota-specific activation command at all; retrying it cannot create
+  unsupported car GPS, and may increase control traffic.
+- Applies only to ICCOA OEM `NotifyNavigationInfo` ControlIndex11;
+  it is **not** an Android Auto SENSOR subscription or a change in
+  vehicle gear/parking state.
+
+Tests in `IccoaControl11GateTest` cover default OFF, 15-second threshold,
+payload change, failed-send retry, reset, and immutable payload snapshot.
+P0 HU runtime testing and Android Gradle/JUnit execution pending combined
+owner acceptance. No intermediate APK built.
