@@ -279,7 +279,9 @@ class IccoaService : Service() {
             return
         }
         autoConnectAttempted = true
-        DiagLog.i("ICCOA", "Auto-select remembered vehicle; encrypted credential will be tried once if available")
+        val attempt = dropRecovery.onInitialRememberedCarAutoSelect()
+        DiagLog.i("ICCOA", "Auto-select remembered vehicle, attempt $attempt/" +
+            "${IccoaDropRecovery.MAX_ATTEMPTS}; encrypted credential tried once per session if available")
         connectTo(car.address)
     }
 
