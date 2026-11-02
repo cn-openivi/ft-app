@@ -300,7 +300,7 @@ class IccoaService : Service() {
         connectTo(car.address)
     }
 
-    private fun connectTo(address: String) {
+    private fun connectTo(address: String, forceCurrentPin: Boolean = false) {
         pendingCar = _state.value.discovery.peers.singleOrNull { it.address.equals(address, ignoreCase = true) }
         val known = rememberedCar.matches(pendingCar, _state.value.discovery.peers)
         val trustedCarName = pendingCar?.name?.trim().orEmpty()
@@ -378,7 +378,15 @@ class IccoaService : Service() {
                     else control(category, method, body)
                 }
             },
-            onClosed = { reason, transport -> current { connectionFailed(reason, transport) } },
+            onClosed = { reason, transport, normalRequired -> current {
+                if (normalRequired) {
+                    val selected = pendingCar?.address
+                    DiagLog.i("ICCOA", "OEM rejected QUICK; switching to NORMAL and asking for current PIN")
+                    endConnection()
+                    if (selected == null) connectionFailed("QUICK: select the car and enter its PIN")
+                    else connectTo(selected, forceCurrentPin = true)
+                } else connectionFailed(reason, transport)
+            } },
             onControlReady = { current {
                 navigationGate.reset()
                 navigationRetries = 0
@@ -389,7 +397,8 @@ class IccoaService : Service() {
                 navigationSend.run()
             } },
             trustedCarName = trustedCarName,
-            tryRememberedPin = known)
+            tryRememberedPin = known,
+            forceCurrentPin = forceCurrentPin)
         session = connection
         main.postDelayed({
             if (generation == token && session === connection && gearSpeedFrames > 0L && gpsFrameCount == 0L)

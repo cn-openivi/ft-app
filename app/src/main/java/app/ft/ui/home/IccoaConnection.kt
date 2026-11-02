@@ -142,12 +142,16 @@ internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnection
     }
 }
 
-internal fun LazyListScope.iccoaDevices(state: IccoaState) {
+internal fun LazyListScope.iccoaDevices(state: IccoaState, showAll: Boolean) {
     val scan = state.discovery
     val busy = scan.phase in listOf(IccoaPhase.SCANNING, IccoaPhase.INSPECTING)
     if (!state.connected && !state.connecting && !state.pinRequired) {
         item { Text(stringResource(R.string.iccoa_device_help), style = MaterialTheme.typography.bodySmall) }
-        items(scan.peers, key = { it.address }) { peer ->
+        // Keep unfiltered BLE evidence, filter only presentation. Never hide a car
+        // when it is the sole non-advertising candidate.
+        val carlink = scan.peers.filter { it.hint }
+        val peers = if (showAll || carlink.isEmpty()) scan.peers else carlink
+        items(peers, key = { it.address }) { peer ->
             val context = LocalContext.current
             Card {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
