@@ -165,13 +165,13 @@ internal fun LazyListScope.iccoaDevices(state: IccoaState, showAll: Boolean) {
                         FilledTonalButton(onClick = { IccoaService.connect(context, peer.address) }, enabled = state.running && scan.phase != IccoaPhase.INSPECTING && peer.connectable) {
                             Text(stringResource(R.string.iccoa_connect))
                         }
-                        TextButton(onClick = { IccoaService.connectNormal(context, peer.address) },
-                            enabled = state.running && scan.phase != IccoaPhase.INSPECTING && peer.connectable) {
-                            Text("Normal · новый PIN")
-                        }
                         TextButton(onClick = { IccoaService.inspect(context, peer.address) }, enabled = state.running && !busy && peer.connectable) {
                             Text(stringResource(R.string.iccoa_inspect))
                         }
+                    }
+                    TextButton(onClick = { IccoaService.connectNormal(context, peer.address) },
+                        enabled = state.running && scan.phase != IccoaPhase.INSPECTING && peer.connectable) {
+                        Text("Normal · новый PIN")
                     }
                 }
             }
