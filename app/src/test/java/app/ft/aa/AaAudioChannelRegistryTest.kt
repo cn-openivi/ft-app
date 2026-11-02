@@ -30,6 +30,18 @@ class AaAudioChannelRegistryTest {
         assertTrue(lanes.stop(AaProtocol.CH_SPEECH_AUDIO))
     }
 
+    @Test fun lateSpeechPcmAfterStopOrCloseIsNotEligibleForPlayback() {
+        assertFalse(lanes.isActive(AaProtocol.CH_SPEECH_AUDIO))
+        assertTrue(lanes.start(AaProtocol.CH_SPEECH_AUDIO, 21))
+        assertTrue(lanes.isActive(AaProtocol.CH_SPEECH_AUDIO))
+        assertTrue(lanes.stop(AaProtocol.CH_SPEECH_AUDIO))
+        assertFalse(lanes.isActive(AaProtocol.CH_SPEECH_AUDIO))
+        // A later AV_START is a new session and explicitly enables PCM again.
+        assertTrue(lanes.start(AaProtocol.CH_SPEECH_AUDIO, 22))
+        assertTrue(lanes.isActive(AaProtocol.CH_SPEECH_AUDIO))
+        assertEquals(22, lanes.session(AaProtocol.CH_SPEECH_AUDIO))
+    }
+
     @Test fun channelMayReopenCleanlyAfterClose() {
         lanes.start(AaProtocol.CH_SPEECH_AUDIO, 15)
         assertTrue(lanes.stop(AaProtocol.CH_SPEECH_AUDIO))
