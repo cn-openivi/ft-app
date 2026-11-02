@@ -48,6 +48,17 @@ class IccoaService : Service() {
     private var pendingCar: IccoaPeer? = null
     private var autoConnectAttempted = false
     private val dropRecovery = IccoaDropRecovery()
+    private val recoveryScan = Runnable {
+        if (dropRecovery.active && _state.value.running &&
+            !_state.value.connecting && !_state.value.connected)
+            discovery?.start()
+    }
+    private fun scheduleRecoveryScan(number: Int) {
+        main.removeCallbacks(recoveryScan)
+        val delayMs = when (number) { 1 -> 0L; 2 -> 3_000L; else -> 6_000L }
+        DiagLog.i("ICCOA", "Remembered-car recovery attempt $number/${IccoaDropRecovery.MAX_ATTEMPTS}")
+        main.postDelayed(recoveryScan, delayMs)
+    }
     @Volatile private var generation = 0
     private var discovery: IccoaDiscovery? = null
     @Volatile private var session: IccoaSession? = null
@@ -225,6 +236,7 @@ class IccoaService : Service() {
         _state.update { it.copy(running = true) }
         when (intent?.action) {
             CONNECT -> intent.getStringExtra("address")?.let { address ->
+                main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
                 connectTo(address)
             }
@@ -234,9 +246,15 @@ class IccoaService : Service() {
                     session?.submitPin(pin)
                 }
             }
-            DISCONNECT -> { endConnection(); _state.update { it.copy(status = "Disconnected") } }
+            DISCONNECT -> {
+                main.removeCallbacks(recoveryScan)
+                dropRecovery.onExplicitOwnerRequest()
+                endConnection()
+                _state.update { it.copy(status = "Disconnected") }
+            }
             INSPECT -> if (!_state.value.connecting && !_state.value.connected) intent.getStringExtra("address")?.let { discovery?.inspect(it) }
             SCAN -> { endConnection(); autoConnectAttempted = false
+                main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
                 _state.update { it.copy(status = "") }; discovery?.start() }
             else -> if (!wasRunning) discovery?.start()
@@ -248,7 +266,18 @@ class IccoaService : Service() {
         val prefs = FTApp.instance.prefs
         if (!prefs.autoConnect || prefs.carProtocol != CarProtocol.ICCOA ||
             autoConnectAttempted || _state.value.connecting || _state.value.connected) return
-        val car = rememberedCar.select(result.peers, result.phase == IccoaPhase.SCAN_COMPLETE) ?: return
+        val car = rememberedCar.select(result.peers, result.phase == IccoaPhase.SCAN_COMPLETE)
+        if (car == null) {
+            // A BLE address may rotate or the car may temporarily disappear.
+            // A completed discovery with no remembered candidate consumes the
+            // next recovery slot, but never authorizes PIN/auth retry.
+            if (dropRecovery.active && result.phase == IccoaPhase.SCAN_COMPLETE) {
+                val next = dropRecovery.onFailure(false, true, true)
+                if (next != null) scheduleRecoveryScan(next)
+                else DiagLog.w("ICCOA", "Remembered car not found after three recovery attempts")
+            }
+            return
+        }
         autoConnectAttempted = true
         DiagLog.i("ICCOA", "Auto-select remembered vehicle; encrypted credential will be tried once if available")
         connectTo(car.address)
@@ -293,7 +322,11 @@ class IccoaService : Service() {
         }
         connection = IccoaSession(this,
             onStatus = { text -> current { _state.update { it.copy(status = text) } } },
-            onPinRequired = { current { _state.update { it.copy(pinRequired = true, status = "Enter the six-digit code shown by the car") } } },
+            onPinRequired = { current {
+                dropRecovery.onPinRequired()
+                main.removeCallbacks(recoveryScan)
+                _state.update { it.copy(pinRequired = true, status = "Enter the six-digit code shown by the car") }
+            } },
             onReady = { network, peer ->
                 // AuthConfirm must only advertise our address after these listeners are bound.
                 synchronized(lifecycle) {
@@ -323,7 +356,7 @@ class IccoaService : Service() {
                     else control(category, method, body)
                 }
             },
-            onClosed = { reason -> current { connectionFailed(reason) } },
+            onClosed = { reason, transport -> current { connectionFailed(reason, transport) } },
             onControlReady = { current {
                 navigationGate.reset()
                 navigationRetries = 0
@@ -375,6 +408,8 @@ class IccoaService : Service() {
         pendingCar?.let { car ->
             if (rememberedCar.remember(car)) DiagLog.i("ICCOA", "Authenticated vehicle selection remembered for next connection")
         }
+        dropRecovery.onConnected()
+        main.removeCallbacks(recoveryScan)
         _state.update { it.copy(connecting = false, connected = true, pinRequired = false,
             status = "ICCOA linked · awaiting H.264 video · ${plan.streamWidth}×${plan.streamHeight} · ${plan.fps} fps") }
     }
@@ -403,7 +438,7 @@ class IccoaService : Service() {
             4 -> lastVideoConfig?.let(::play)
             5, 41 -> pauseProjection()
             16 -> projection?.key(84) // Same AA voice/search key as the CarLife voice button.
-            23 -> connectionFailed("The car disconnected")
+            23 -> connectionFailed("The car disconnected", retryableTransportFailure = true)
             25 -> runCatching { IccoaCarConfig.describe(body) }
                 .onSuccess { DiagLog.i("ICCOA", "Car config: $it") }
                 .onFailure { DiagLog.w("ICCOA", "Car config unreadable: bytes=${body.size} ${it.javaClass.simpleName}") }
