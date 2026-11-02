@@ -69,15 +69,20 @@ class AaSession(
                 micWanted = false
                 runCatching { AaHeadUnitService.onCarMicWanted?.invoke(false) }
             }
-            runCatching { CarAudioBus.end(AaProtocol.CH_SPEECH_AUDIO) }
-            runCatching { CarAudioBus.end(AaProtocol.CH_SYSTEM_AUDIO) }
+            // Channel close and abrupt session termination must release any
+            // still-active audio lanes, including speech. Unpaired AV_STOP
+            // is legal and must not end another session's current lane.
+            audioSessions.stopAll().forEach { channel ->
+                runCatching { CarAudioBus.end(channel) }
+            }
+            audioMeasured.clear()
             runCatching { synchronized(navigation) { AaHeadUnitService.onNavigation?.invoke(navigation.reset()) } }
             synchronized(music) { AaHeadUnitService.publishMusic(music.reset()) }
             try { decoder.reset() } finally { onClosed(reason) }
         }
     )
     private var videoSession = 0
-    private val audioSessions = HashMap<Int, Int>()
+    private val audioSessions = AaAudioChannelRegistry()
     private val audioMeasured = HashSet<Int>()
     private var mediaFrames = 0L
     private val _phase = MutableStateFlow(Phase.CONNECTED)
@@ -271,6 +276,13 @@ class AaSession(
                         "last requests=${sensorSubscriptions.summary()}")
                     stopCarSensorStreams()
                     sensorSubscriptions.reset()
+                }
+                if (channel == AaProtocol.CH_MEDIA_AUDIO ||
+                    channel == AaProtocol.CH_SPEECH_AUDIO ||
+                    channel == AaProtocol.CH_SYSTEM_AUDIO) {
+                    if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                    audioMeasured -= channel
+                    DiagLog.i(tag, "AA audio channel closed: ${AaProtocol.channelName(channel)}")
                 }
                 if (channel == AaProtocol.CH_NAVIGATION) synchronized(navigation) {
                     AaHeadUnitService.onNavigation?.invoke(navigation.reset())
@@ -498,18 +510,19 @@ class AaSession(
         when (id) {
             AaProtocol.AV_SETUP_REQUEST -> sendEnc(channel, AaProtocol.AV_SETUP_RESPONSE, AaMessages.avSetupResponse())
             AaProtocol.AV_START_INDICATION -> {
-                audioSessions[channel] = AaMessages.startSession(body)
+                val wasAlreadyActive = !audioSessions.start(channel, AaMessages.startSession(body))
                 audioMeasured -= channel
-                CarAudioBus.begin(channel)
+                if (!wasAlreadyActive) CarAudioBus.begin(channel)
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} started")
             }
             AaProtocol.AV_STOP_INDICATION -> {
-                CarAudioBus.end(channel)
+                if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                audioMeasured -= channel
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} stopped")
             }
             AaProtocol.AV_MEDIA_WITH_TIMESTAMP, AaProtocol.AV_MEDIA_INDICATION -> {
                 val pcm = if (id == AaProtocol.AV_MEDIA_WITH_TIMESTAMP && body.size > 8) body.copyOfRange(8, body.size) else body
-                sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions[channel] ?: 0))
+                sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions.session(channel)))
                 if (pcm.isNotEmpty()) {
                     val rate = if (channel == AaProtocol.CH_MEDIA_AUDIO) 48000 else 16000
                     val ch = if (channel == AaProtocol.CH_MEDIA_AUDIO) 2 else 1
