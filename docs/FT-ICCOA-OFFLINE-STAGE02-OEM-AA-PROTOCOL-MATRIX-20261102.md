@@ -300,3 +300,38 @@ or owner field retest is requested until the combined release.
 
 This change does not prove OEM reused-PIN support or resolve the independent
 Android Auto LOCATION subscription issue. No canonical plan status/edge advance.
+
+## 2026-11-02 — verified credential-save race fixed
+
+Critical reconnect/auth integrity correction: `IccoaSession.authenticate()`
+previously stored the encrypted remembered PIN immediately after writing
+`AuthConfirm`, before any authenticated CONTROL lane was opened by the car.
+A successful outbound write does not prove successful receiver acceptance.
+
+The new `IccoaTrustedCommitGate` requires BOTH events before the single
+credential write:
+- cryptographic SignIn response verified and `AuthConfirm` sent;
+- the car opens the CONTROL socket for the same active ICCOA Attempt.
+
+Both event orders are supported (asynchronous socket accept can race the
+confirmation write), but only one save can occur. Abandoned/failed attempts
+cancel the gate and discard the pending in-memory secret. No PIN, key, or
+network identity is logged. Prior valid encrypted credentials are not
+overwritten by an unaccepted new attempt. This is a source-level integrity
+repair, NOT proof that the car supports future reuse of the PIN.
+
+Source: `IccoaTrustedCommitGate.kt`, `IccoaSession.kt`,
+`IccoaTrustedCommitGateTest.kt` (4 new unit scenarios, NOT YET CI-run).
+Preserves three bounded reconnection opportunities and existing
+authentication cryptography. No release APK produced.
+
+AA GPS P1 cross-check, 2026-11-02: `mrmees/open-android-auto`
+`SensorChannelConfigData.proto`, `SensorRequestMessage.proto`,
+`SensorErrorStatusEnum.proto` confirm the sensor descriptor's nested
+`supported_sensors=1` and phone-initiated `SensorRequest` subscription
+requirement. `SENSOR_ERROR(status=1)` is expressly **SENSOR_OK** (legitimate
+recovery notice), status 2 is transient failure. The service documentation's
+alternate description of SDP field 2 conflicts with its vetted proto name
+`location_characterization`; do not guess that field or send unsolicited
+car locations. P0 remains absent phone LOCATION subscription; the existing
+wire encoding is not changed without exact evidence.
