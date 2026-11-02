@@ -49,7 +49,13 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
     private val gattTimeout = Runnable { failGatt("GATT discovery timed out") }
 
     fun start() {
-        stop()
+        // Starting a NEW scan must not advertise the interrupted old scan as
+        // SCAN_COMPLETE. In recovery mode that false terminal event consumes
+        // another retry slot and can exhaust all three attempts immediately.
+        // Invalidate callbacks and release the old scan without publishing.
+        generation++
+        endScan()
+        closeGatt()
         samples = AdvertisementSamples()
         devices.clear()
         peers.clear()
