@@ -335,3 +335,57 @@ alternate description of SDP field 2 conflicts with its vetted proto name
 `location_characterization`; do not guess that field or send unsolicited
 car locations. P0 remains absent phone LOCATION subscription; the existing
 wire encoding is not changed without exact evidence.
+
+## 2026-11-02 — critical auto-reconnect transition and PIN retention fixes
+
+**Source-only changes after signed FT169, still no new APK.** Owner says
+continue critical work before a single combined automatic-test run/build.
+
+1. `IccoaDiscovery.start()` previously called `stop()`, which emitted
+   `SCAN_COMPLETE` for the **interrupted** scan. The service's three-attempt
+   recovery interpreted this as a real unsuccessful scan, consumed another
+   retry budget and could restart again. Now a new scan invalidates the
+   previous BLE callbacks and closes the prior GATT/scan silently before
+   publishing the NEW `SCANNING` phase. True scan timeout still publishes
+   `SCAN_COMPLETE`. Commit `e78cd355c227852c448579df244079ab3c409c48`.
+2. `IccoaService.connectTo()` previously called `discovery.stop()`
+   *before* marking `connecting=true`. Its synchronous end-scan callback
+   could auto-select the remembered car while a manually chosen connection
+   was being initialized. Set `connecting=true` after old session teardown
+   and before stopping discovery. Commit
+   `1e1cac5e019436c873f57c07189f1bee39b390b3`.
+3. The original three-attempt recovery only activated **after** a successful
+   projected session was unexpectedly lost. Owner's request covers ordinary
+   connections too: initial automatic selection of the remembered peer
+   now counts attempt **1/3**; only typed transport failures may consume
+   **2/3** and **3/3**. Manual PIN prompt, rejected credentials and
+   unrecognized errors stop retries. Existing failed initial manual pairing
+   never authorizes retries. Updated `IccoaDropRecovery`,
+   `IccoaService`, `IccoaDropRecoveryTest` (+2 tests). Commits
+   `e19125420ea3fad9c70e6f29cae0aef535643954`,
+   `64ef2378083deaeb9ed21dbb53883f870be8d29f`,
+   `6a1815641867b9ea13ab2e3eb1a8575d4ff18df0`.
+   Exact gate source SHA `44acb7af665325bec365beebfaafe1a7b43b3c2f`
+   verified against local `git hash-object`; `kotlinc` JVM gate smoke
+   passed **32 assertions**.
+4. Previously the cached PIN was cleared after *any* TCP auth exception,
+   GATT write failure, ATT local queue failure, or BLE response timeout.
+   These are not proof that the car rejected the credential and cause the
+   next transport-recovery attempt to fall back to manual PIN. The new
+   `IccoaPinCachePolicy` clears only after an explicit `PIN_MAC`
+   rejection or OEM `RESPONSE_RESULT=1` (request fresh code).
+   Network/transport errors and non-PIN protocol errors retain the
+   encrypted credential while still stopping unsafe automatic retries.
+   Five new JUnit source tests; exact source SHA
+   `45d27ac6571dbf8e24b69b6afb0cc0af94e5bc21`.
+   A compiled standalone Kotlin smoke using this exact policy source
+   passed **9 assertions**. Commits
+   `4d01b9b462b2e290cb677392d920ae4e08304829`,
+   `bbd3f0c617cd86d74a7916a5ebea49a4d6dc3bac`,
+   `bae18e583f207e69c0747f67b33d4ce721f3a288`.
+
+No full Android Gradle CI or verified HU release yet. Android Auto does
+not request LOCATION in past owner field logs despite OEM car GPS producer
+being active and LOCATION advertised; do not claim that the source-only
+subscription instrumentation solves this. Mirror seek audio/video is
+already owner-confirmed working; no seek gesture rewrite.
