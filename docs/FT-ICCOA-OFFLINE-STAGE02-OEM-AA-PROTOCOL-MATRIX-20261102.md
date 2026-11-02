@@ -420,3 +420,53 @@ prompt. Any alternative routing needs independently approved/confirmed
 Android Bluetooth audio behavior; do not silently pair or change routes.
 
 No source-based audio workaround and no APK is claimed by this note.
+
+## 2026-11-02 — AA channel closure fixes: stale GEAR and ghost SPEECH
+
+Two **source-proven** Android Auto lifecycle defects fixed, without changing
+wire protocol messages or working audio/video seek implementation.
+
+1. `AaSession.handleControl(CHANNEL_CLOSE_NOTIFICATION)` stopped the
+   ICCOA-derived GPS sender on closing SENSOR, but **left GEAR subscribed**
+   and its coroutine running. The now-closed sensor channel could still
+   receive gear events, including the owner-opt-in override state; reopening
+   could also inherit the stale subscription count. The new
+   `stopCarSensorStreams()` cancels BOTH GPS and GEAR coroutines, clears
+   subscription booleans, and resets the type/count-only subscription
+   evidence on SENSOR close. The same helper runs during full session
+   cleanup. Source commit `c1fc9b0587513d33ba924830873a080a4f11bcc2`;
+   `AaSensorSubscriptionsTest` includes channel-reopen audit reset
+   `b4501be45186ea89ee65775b227dda4d2b6cc8f2`.
+   No unsolicited Android Auto LOCATION request was added: the AA phone
+   still must subscribe on its own.
+
+2. AA AUDIO `CHANNEL_CLOSE_NOTIFICATION` did NOT release active
+   SPEECH/SYSTEM/MEDIA lanes when the phone closed a channel without
+   sending AV_STOP. `CarAudioBus` could retain `speaking=true` and
+   stale navigation guidance ducking. Full AA session cleanup previously
+   ended only SPEECH/SYSTEM unconditionally and not a live MEDIA lane.
+   A small `AaAudioChannelRegistry` now tracks distinct AV_START
+   sessions; both AV_STOP and CHANNEL_CLOSE release the corresponding
+   live lane once, shutdown releases remaining active lanes, a new
+   AV_START can reopen it, and late PCM after close/stop is discarded
+   rather than resurrecting a ghost voice lane. AA channel ACK retains
+   the correct current session number. Source:
+   `58f172f8707d040bc2748fe41e2e5b8d684438f3`,
+   `2b7c930773cfe44cbfbfa0ab918366cb3c215509`,
+   `4908c6fe4efdb043b1253bce9eecb8730e94a11d`,
+   `e36b28d5a757de2a63aedda0aaa9ff78396ec594`;
+   tests `6440f952af8f541b9d8c72cf9c7f04ac5faa8f38`,
+   `8a9c70a347a8fe9ede3e1e9fd00d1d00cebab3c3`.
+   GitHub audio registry blob `38c82eab900c70661cde5684584986e3dda9ca4d`
+   exactly matched local `git hash-object`, Kotlin compiled, 17
+   standalone JVM smoke assertions PASSED.
+
+This repairs **AA speech/audio-lane state on closure**, NOT the separate
+Yandex Navigator-on-phone source-audio restriction, whose player usage
+remains unknown without live evidence. Owner confirmed media seeking
+working; no changes to gesture code.
+
+STATUS: All changes SOURCE ONLY; Gradle Android tests have not run;
+no new APK, signed release, physical HU P0 approval or protected Nexus
+plan-edge advancement. Owner requested combined acceptance after
+four critical directions.
