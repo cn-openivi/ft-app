@@ -33,7 +33,7 @@ class AaSensorAdvertisementTest {
         assertEquals(170, advertisedDpi(800, 480, 240))
     }
 
-    @Test fun exactOemGearCapabilityOnlyWhenExplicitlyEnabled() {
+    @Test fun iccoaAdvertisesRealGearWithoutAnyDiagnosticOptIn() {
         val response = AaMessages.serviceDiscoveryResponse(
             1920, 1008, 30, 240, false, "XA60",
             advertiseCarLocation = true, advertiseCarGear = true)
