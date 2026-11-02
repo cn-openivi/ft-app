@@ -121,10 +121,9 @@ object AaProtocol {
      * ICCOA GPS may still be transiently unavailable; that is reported by
      * SENSOR_ERROR after a valid LOCATION subscription.
      */
-    fun supportsSensor(type: Int, isIccoa: Boolean, gearEnabled: Boolean): Boolean = when (type) {
+    fun supportsSensor(type: Int, isIccoa: Boolean): Boolean = when (type) {
         SENSOR_DRIVING_STATUS, SENSOR_NIGHT_MODE -> true
-        SENSOR_LOCATION -> isIccoa
-        SENSOR_GEAR -> isIccoa && gearEnabled
+        SENSOR_LOCATION, SENSOR_GEAR -> isIccoa
         else -> false
     }
 
