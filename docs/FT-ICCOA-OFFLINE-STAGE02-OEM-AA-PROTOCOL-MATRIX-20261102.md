@@ -557,3 +557,47 @@ renumbering, architecture change, topology expansion or premature closure.
 source/module check has its actual evidence and blockers are reconciled
 against the same candidate SHA; do not run the existing
 release-and-publish workflow as a substitute for preliminary audit.
+
+## 2026-11-02 — critical pre-release fixes: callback, sensor channel and encoder lifetime
+
+Source-only repairs on the same approved branch, preserving the single final
+APK build and combined owner HU acceptance:
+
+1. **Verified Kotlin compilation blocker.** When `IccoaService.connectionFailed`
+   gained an optional second `retryableTransportFailure` parameter, the
+   `IccoaProjection(onFailure=::connectionFailed)` caller was still a method
+   reference to a **two-argument** Kotlin function. Default arguments do NOT
+   adapt a `KFunction2` to a `(String)->Unit`. Reproduced with `kotlinc`
+   (expected type mismatch). Replaced with the explicit one-argument lambda;
+   a standalone Kotlin compatibility compile now passes. Code commit
+   `0de071d7e04fddee2e9c8eee59d64bb2708685d0`.
+2. **AA sensor CLOSE/OPEN lifecycle.** Prior work canceled GPS+GEAR on close,
+   but `handleSensor` could still accept a late `SENSOR_START_REQUEST`
+   received after close and recreate the sending coroutine; a second CHANNEL
+   OPEN without a CLOSE inherited the prior subscription. Now sensor requests
+   require `sensorChannelOpened` and `openChannels` membership, both stream
+   loops check the open state, and repeated OPEN resets previous GPS, GEAR and
+   request counters. No fake GPS fix or unsolicited subscription. Commit
+   `ee22a124c271e3b5fae95d1e4f87217e42a7e988`.
+3. **ICCOA BLE retry on actual scan failure.** Previously
+   `IccoaDiscovery` publishing `IccoaPhase.FAILED` did not advance the
+   three-attempt recovery sequence; it could remain silently stuck. During
+   an already authorized recovery episode `FAILED` now consumes one bounded
+   transport attempt (up to 3), while a PERMISSION_REQUIRED / BLUETOOTH_OFF
+   / inspection phase cannot select stale peer or automatically retry.
+   Commit `d06cddda044a734b45b16c147887724748d1f77b`.
+4. **Projection failure race.** Encoder callbacks may be delivered from
+   background threads. `IccoaProjection.projectionFailed` now marshals
+   teardown to Android main, ignores inactive projections and validates
+   a captured `displayEpoch`; stop/reconfigure invalidates old epochs so
+   late H.264 failure from a prior display cannot close the replacement
+   display. Commits `afe7bf592df49f39bb1c3ced8e6a70bb297b1a53`
+   and `3835e987029bc73a482ffbcffc062c5d06f69720`.
+
+Independent GitHub readback confirmed exact blobs, names and integration.
+The compilation check concerns the exact Kotlin callback *type*, not
+a complete Android Gradle build; no Android CI or signed APK was run.
+The phone not subscribing LOCATION remains the unclosed AA GPS P0 issue;
+physical HU reconnect, rotation touch, and navigation audio need the
+owner's combined acceptance. No cosmetic changes and no canonical plan
+edge advancement.
