@@ -47,6 +47,7 @@ class IccoaService : Service() {
     private val rememberedCar by lazy { IccoaRememberedCar(this) }
     private var pendingCar: IccoaPeer? = null
     private var autoConnectAttempted = false
+    private val dropRecovery = IccoaDropRecovery()
     @Volatile private var generation = 0
     private var discovery: IccoaDiscovery? = null
     @Volatile private var session: IccoaSession? = null
@@ -223,7 +224,10 @@ class IccoaService : Service() {
         val wasRunning = _state.value.running
         _state.update { it.copy(running = true) }
         when (intent?.action) {
-            CONNECT -> intent.getStringExtra("address")?.let(::connectTo)
+            CONNECT -> intent.getStringExtra("address")?.let { address ->
+                dropRecovery.onExplicitOwnerRequest()
+                connectTo(address)
+            }
             PIN -> intent.getStringExtra("pin")?.let { pin ->
                 if (_state.value.pinRequired && pin.matches(Regex("[0-9]{6}"))) {
                     _state.update { it.copy(pinRequired = false, status = "Confirming the code with the car…") }
@@ -233,6 +237,7 @@ class IccoaService : Service() {
             DISCONNECT -> { endConnection(); _state.update { it.copy(status = "Disconnected") } }
             INSPECT -> if (!_state.value.connecting && !_state.value.connected) intent.getStringExtra("address")?.let { discovery?.inspect(it) }
             SCAN -> { endConnection(); autoConnectAttempted = false
+                dropRecovery.onExplicitOwnerRequest()
                 _state.update { it.copy(status = "") }; discovery?.start() }
             else -> if (!wasRunning) discovery?.start()
         }
@@ -424,10 +429,20 @@ class IccoaService : Service() {
 
     private fun connectionFailed(reason: String) {
         DiagLog.w("ICCOA", reason)
+        // A stale autoConnectAttempted flag previously prevented rediscovery from
+        // selecting the remembered car after a *successful* session dropped.
+        // Recover at most once; never loop on a failed PIN/auth/bootstrap.
+        val resume = dropRecovery.onUnexpectedDrop(
+            _state.value.connected, FTApp.instance.prefs.autoConnect
+        )
         endConnection()
+        if (resume) {
+            autoConnectAttempted = false
+            DiagLog.i("ICCOA", "Authenticated link dropped; one automatic remembered-car reconnect allowed")
+        }
         _state.update { it.copy(status = "$reason. Обновляю список устройств для новой попытки") }
-        // XA60 changes its private BLE address after a failed handshake. Reusing the old
-        // card times out without GATT callbacks. Clear stale peers and discover afresh.
+        // XA60 rotates its private BLE address. Discovery must resolve a new
+        // candidate, and the usual PIN-bound cryptographic handshake stays intact.
         if (_state.value.running) discovery?.start()
     }
 
