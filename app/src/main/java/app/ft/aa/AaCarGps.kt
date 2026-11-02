@@ -51,12 +51,22 @@ internal class AaGpsGate {
     private var consecutive = 0
 
     fun accept(sample: VehicleLocation?, nowMs: Long): ByteArray? {
+        val preceding = previous
+        // Polling may run at 100 ms while the OEM GNSS source updates only
+        // once per second. Skip unchanged, still-fresh fixes BEFORE allocating
+        // the nested LOCATION protobuf. Preserve the existing stale/reset path.
+        if (preceding != null && sample != null &&
+            sample.positionAtMs == preceding.positionAtMs &&
+            sample.source == preceding.source &&
+            sample.coordinatesUnit == preceding.coordinatesUnit &&
+            sample.latitude == preceding.latitude &&
+            sample.longitude == preceding.longitude &&
+            sample.positionFresh(nowMs)) return null
         val encoded = AaCarGps.event(sample, nowMs)
         if (encoded == null || sample == null) {
             if (previous != null && nowMs - lastObservedAt > 3_000L) reset()
             return null
         }
-        val preceding = previous
         if (preceding != null && preceding.positionAtMs == sample.positionAtMs) return null
         if (preceding != null) {
             val elapsedMs = sample.positionAtMs - preceding.positionAtMs
