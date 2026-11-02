@@ -16,6 +16,22 @@ class AaSensorSubscriptionsTest {
         assertEquals("LOCATION=1,NIGHT_MODE=1,DRIVING_STATUS=2", audit.summary())
     }
 
+    @Test fun sensorChannelCloseDropsOldLocationAndGearSubscriptionsBeforeReopen() {
+        val audit = AaSensorSubscriptions()
+        audit.note(AaProtocol.SENSOR_LOCATION)
+        audit.note(AaProtocol.SENSOR_GEAR)
+        assertTrue(audit.has(AaProtocol.SENSOR_LOCATION))
+        assertTrue(audit.has(AaProtocol.SENSOR_GEAR))
+        // Called by AaSession after CHANNEL_CLOSE_NOTIFICATION; a reopened
+        // sensor channel must not inherit a subscription from the old channel.
+        audit.reset()
+        assertFalse(audit.has(AaProtocol.SENSOR_LOCATION))
+        assertFalse(audit.has(AaProtocol.SENSOR_GEAR))
+        assertEquals("NONE", audit.summary())
+        audit.note(AaProtocol.SENSOR_NIGHT_MODE)
+        assertEquals("NIGHT_MODE=1", audit.summary())
+    }
+
     @Test fun recordsPotentialGearSpeedAndParkingRequestsWithoutFakingValues() {
         val audit = AaSensorSubscriptions()
         audit.note(8)
