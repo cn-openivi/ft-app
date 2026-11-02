@@ -149,7 +149,9 @@ internal fun LazyListScope.iccoaDevices(state: IccoaState, showAll: Boolean) {
         item { Text(stringResource(R.string.iccoa_device_help), style = MaterialTheme.typography.bodySmall) }
         // Keep unfiltered BLE evidence, filter only presentation. Never hide a car
         // when it is the sole non-advertising candidate.
-        val carlink = scan.peers.filter { it.hint }
+        val remembered = app.ft.iccoa.IccoaRememberedCar(FTApp.instance)
+            .select(scan.peers, scan.phase == IccoaPhase.SCAN_COMPLETE)
+        val carlink = scan.peers.filter { it.hint || it.address == remembered?.address }
         val peers = if (showAll || carlink.isEmpty()) scan.peers else carlink
         items(peers, key = { it.address }) { peer ->
             val context = LocalContext.current
