@@ -38,6 +38,28 @@ class VehicleCoordinateLogTest {
         assertTrue(output.contains("coordinates=OMITTED"))
     }
 
+    @Test fun independentlySampledPhoneSpeedIsNotConflatedWithOemRawUnits() {
+        val record = sample.copy(gearRaw = 2, gearSpeedRaw = 256L, speedRaw = 78L)
+        val comparison = VehicleCoordinateLog.format(record, decision, false, phoneGpsSpeedKmh = 61.4f)
+        assertTrue(comparison.contains("gpsSpeedRaw=78 gearSpeedRaw=256"))
+        assertTrue(comparison.contains("phoneGpsSpeedKmh=61.4"))
+        assertTrue(comparison.contains("coordinates=OMITTED"))
+        assertFalse(comparison.contains("latitude="))
+        // A diagnostics-only independent observation must never assign a
+        // speed multiplier to the shared live vehicle telemetry.
+        assertEquals("UNKNOWN", record.speedUnit)
+        assertNull(record.speedKmh)
+    }
+
+    @Test fun unavailableOrInvalidPhoneSpeedIsClearlyMarkedUnknown() {
+        val normal = VehicleCoordinateLog.format(sample, decision, false)
+        assertTrue(normal.contains("phoneGpsSpeedKmh=NA"))
+        val invalid = VehicleCoordinateLog.format(sample, decision, false, phoneGpsSpeedKmh = Float.NaN)
+        assertTrue(invalid.contains("phoneGpsSpeedKmh=NA"))
+        val implausible = VehicleCoordinateLog.format(sample, decision, false, phoneGpsSpeedKmh = 400f)
+        assertTrue(implausible.contains("phoneGpsSpeedKmh=NA"))
+    }
+
     @Test fun ownerOptInIncludesExactCoordinates() {
         val log = VehicleCoordinateLog.format(sample, decision, true)
         assertTrue(log.contains("latitude=55.7558260"))
