@@ -182,3 +182,61 @@ Tests in `IccoaControl11GateTest` cover default OFF, 15-second threshold,
 payload change, failed-send retry, reset, and immutable payload snapshot.
 P0 HU runtime testing and Android Gradle/JUnit execution pending combined
 owner acceptance. No intermediate APK built.
+
+## 2026-11-02 — AA location subscription and speed/rotation source work
+
+**LOCATION**: Confirmed FT's current ICCOA discovery serializes SENSOR LOCATION=1,
+DRIVING_STATUS=13, and NIGHT_MODE=10 in SensorChannelConfig. The phone
+independently initiates SENSOR_START_REQUEST 0x8001; advertising LOCATION
+does not guarantee subscription. Current Samsung FT166 P0 logs saw real
+OEM GPS SENSOR/1 frames and zero Android Auto LOCATION requests. Source
+`AaSession` now records the *serialized* advertised sensor IDs,
+whether SENSOR channel opened, and actual requests after 12 seconds
+(commit d8441e9). No force-pushed unsolicited LOCATION event,
+GPS spoof, speculative head unit field, or fabricated AA subscription.
+
+P2: `mrmees/open-android-auto` sensor protocol reference confirms
+subscription direction and message IDs. Its `SensorChannelConfig`
+optional field 2 is described inconsistently between proto
+(`location_characterization`) and docs (`default update interval`);
+this is **not** enough evidence to set an undocumented field on
+the production wire. Do not alter it without version-matched proof.
+
+**SPEED UNIT EVIDENCE** (source only):
+- FT keeps `GearInfo.speed` and `Gps.speed` as independent
+  integers `gearSpeedRaw` and `gpsSpeedRaw`. It does not invent
+  a conversion, represent them as km/h, or advertise AA CAR_SPEED.
+- When the existing FT phone GPS speed widget is running and its
+  GNSS sample arrived in the last 2 seconds, diagnostic `VehicleGPS`
+  records `phoneGpsSpeedKmh` beside the contemporaneous OEM raw
+  integers. This uses the existing widget listener, no new GPS
+  permission or background listener, and omits coordinates unless
+  the existing explicit privacy switch is ON.
+- At combined owner field acceptance, include several steady,
+  nonzero vehicle speeds with this widget active, compare synchronous
+  raw values and phone GNSS km/h, exclude stale and changing-speed
+  samples, then independently validate any candidate multiplier
+  across at least two speeds. Matching one sample is NOT a verified
+  unit. No vehicle CAN/gear state is modified.
+- Added pure unit checks for formatting, privacy and rejecting
+  unavailable/invalid independent speed; no Gradle run at this stage.
+
+**POST-ROTATION MIRROR TOUCH** (source only):
+- `IccoaProjection` logs changing triple: actual phone display size,
+  Android capture content size, and mirrored output Surface size,
+  on display-change/capture-resize/touch; no coordinates or package names.
+- `MirrorTouchMapTest` now checks a 15/50/85% grid in stabilized
+  portrait and landscape layouts with explicit letterboxing.
+- This targets persistent X/Y mismatch *after* a rotation.
+  No mid-gesture rotation handler, speculative touch multiplier or
+  touch mapping change was introduced. Physical 5-point tap checks
+  and actual Accessibility callback receipts remain combined P0.
+
+**Owner-approved UI wording**: Russian GPS fallback toggle
+`Удерживать GPS активным`, English `Keep car GPS active`.
+Event-driven default OFF; opt-in 15-second active-request repetition.
+GitHub commits c6ca1ac12a8528b37981faad8ffc4c8a665b2764 and
+431e15b1fa4b01f89408cf61d5e1b1c229d45323.
+
+All entries are software/source evidence only. Do NOT claim a passing
+HU trial, inferred speed units, or plan edge advancement.
