@@ -79,7 +79,7 @@ class IccoaService : Service() {
     // OEM GPS is also needed for FT's own coordinate/course widgets.
     // Only enabled while an actual ICCOA video projection is established.
     private var ftProjectionSensorAssist = false
-    private val navigationSend = object : Runnable {
+    private val navigationSend: Runnable = object : Runnable {
         override fun run() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
@@ -107,7 +107,7 @@ class IccoaService : Service() {
 
     // Exactly one delayed callback after each successfully queued ACTIVE Control11.
     // Unlike 5-second polling this does no work at all when disabled or inactive.
-    private val navigationRefresh = object : Runnable {
+    private val navigationRefresh: Runnable = object : Runnable {
         override fun run() {
             if (session == null || !navigationRefreshEnabled) return
             val active = IccoaNavigation.sensorActivation(
