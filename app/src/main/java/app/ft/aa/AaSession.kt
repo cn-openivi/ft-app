@@ -42,6 +42,7 @@ class AaSession(
     @Volatile private var carGpsSubscribed = false
     @Volatile private var carGearSubscribed = false
     private val sensorSubscriptions = AaSensorSubscriptions()
+    @Volatile private var sensorChannelOpened = false
     private val lifecycle = AaSessionLifecycle(
         interrupt = {
             runCatching { input.close() }
@@ -196,21 +197,30 @@ class AaSession(
                 DiagLog.i(tag, "video settings ${prefs.aaWidth}x${prefs.aaHeight}@${prefs.aaFps} fps; " +
                     "Android Auto display density requested=${prefs.aaDensity} " +
                     "effective=${AaUiDensity.effective(prefs.aaDensity, prefs.aaWidth, prefs.aaHeight)} dpi")
-                sendEnc(
-                    AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE,
-                    AaMessages.serviceDiscoveryResponse(prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
-                        true, prefs.carName, prefs.aaControlsLeft,
-                        advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
-                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA &&
-                            (prefs.aaGearTest || prefs.aaForcePark))
+                val discovery = AaMessages.serviceDiscoveryResponse(
+                    prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
+                    true, prefs.carName, prefs.aaControlsLeft,
+                    advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
+                    advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA &&
+                        (prefs.aaGearTest || prefs.aaForcePark)
                 )
+                // Audit actual serialized descriptor, rather than the setting
+                // supplied to the encoder. No coordinates or device identity.
+                val advertised = ProtoReader(discovery).messages(1)
+                    .firstOrNull { it.int(1) == AaProtocol.CH_SENSOR }
+                    ?.message(2)?.messages(1)?.map { it.int(1) }.orEmpty()
+                DiagLog.i(tag, "AA SENSOR descriptor types=$advertised " +
+                    "locationDeclared=${AaProtocol.SENSOR_LOCATION in advertised}")
+                sendEnc(AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE, discovery)
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
                     DiagLog.i(tag, "ICCOA car LOCATION advertised to AA; waiting for actual phone subscription")
                     scope.launch(Dispatchers.IO) {
                         delay(12_000L)
                         if (lifecycle.running) {
-                            DiagLog.i(tag, "AA sensor subscription audit after 12s: ${sensorSubscriptions.summary()}")
+                            DiagLog.i(tag, "AA sensor subscription audit after 12s: " +
+                                "sensorChannelOpened=$sensorChannelOpened " +
+                                "requests=${sensorSubscriptions.summary()}")
                             if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION))
                                 DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
                             if ((prefs.aaGearTest || prefs.aaForcePark) &&
@@ -224,6 +234,7 @@ class AaSession(
             AaProtocol.CHANNEL_OPEN_REQUEST -> {
                 val sid = AaMessages.channelOpenServiceId(body)
                 openChannels += channel
+                if (channel == AaProtocol.CH_SENSOR) sensorChannelOpened = true
                 DiagLog.i(tag, "channel open ${AaProtocol.channelName(channel)} (service $sid)")
                 sendEnc(channel, AaProtocol.CHANNEL_OPEN_RESPONSE, AaMessages.channelOpenResponse(), true)
                 if (channel == AaProtocol.CH_NAVIGATION) {
@@ -248,6 +259,7 @@ class AaSession(
             AaProtocol.CHANNEL_CLOSE_NOTIFICATION -> {
                 openChannels -= channel
                 if (channel == AaProtocol.CH_SENSOR) {
+                    sensorChannelOpened = false
                     carGpsSubscribed = false
                     carGpsJob?.cancel(); carGpsJob = null
                 }
