@@ -160,7 +160,11 @@ class IccoaProjection(
         }
     }
 
-    private fun projectionFailed(error: Throwable) {
+    private fun projectionFailed(error: Throwable) = onMain {
+        // Encoder failures may arrive from a worker thread. Projection and
+        // touch/UI state belong to the main thread, and a second late failure
+        // must not tear down the next projection session.
+        if (!active) return@onMain
         stopInternal()
         DiagLog.e("ICCOA", "could not create FT's car display", error)
         onFailure("Could not create FT's car display (${error.javaClass.simpleName})")
