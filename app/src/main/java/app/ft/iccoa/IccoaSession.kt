@@ -159,17 +159,31 @@ class IccoaSession(
                 }
                 payload.fill(0)
                 if (!accepted) {
-                    // Local ATT queue failure is not a rejected credential.
-                    return@post requestPin(attempt, "Не удалось отправить код. Введите текущий PIN")
+                    // An Android GATT queue failure cannot reject a PIN.
+                    // Re-scan the remembered car only for automatic attempts;
+                    // explicit manual pairing still asks the owner for a code.
+                    if (fromCache) fail(attempt,
+                        "Не удалось поставить сохранённый код в очередь Bluetooth",
+                        transportFailure = true)
+                    else requestPin(attempt, "Не удалось отправить код. Введите текущий PIN")
+                    return@post
                 }
                 later(attempt, 12_000) {
                     if (!attempt.wifiRequested && revision == attempt.pinAttempt) {
-                        if (attempt.reusingPin)
-                            DiagLog.w("ICCOA", "Remembered-car BLE response timed out; manual PIN required without discarding cached credential")
-                        requestPin(attempt, "Автомобиль не ответил вовремя. Введите текущий PIN")
+                        if (attempt.reusingPin) {
+                            // A missing BLE response is a transport timeout, not
+                            // an OEM rejection. Preserve encrypted PIN and allow
+                            // the bounded 3-attempt discovery sequence to recover.
+                            fail(attempt, "Нет ответа автомобиля на сохранённый код ICCOA",
+                                transportFailure = true)
+                        } else requestPin(attempt, "Автомобиль не ответил вовремя. Введите текущий PIN")
                     }
                 }
-            } catch (e: Exception) { fail(attempt, "Ошибка отправки кода ICCOA (${e.javaClass.simpleName})") }
+            } catch (e: Exception) {
+                fail(attempt, "Ошибка отправки кода ICCOA (${e.javaClass.simpleName})",
+                    transportFailure = fromCache &&
+                        (e is java.io.IOException || e is IllegalStateException))
+            }
         }
     }
 
@@ -268,9 +282,12 @@ class IccoaSession(
             if (gatt !== attempt.gatt) return@post
             DiagLog.i("ICCOA", "GATT characteristic write uuid=${characteristic.uuid} status=$status")
             if (gatt === attempt.gatt && characteristic.uuid == CLIENT_INFO && status != BluetoothGatt.GATT_SUCCESS && !attempt.wifiRequested) {
-                if (attempt.reusingPin)
-                    DiagLog.w("ICCOA", "Remembered-car GATT write failed; not proof of PIN rejection")
-                requestPin(attempt, "Ошибка записи кода ICCOA (status=$status). Введите текущий PIN")
+                if (attempt.reusingPin) {
+                    // ATT write failure cannot prove that the stored PIN is bad.
+                    // Keep credentials for the next bounded transport attempt.
+                    fail(attempt, "Ошибка записи сохранённого кода по Bluetooth (status=$status)",
+                        transportFailure = true)
+                } else requestPin(attempt, "Ошибка записи кода ICCOA (status=$status). Введите текущий PIN")
             }
         }
 
