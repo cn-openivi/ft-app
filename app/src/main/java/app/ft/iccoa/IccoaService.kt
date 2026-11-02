@@ -58,6 +58,9 @@ class IccoaService : Service() {
     private var latestNavigation = NavigationInfo()
     private var navigationRetries = 0
     private val navigationGate = IccoaControl11Gate()
+    // Snapshot at authenticated CONTROL readiness: applies after ICCOA reconnect.
+    // OFF by default; no periodic work for the original event-driven mode.
+    private var navigationRefreshEnabled = false
     // OEM SensorMgr is enabled only while Android Auto is connected or real navigation runs.
     // This is an experimentally verifiable activation hint, never a fabricated GPS fix.
     private var aaSensorAssist = false
@@ -69,18 +72,35 @@ class IccoaService : Service() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
             val encoded = IccoaNavigation.encode(activation)
-            // State is synchronized when CONTROL opens and whenever it changes.
-            // OEM has no established refresh TTL; duplicates are suppressed.
-            if (!navigationGate.shouldSend(encoded)) return
+            val now = android.os.SystemClock.elapsedRealtime()
+            // Most HUs only need state changes; a compatibility resend is opt-in
+            // and only allowed for active sensor requests.
+            if (!navigationGate.shouldSend(encoded, now,
+                    navigationRefreshEnabled && activation.active)) return
             if (connection.sendControl(IccoaNavigation.CONTROL_METHOD, encoded)) {
-                navigationGate.accepted(encoded)
+                navigationGate.accepted(encoded, now)
                 navigationRetries = 0
+                main.removeCallbacks(navigationRefresh)
+                if (navigationRefreshEnabled && activation.active) {
+                    main.postDelayed(navigationRefresh, IccoaControl11Gate.REFRESH_MS)
+                }
                 DiagLog.i("ICCOA", "OEM sensor activation request: active=${activation.active} " +
                     "guided=${latestNavigation.active} aaConnected=$aaSensorAssist " +
                     "ftProjected=$ftProjectionSensorAssist")
             } else if (navigationRetries++ < 8) {
                 main.postDelayed(this, 500)
             }
+        }
+    }
+
+    // Exactly one delayed callback after each successfully queued ACTIVE Control11.
+    // Unlike 5-second polling this does no work at all when disabled or inactive.
+    private val navigationRefresh = object : Runnable {
+        override fun run() {
+            if (session == null || !navigationRefreshEnabled) return
+            val active = IccoaNavigation.sensorActivation(
+                latestNavigation, aaSensorAssist, ftProjectionSensorAssist).active
+            if (active) navigationSend.run()
         }
     }
 
@@ -303,6 +323,9 @@ class IccoaService : Service() {
                 navigationGate.reset()
                 navigationRetries = 0
                 main.removeCallbacks(navigationSend)
+                main.removeCallbacks(navigationRefresh)
+                navigationRefreshEnabled = FTApp.instance.prefs.iccoaSensorRefresh
+                DiagLog.i("ICCOA", "OEM sensor refresh compatibility enabled=$navigationRefreshEnabled")
                 navigationSend.run()
             } },
             trustedCarName = trustedCarName,
@@ -414,6 +437,8 @@ class IccoaService : Service() {
         main.removeCallbacks(requestConfig)
         main.removeCallbacks(microphoneRetry)
         main.removeCallbacks(navigationSend)
+        main.removeCallbacks(navigationRefresh)
+        navigationRefreshEnabled = false
         navigationGate.reset()
         if (AaHeadUnitService.onNavigation === navigationHook) AaHeadUnitService.onNavigation = null
         navigationHook = null
