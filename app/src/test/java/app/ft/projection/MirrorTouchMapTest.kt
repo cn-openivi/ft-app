@@ -38,6 +38,33 @@ class MirrorTouchMapTest {
         assertEquals(1177f, move.second, 3f)
     }
 
+    @Test fun finishedRotationUsesEachOrientationsRealVisibleRectangle() {
+        val carWidth = 2422
+        val carHeight = 1272
+        // Source and output must be from the same already-stable frame geometry,
+        // not the phone orientation that was active before rotation.
+        val portrait = MirrorTouchMap(carWidth, carHeight, 586, 1272, 1080, 2340)
+        val landscape = MirrorTouchMap(carWidth, carHeight, 2422, 1118, 2340, 1080)
+        val portraitLeft = (carWidth - 586) / 2
+        val landscapeTop = (carHeight - 1118) / 2
+        for (ratio in listOf(0.15, 0.5, 0.85)) {
+            val p = portrait.map(
+                portraitLeft + (586 * ratio).toInt(),
+                (1272 * ratio).toInt()
+            )!!
+            assertEquals((1080 * ratio).toFloat(), p.first, 3f)
+            assertEquals((2340 * ratio).toFloat(), p.second, 3f)
+            val l = landscape.map(
+                (2422 * ratio).toInt(),
+                landscapeTop + (1118 * ratio).toInt()
+            )!!
+            assertEquals((2340 * ratio).toFloat(), l.first, 3f)
+            assertEquals((1080 * ratio).toFloat(), l.second, 3f)
+        }
+        assertNull(portrait.map(portraitLeft - 1, 600))
+        assertNull(landscape.map(1200, landscapeTop - 1))
+    }
+
     @Test fun uninitializedCaptureDoesNotInventCoordinates() {
         assertNull(MirrorTouchMap(2422, 1272, 0, 0, 1080, 2340).map(1200, 600))
     }
