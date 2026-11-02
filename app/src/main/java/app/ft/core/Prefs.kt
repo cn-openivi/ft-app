@@ -71,8 +71,7 @@ class Prefs(context: Context) {
     var aaCompactReturnButton: Boolean get() = bool("aaCompactReturnButton", false); set(v) = set("aaCompactReturnButton", v)
     var aaClusterNavigation: Boolean get() = bool("aaClusterNavigation", true); set(v) = set("aaClusterNavigation", v)
     var aaMatchCar: Boolean get() = bool("aaMatchCar", true); set(v) = set("aaMatchCar", v)
-    // Explicit opt-in for experimental car GEAR subscription. Defaults OFF.
-    var aaGearTest: Boolean get() = bool("aaGearTest", false); set(v) = set("aaGearTest", v)
+    // Real OEM GEAR is always available in ICCOA; no separate diagnostic toggle.
     // Owner-approved isolated experiment. Off by default and distinct from OEM telemetry.
     var aaForcePark: Boolean get() = bool("aaForcePark", false); set(v) = set("aaForcePark", v)
 
