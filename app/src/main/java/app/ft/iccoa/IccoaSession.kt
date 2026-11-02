@@ -170,13 +170,14 @@ class IccoaSession(
                 }
                 later(attempt, 12_000) {
                     if (!attempt.wifiRequested && revision == attempt.pinAttempt) {
-                        if (attempt.reusingPin) {
-                            // A missing BLE response is a transport timeout, not
-                            // an OEM rejection. Preserve encrypted PIN and allow
-                            // the bounded 3-attempt discovery sequence to recover.
-                            fail(attempt, "Нет ответа автомобиля на сохранённый код ICCOA",
-                                transportFailure = true)
-                        } else requestPin(attempt, "Автомобиль не ответил вовремя. Введите текущий PIN")
+                        // No BLE response is ambiguous: the car may have ignored a
+                        // rejected cached PIN, not just lost a transport packet.
+                        // Never automatically replay a possibly invalid PIN.
+                        // Keep the encrypted copy until explicit protocol proof
+                        // of rejection, but require owner input for this attempt.
+                        if (attempt.reusingPin)
+                            DiagLog.w("ICCOA", "Cached PIN: no BLE reply; manual verification required")
+                        requestPin(attempt, "Автомобиль не ответил вовремя. Введите текущий PIN")
                     }
                 }
             } catch (e: Exception) {
