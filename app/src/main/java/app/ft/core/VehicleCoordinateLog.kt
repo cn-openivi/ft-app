@@ -12,7 +12,8 @@ internal object VehicleCoordinateLog {
     fun format(
         sample: VehicleLocation,
         decision: VehicleLogSampler.Decision,
-        includeCoordinates: Boolean
+        includeCoordinates: Boolean,
+        phoneGpsSpeedKmh: Float? = null
     ): String = buildString {
         val now = sample.receivedAtMs
         append("reason=${decision.reason} mode=${if (decision.fast) "EVENT_1HZ" else "NORMAL_10S"} ")
@@ -25,6 +26,10 @@ internal object VehicleCoordinateLog {
             append("coordinates=OMITTED ")
         }
         append("gpsSpeedRaw=${sample.speedRaw ?: "NA"} gearSpeedRaw=${sample.gearSpeedRaw ?: "NA"} ")
+        // Independent phone GNSS speed only, never converted from unknown OEM units.
+        // A value is useful only alongside a recent (<=2s) phone GNSS sample.
+        val speedValue = phoneGpsSpeedKmh?.takeIf { it.isFinite() && it in 0f..300f }
+        append("phoneGpsSpeedKmh=${speedValue?.let { String.format(Locale.US, "%.1f", it) } ?: "NA"} ")
         val gearFresh = sample.gearAtMs > 0L && now >= sample.gearAtMs && now - sample.gearAtMs <= 3_000L
         val state = if (sample.source == "ICCOA" && gearFresh)
             app.ft.iccoa.IccoaGearState.fromRaw(sample.gearRaw).name else "UNKNOWN"
