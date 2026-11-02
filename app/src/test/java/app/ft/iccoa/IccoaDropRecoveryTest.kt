@@ -4,33 +4,75 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class IccoaDropRecoveryTest {
-    @Test fun authenticatedUnexpectedDropAllowsOneAutomaticRecovery() {
+    private fun lost(guard: IccoaDropRecovery, connected: Boolean = false, transport: Boolean = true) =
+        guard.onFailure(connected, autoConnectEnabled = true, retryableTransportFailure = transport)
+
+    @Test fun firstEstablishedLossStartsAttemptOneOfThree() {
         val guard = IccoaDropRecovery()
-        assertTrue(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
-        assertFalse(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
-        assertFalse(guard.onUnexpectedDrop(wasConnected = false, autoConnectEnabled = true))
+        assertEquals(3, IccoaDropRecovery.MAX_ATTEMPTS)
+        assertNull(lost(guard)) // No prior established session.
+        assertEquals(1, lost(guard, connected = true))
+        assertTrue(guard.active)
     }
 
-    @Test fun failedPairingOrAuthenticationNeverTriggersAutonomousRetry() {
+    @Test fun twoMoreTransportFailuresConsumeOnlyTwoRemainingSlots() {
         val guard = IccoaDropRecovery()
-        assertFalse(guard.onUnexpectedDrop(wasConnected = false, autoConnectEnabled = true))
-        assertFalse(guard.onUnexpectedDrop(wasConnected = false, autoConnectEnabled = true))
-        // The failed bootstrap did not consume an authenticated-link recovery.
-        assertTrue(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
+        assertEquals(1, lost(guard, connected = true))
+        assertEquals(2, lost(guard))
+        assertEquals(3, lost(guard))
+        assertNull(lost(guard)) // Strictly never a fourth reconnect.
+        assertFalse(guard.active)
+        assertNull(lost(guard)) // Exhausted episode stays stopped.
     }
 
-    @Test fun disablingAutoconnectKeepsUnexpectedDropManual() {
+    @Test fun authenticationOrPinFailureStopsRecoveryWithoutRetry() {
         val guard = IccoaDropRecovery()
-        assertFalse(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = false))
-        assertTrue(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
+        assertEquals(1, lost(guard, connected = true))
+        assertNull(lost(guard, transport = false))
+        assertFalse(guard.active)
+        assertNull(lost(guard))
     }
 
-    @Test fun explicitUserConnectOrScanResetsBoundedBudget() {
+    @Test fun explicitPinPromptCancelsRemainingAttempts() {
         val guard = IccoaDropRecovery()
-        assertTrue(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
-        assertFalse(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
+        assertEquals(1, lost(guard, connected = true))
+        guard.onPinRequired()
+        assertFalse(guard.active)
+        assertNull(lost(guard))
+    }
+
+    @Test fun disabledAutoConnectCannotStartNorContinueRecovery() {
+        val guard = IccoaDropRecovery()
+        assertNull(guard.onFailure(true, false, true))
+        assertFalse(guard.active)
+        assertEquals(1, lost(guard, connected = true))
+        assertNull(guard.onFailure(false, false, true))
+        assertNull(lost(guard))
+    }
+
+    @Test fun successfulReconnectEndsEpisodeAndNextRealDropStartsFreshBudget() {
+        val guard = IccoaDropRecovery()
+        assertEquals(1, lost(guard, connected = true))
+        assertEquals(2, lost(guard))
+        guard.onConnected()
+        assertNull(lost(guard)) // New failure before a connection does not restart.
+        assertEquals(1, lost(guard, connected = true))
+        assertEquals(2, lost(guard))
+    }
+
+    @Test fun manuallySelectedCarOrScanEndsOldRecoveryEpisode() {
+        val guard = IccoaDropRecovery()
+        assertEquals(1, lost(guard, connected = true))
         guard.onExplicitOwnerRequest()
-        assertTrue(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
-        assertFalse(guard.onUnexpectedDrop(wasConnected = true, autoConnectEnabled = true))
+        assertFalse(guard.active)
+        assertNull(lost(guard))
+        assertEquals(1, lost(guard, connected = true))
+    }
+
+    @Test fun failureNotClassifiedAsTransportNeverInitiatesAutoReconnect() {
+        val guard = IccoaDropRecovery()
+        assertNull(lost(guard, connected = true, transport = false))
+        assertFalse(guard.active)
+        assertNull(lost(guard))
     }
 }
