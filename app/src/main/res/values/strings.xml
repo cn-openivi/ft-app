@@ -479,5 +479,5 @@
     <string name="vehicle_coordinate_log">Save GPS coordinates in diagnostic logs</string>
     <string name="vehicle_coordinate_log_about">Off by default. Enable only for a test you choose: exact vehicle position can reveal where you travel. GPS navigation works regardless. Previously recorded locations and exported reports are not deleted when you switch this off.</string>
     <string name="iccoa_sensor_refresh">Keep car GPS active</string>
-    <string name="iccoa_sensor_refresh_about">Off by default. For some head units that stop sending the car's GPS data, FT repeats the request every 15 seconds. Usually unnecessary. Does not add GPS support where none exists; takes effect after reconnecting.</string>
+    <string name="iccoa_sensor_refresh_about">Off by default. For some head units that stop sending car GPS data, FT repeats the request every 15 seconds. Usually unnecessary. Does not add GPS support where none exists; takes effect after reconnecting.</string>
 </resources>
