@@ -521,6 +521,12 @@ class AaSession(
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} stopped")
             }
             AaProtocol.AV_MEDIA_WITH_TIMESTAMP, AaProtocol.AV_MEDIA_INDICATION -> {
+                if (!audioSessions.isActive(channel)) {
+                    // In-flight speech/audio after AV_STOP or channel closure must
+                    // not resurrect an ended voice lane or duck the next stream.
+                    DiagLog.d(tag, "discard late ${AaProtocol.channelName(channel)} audio after stop")
+                    return
+                }
                 val pcm = if (id == AaProtocol.AV_MEDIA_WITH_TIMESTAMP && body.size > 8) body.copyOfRange(8, body.size) else body
                 sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions.session(channel)))
                 if (pcm.isNotEmpty()) {
