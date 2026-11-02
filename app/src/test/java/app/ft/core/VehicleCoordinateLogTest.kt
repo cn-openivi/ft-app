@@ -34,6 +34,7 @@ class VehicleCoordinateLogTest {
         assertTrue(output.contains("gpsSpeedRaw=34"))
         assertTrue(output.contains("gearSpeedRaw=60"))
         assertTrue(output.contains("gearRaw=2"))
+        assertTrue(output.contains("gearState=DRIVE"))
         assertTrue(output.contains("coordinates=OMITTED"))
     }
 

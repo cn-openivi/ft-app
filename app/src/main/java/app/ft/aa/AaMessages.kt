@@ -20,7 +20,7 @@ object AaMessages {
 
     fun authComplete(): ByteArray = ProtoWriter().enum(1, AaProtocol.STATUS_OK).toByteArray()
 
-    fun serviceDiscoveryResponse(width: Int, height: Int, fps: Int, density: Int, advertiseAudio: Boolean, name: String, controlsLeft: Boolean = true, advertiseCarLocation: Boolean = false): ByteArray {
+    fun serviceDiscoveryResponse(width: Int, height: Int, fps: Int, density: Int, advertiseAudio: Boolean, name: String, controlsLeft: Boolean = true, advertiseCarLocation: Boolean = false, advertiseCarGear: Boolean = false): ByteArray {
         val (fullW, fullH) = AaProtocol.standardSize(width, height)
         val resolution = when (fullW) {
             1920 -> AaProtocol.RES_1920x1080
@@ -59,6 +59,8 @@ object AaMessages {
         val sensorTypes = ProtoWriter()
         if (advertiseCarLocation)
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_LOCATION))
+        if (advertiseCarGear)
+            sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_GEAR))
         sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_DRIVING_STATUS))
             .message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_NIGHT_MODE))
         val sensor = ProtoWriter()

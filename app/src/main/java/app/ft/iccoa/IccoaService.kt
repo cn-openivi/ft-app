@@ -57,6 +57,7 @@ class IccoaService : Service() {
     private var navigationHook: ((NavigationInfo) -> Unit)? = null
     private var latestNavigation = NavigationInfo()
     private var navigationRetries = 0
+    private val navigationGate = IccoaControl11Gate()
     // OEM SensorMgr is enabled only while Android Auto is connected or real navigation runs.
     // This is an experimentally verifiable activation hint, never a fabricated GPS fix.
     private var aaSensorAssist = false
@@ -67,8 +68,13 @@ class IccoaService : Service() {
         override fun run() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
-            if (connection.sendControl(IccoaNavigation.CONTROL_METHOD,
-                    IccoaNavigation.encode(activation))) {
+            val encoded = IccoaNavigation.encode(activation)
+            val now = android.os.SystemClock.elapsedRealtime()
+            // AA may refresh identical navigation records every second. Coalesce
+            // them, not state changes or genuinely new route instructions.
+            if (!navigationGate.shouldSend(encoded, now)) return
+            if (connection.sendControl(IccoaNavigation.CONTROL_METHOD, encoded)) {
+                navigationGate.accepted(encoded, now)
                 navigationRetries = 0
                 DiagLog.i("ICCOA", "OEM sensor activation request: active=${activation.active} " +
                     "guided=${latestNavigation.active} aaConnected=$aaSensorAssist " +
@@ -295,6 +301,7 @@ class IccoaService : Service() {
             },
             onClosed = { reason -> current { connectionFailed(reason) } },
             onControlReady = { current {
+                navigationGate.reset()
                 navigationRetries = 0
                 main.removeCallbacks(navigationSend)
                 navigationSend.run()
@@ -408,6 +415,7 @@ class IccoaService : Service() {
         main.removeCallbacks(requestConfig)
         main.removeCallbacks(microphoneRetry)
         main.removeCallbacks(navigationSend)
+        navigationGate.reset()
         if (AaHeadUnitService.onNavigation === navigationHook) AaHeadUnitService.onNavigation = null
         navigationHook = null
         latestNavigation = NavigationInfo()

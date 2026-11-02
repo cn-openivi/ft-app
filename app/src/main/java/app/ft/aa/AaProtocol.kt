@@ -91,6 +91,7 @@ object AaProtocol {
     const val AUDIO_REQUEST_RELEASE = 4
     const val NAV_FOCUS_PROJECTED = 2
     const val SENSOR_LOCATION = 1
+    const val SENSOR_GEAR = 8
     const val SENSOR_NIGHT_MODE = 10
     const val SENSOR_DRIVING_STATUS = 13
     const val AUDIO_TYPE_SPEECH = 1

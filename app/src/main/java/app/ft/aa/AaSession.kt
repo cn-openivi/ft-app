@@ -38,7 +38,10 @@ class AaSession(
     private val outLock = Any()
     private var job: Job? = null
     private var carGpsJob: Job? = null
+    private var carGearJob: Job? = null
     @Volatile private var carGpsSubscribed = false
+    @Volatile private var carGearSubscribed = false
+    private val sensorSubscriptions = AaSensorSubscriptions()
     private val lifecycle = AaSessionLifecycle(
         interrupt = {
             runCatching { input.close() }
@@ -47,7 +50,11 @@ class AaSession(
         },
         cleanup = { reason ->
             carGpsSubscribed = false
+            carGearSubscribed = false
             carGpsJob?.cancel(); carGpsJob = null
+            carGearJob?.cancel(); carGearJob = null
+            DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
+            sensorSubscriptions.reset()
             microphoneInput.close()
             runCatching { mic.stop() }
             if (micWanted) {
@@ -192,15 +199,20 @@ class AaSession(
                 sendEnc(
                     AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE,
                     AaMessages.serviceDiscoveryResponse(prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
-                        true, prefs.carName, prefs.aaControlsLeft, prefs.carProtocol == CarProtocol.ICCOA)
+                        true, prefs.carName, prefs.aaControlsLeft,
+                        advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
+                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA)
                 )
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
                     DiagLog.i(tag, "ICCOA car LOCATION advertised to AA; waiting for actual phone subscription")
                     scope.launch(Dispatchers.IO) {
                         delay(12_000L)
-                        if (lifecycle.running && !carGpsSubscribed)
-                            DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
+                        if (lifecycle.running) {
+                            DiagLog.i(tag, "AA sensor subscription audit after 12s: ${sensorSubscriptions.summary()}")
+                            if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION))
+                                DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
+                        }
                     }
                 }
             }
@@ -313,10 +325,17 @@ class AaSession(
         when (id) {
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
+                sensorSubscriptions.note(type)
                 sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE, AaMessages.sensorStartResponse())
                 when (type) {
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
                     AaProtocol.SENSOR_NIGHT_MODE -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorNightMode(false))
+                    AaProtocol.SENSOR_GEAR -> {
+                        if (prefs.carProtocol == CarProtocol.ICCOA)
+                            startCarGear(ProtoReader(body).long(2, 500L))
+                        else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                            AaCarGear.sensorError(3))
+                    }
                     AaProtocol.SENSOR_LOCATION -> {
                         if (prefs.carProtocol == CarProtocol.ICCOA)
                             startCarGps(ProtoReader(body).long(2, 1_000L))
@@ -370,6 +389,52 @@ class AaSession(
             }
         }
         DiagLog.i(tag, "AA subscribed to car GPS; interval=${interval}ms, OEM datum requires physical check")
+    }
+
+    /**
+     * Truthful OEM gear only: never imply Park from zero speed, never reuse stale
+     * GearInfo, never send Android Auto a guessed gear enum. Phone subscription
+     * is mandatory; merely advertising the sensor does not send an event.
+     */
+    private fun startCarGear(requestedMs: Long) {
+        carGearJob?.cancel()
+        carGearSubscribed = true
+        val interval = requestedMs.coerceIn(100L, 1_000L)
+        carGearJob = scope.launch(Dispatchers.IO) {
+            var lastSent: Int? = null
+            var unavailable = false
+            var delivered = 0L
+            while (isActive && lifecycle.running && carGearSubscribed) {
+                val now = System.currentTimeMillis()
+                val position = VehicleTelemetry.current.value
+                val gear = AaCarGear.aaGear(position, now)
+                if (gear != null) {
+                    if (unavailable) {
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                            AaCarGear.sensorError(1))
+                        DiagLog.i(tag, "car GEAR source recovered")
+                    }
+                    if (gear != lastSent || unavailable) {
+                        val event = AaCarGear.event(position, now)
+                        if (event != null) {
+                            sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, event)
+                            lastSent = gear
+                            delivered++
+                            if (delivered <= 3L || delivered % 100L == 0L)
+                                DiagLog.i(tag, "car GEAR reported to subscribed AA client; count=$delivered")
+                        }
+                    }
+                    unavailable = false
+                } else if (!unavailable) {
+                    unavailable = true
+                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                        AaCarGear.sensorError(2))
+                    DiagLog.w(tag, "car GEAR unavailable/stale; no synthetic PARK value supplied")
+                }
+                delay(interval)
+            }
+        }
+        DiagLog.i(tag, "AA subscribed to truthful OEM GEAR; interval=${interval}ms")
     }
 
     private fun handleAudioSink(channel: Int, id: Int, body: ByteArray) {

@@ -33,6 +33,19 @@ class AaSensorAdvertisementTest {
         assertEquals(170, advertisedDpi(800, 480, 240))
     }
 
+    @Test fun exactOemGearCapabilityOnlyWhenExplicitlyEnabled() {
+        val response = AaMessages.serviceDiscoveryResponse(
+            1920, 1008, 30, 240, false, "XA60",
+            advertiseCarLocation = true, advertiseCarGear = true)
+        val sensor = ProtoReader(response).messages(1)
+            .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        val types = sensor.messages(1).map { it.int(1) }
+        assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GEAR,
+            AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), types)
+        assertFalse(types.contains(3)) // OEM speed unit unverified, never advertise CAR_SPEED
+        assertFalse(types.contains(7)) // No verified parking-brake sensor
+    }
+
     @Test fun noCarLocationIsAdvertisedInOtherProtocols() {
         assertEquals(listOf(AaProtocol.SENSOR_DRIVING_STATUS,
             AaProtocol.SENSOR_NIGHT_MODE), sensors(false))

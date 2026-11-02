@@ -25,7 +25,10 @@ internal object VehicleCoordinateLog {
             append("coordinates=OMITTED ")
         }
         append("gpsSpeedRaw=${sample.speedRaw ?: "NA"} gearSpeedRaw=${sample.gearSpeedRaw ?: "NA"} ")
-        append("gearRaw=${sample.gearRaw ?: "NA"} gearAgeMs=${if (sample.gearAtMs == 0L) -1 else now - sample.gearAtMs} ")
+        val gearFresh = sample.gearAtMs > 0L && now >= sample.gearAtMs && now - sample.gearAtMs <= 3_000L
+        val state = if (sample.source == "ICCOA" && gearFresh)
+            app.ft.iccoa.IccoaGearState.fromRaw(sample.gearRaw).name else "UNKNOWN"
+        append("gearRaw=${sample.gearRaw ?: "NA"} gearState=$state gearAgeMs=${if (sample.gearAtMs == 0L) -1 else now - sample.gearAtMs} ")
         append("headingRaw=${sample.headingRaw ?: "NA"} ")
         append("satUsed=${sample.satellitesUsed ?: "NA"} satVisible=${sample.satellitesVisible ?: "NA"} ")
         append("carTimestamp=${sample.deviceTimestampRaw ?: "NA"} ")
