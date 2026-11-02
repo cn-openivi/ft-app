@@ -86,6 +86,7 @@ internal fun rememberIccoaConnectionActions(): IccoaConnectionActions {
 internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnectionActions) {
     val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
+    var forgetConfirmation by remember { mutableStateOf(false) }
     LaunchedEffect(state.pinRequired) { pin = "" }
     val scan = state.discovery
     val scanning = state.running && scan.phase in listOf(IccoaPhase.SCANNING, IccoaPhase.INSPECTING)
@@ -134,7 +135,27 @@ internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnection
         } else {
             FilledTonalButton(onClick = { actions.start(true) }, enabled = !busy) { Text(stringResource(R.string.iccoa_scan_again)) }
         }
-        if (!state.connected && !state.connecting) Text(stringResource(R.string.iccoa_device_count, scan.peers.size))
+        if (!state.connected && !state.connecting) {
+            Text(stringResource(R.string.iccoa_device_count, scan.peers.size))
+            if (forgetConfirmation) {
+                Text("Удалить сохранённый ключ автомобиля, старый PIN и выбранное устройство? " +
+                    "Для следующего подключения потребуется новый код с экрана автомобиля.")
+                Row {
+                    TextButton(onClick = {
+                        val key = app.ft.iccoa.IccoaTrustedCarKey(context).clear()
+                        val car = app.ft.iccoa.IccoaRememberedCar(context).clear()
+                        app.ft.iccoa.IccoaTrustedPin(context).clear()
+                        app.ft.core.DiagLog.i("ICCOA", "Owner explicit trust reset key=$key car=$car")
+                        forgetConfirmation = false
+                    }) { Text("Удалить сопряжение") }
+                    TextButton(onClick = { forgetConfirmation = false }) { Text("Отмена") }
+                }
+            } else {
+                TextButton(onClick = { forgetConfirmation = true }) {
+                    Text("Забыть доверенный автомобиль")
+                }
+            }
+        }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.iccoa_report), Modifier.weight(1f))
             ReportButton()
