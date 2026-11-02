@@ -255,6 +255,11 @@ private fun PageContent(page: SettingsPage) {
                 Text(stringResource(R.string.iccoa_settings_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BluetoothCallsSetting()
                 IccoaMicrophoneGainSetting(p.iccoaMicGain) { p.iccoaMicGain = it }
+                BoolSetting(
+                    stringResource(R.string.iccoa_sensor_refresh),
+                    p.iccoaSensorRefresh,
+                    detail = stringResource(R.string.iccoa_sensor_refresh_about)
+                ) { p.iccoaSensorRefresh = it }
             } else {
                 TextSetting(stringResource(R.string.car_name_label), p.carName) { p.carName = it }
                 TextSetting(stringResource(R.string.car_p2p_label), p.carP2pName) { p.carP2pName = it }
