@@ -42,6 +42,7 @@ class AaSession(
     @Volatile private var carGpsSubscribed = false
     @Volatile private var carGearSubscribed = false
     private val sensorSubscriptions = AaSensorSubscriptions()
+    private val audioRouteAudit = AaAudioRouteAudit()
     @Volatile private var sensorChannelOpened = false
 
     /** Channel CLOSE invalidates *both* active stream subscriptions. */
@@ -62,6 +63,7 @@ class AaSession(
             stopCarSensorStreams()
             sensorChannelOpened = false
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
+            DiagLog.i(tag, "AA actual audio arrival at shutdown: ${audioRouteAudit.summary()}")
             sensorSubscriptions.reset()
             microphoneInput.close()
             runCatching { mic.stop() }
@@ -175,8 +177,11 @@ class AaSession(
                 if (lifecycle.running) music.accept(id, body)?.let { AaHeadUnitService.publishMusic(it) }
             }
             AaProtocol.CH_NAVIGATION -> synchronized(navigation) {
-                if (lifecycle.running) navigation.accept(id, body)?.let {
-                    AaHeadUnitService.onNavigation?.invoke(it)
+                if (lifecycle.running) {
+                    // Route/turn messages carry no speech samples; count separately
+                    // to diagnose navigator UI without AA voice PCM.
+                    audioRouteAudit.navigationMessage()
+                    navigation.accept(id, body)?.let { AaHeadUnitService.onNavigation?.invoke(it) }
                 }
             }
             else -> DiagLog.d(tag, "${AaProtocol.channelName(m.channel)} msg 0x${Integer.toHexString(id)} len=${body.size}")
@@ -530,6 +535,7 @@ class AaSession(
                 val pcm = if (id == AaProtocol.AV_MEDIA_WITH_TIMESTAMP && body.size > 8) body.copyOfRange(8, body.size) else body
                 sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions.session(channel)))
                 if (pcm.isNotEmpty()) {
+                    audioRouteAudit.pcm(channel, pcm.size)
                     val rate = if (channel == AaProtocol.CH_MEDIA_AUDIO) 48000 else 16000
                     val ch = if (channel == AaProtocol.CH_MEDIA_AUDIO) 2 else 1
                     if (audioMeasured.add(channel)) {
