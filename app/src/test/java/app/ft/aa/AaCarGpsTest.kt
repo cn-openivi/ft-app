@@ -51,6 +51,22 @@ class AaCarGpsTest {
         assertNotNull(gate.accept(car(55.75583, 37.61723, 1400), 1400))
     }
 
+    @Test fun unchangedHighFrequencyPollingNeverResendsAndStillExpires() {
+        val gate = AaGpsGate()
+        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
+        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
+        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
+        val sameFix = car(55.75582, 37.61722, 1200)
+        // A receiver can poll at 10 Hz while OEM updates GNSS once a second.
+        for (now in 1300L..4100L step 100L)
+            assertNull("duplicate car GNSS packet at $now", gate.accept(sameFix, now))
+        // Optimized fast path must never keep a stale position alive.
+        assertNull(gate.accept(sameFix, 4300))
+        assertNull(gate.accept(car(55.75583, 37.61723, 5000), 5000))
+        assertNull(gate.accept(car(55.75584, 37.61724, 5100), 5100))
+        assertNotNull(gate.accept(car(55.75585, 37.61725, 5200), 5200))
+    }
+
     @Test fun gateRejectsTeleportAndReacquires() {
         val gate = AaGpsGate()
         assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
