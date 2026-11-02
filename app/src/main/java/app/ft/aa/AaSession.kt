@@ -330,8 +330,21 @@ class AaSession(
         when (id) {
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
+                val supported = AaProtocol.supportsSensor(
+                    type, prefs.carProtocol == CarProtocol.ICCOA,
+                    prefs.aaGearTest || prefs.aaForcePark
+                )
+                if (!supported) {
+                    // Reply with a protocol-level rejection instead of OK with no data.
+                    // Do not count a rejected request as an active subscription.
+                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE,
+                        AaMessages.sensorStartResponse(AaProtocol.STATUS_INVALID_SENSOR))
+                    DiagLog.w(tag, "sensor unsupported type=$type; rejected without subscription")
+                    return
+                }
                 sensorSubscriptions.note(type)
-                sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE, AaMessages.sensorStartResponse())
+                sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE,
+                    AaMessages.sensorStartResponse())
                 when (type) {
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
                     AaProtocol.SENSOR_NIGHT_MODE -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorNightMode(false))
