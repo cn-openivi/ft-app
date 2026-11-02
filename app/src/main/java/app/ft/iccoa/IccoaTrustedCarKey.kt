@@ -48,6 +48,9 @@ internal class IccoaTrustedCarKey(context: Context) {
         }.getOrDefault(false)
     }
 
+    /** Only the owner can explicitly forget a verified car after HU replacement/reset. */
+    fun clear(): Boolean = prefs.edit().remove("car_auth_pk").commit()
+
     private fun binding(profileId: String, carName: String) =
         ("FT_ICCOA_CAR_AUTH_V1|" + profileId + "|" + carName.trim().lowercase(Locale.ROOT))
             .toByteArray(Charsets.UTF_8)
