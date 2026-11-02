@@ -6,27 +6,26 @@ import org.junit.Test
 
 /** Sensor requests must match FT's advertised and implemented capabilities. */
 class AaSensorCapabilityTest {
-    @Test fun iccoaNormalModeOnlyOffersLocationDrivingAndNight() {
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_LOCATION, true, false))
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_NIGHT_MODE, true, false))
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_DRIVING_STATUS, true, false))
-        assertFalse(AaProtocol.supportsSensor(AaProtocol.SENSOR_GEAR, true, false))
+    @Test fun iccoaAlwaysSupportsRealGearAndLocationAlongWithDrivingAndNight() {
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_LOCATION, true))
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_GEAR, true))
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_NIGHT_MODE, true))
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_DRIVING_STATUS, true))
     }
 
-    @Test fun gearOptInDoesNotAdvertiseUnsupportedCarSpeedOrBrake() {
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_GEAR, true, true))
-        assertFalse(AaProtocol.supportsSensor(3, true, true)) // speed units unverified
-        assertFalse(AaProtocol.supportsSensor(7, true, true)) // brake not available
-        assertFalse(AaProtocol.supportsSensor(0, true, true))
-        assertFalse(AaProtocol.supportsSensor(26, true, true))
-        assertFalse(AaProtocol.supportsSensor(999, true, true))
+    @Test fun automaticGearDoesNotAdvertiseUnsupportedCarSpeedOrBrake() {
+        assertFalse(AaProtocol.supportsSensor(3, true)) // OEM speed units unverified
+        assertFalse(AaProtocol.supportsSensor(7, true)) // brake not available
+        assertFalse(AaProtocol.supportsSensor(0, true))
+        assertFalse(AaProtocol.supportsSensor(26, true))
+        assertFalse(AaProtocol.supportsSensor(999, true))
     }
 
     @Test fun otherProjectionProtocolsCannotPretendToProvideIccoaSensors() {
-        assertFalse(AaProtocol.supportsSensor(AaProtocol.SENSOR_LOCATION, false, true))
-        assertFalse(AaProtocol.supportsSensor(AaProtocol.SENSOR_GEAR, false, true))
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_DRIVING_STATUS, false, false))
-        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_NIGHT_MODE, false, false))
+        assertFalse(AaProtocol.supportsSensor(AaProtocol.SENSOR_LOCATION, false))
+        assertFalse(AaProtocol.supportsSensor(AaProtocol.SENSOR_GEAR, false))
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_DRIVING_STATUS, false))
+        assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_NIGHT_MODE, false))
     }
 
     @Test fun sensorStartResponseEncodesValidAndInvalidStatus() {
