@@ -1,23 +1,53 @@
 package app.ft.iccoa
 
 /**
- * Allow one automatic rescan/reconnect only AFTER a fully established ICCOA
- * session unexpectedly drops. Do not retry failed bootstrap, PIN, GATT or
- * authentication automatically; those require a current owner decision.
+ * A bounded recovery episode starts ONLY after an established ICCOA link drops.
  *
- * An explicit user connect/scan grants one fresh recovery opportunity.
- * The service still performs its ordinary, authenticated ICCOA handshake.
+ * The first reconnect counts as attempt 1/3. A subsequent failure may consume
+ * attempt 2 or 3 ONLY when the session explicitly reports a transport failure.
+ * PIN rejection, authentication errors, a new PIN prompt, and user disconnect
+ * stop the episode. Never retry a secret or change the ICCOA handshake.
  */
 internal class IccoaDropRecovery {
-    private var used = false
+    companion object { const val MAX_ATTEMPTS = 3 }
 
-    fun onUnexpectedDrop(wasConnected: Boolean, autoConnectEnabled: Boolean): Boolean {
-        if (!wasConnected || !autoConnectEnabled || used) return false
-        used = true
-        return true
+    private var recovering = false
+    private var attempts = 0
+
+    /** Returns the numbered attempt to start, or null when automation must stop. */
+    fun onFailure(
+        wasConnected: Boolean,
+        autoConnectEnabled: Boolean,
+        retryableTransportFailure: Boolean
+    ): Int? {
+        if (!autoConnectEnabled || !retryableTransportFailure) {
+            clear()
+            return null
+        }
+        if (wasConnected) {
+            // A completed link ends the previous recovery episode. Its unexpected
+            // loss authorizes a NEW bounded set of three reconnect attempts.
+            recovering = true
+            attempts = 0
+        } else if (!recovering) {
+            // Failed initial pairing/auth must not start automatic retries.
+            return null
+        }
+        if (attempts >= MAX_ATTEMPTS) {
+            clear()
+            return null
+        }
+        attempts++
+        return attempts
     }
 
-    fun onExplicitOwnerRequest() {
-        used = false
+    /** Completed projection, a PIN prompt, or manual action ends a retry episode. */
+    fun onConnected() = clear()
+    fun onPinRequired() = clear()
+    fun onExplicitOwnerRequest() = clear()
+
+    private fun clear() {
+        recovering = false
+        attempts = 0
     }
 }
