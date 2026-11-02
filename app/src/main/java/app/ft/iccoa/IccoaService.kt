@@ -85,6 +85,19 @@ class IccoaService : Service() {
         }
     }
 
+    // OEM Control11 is a stateful activation hint. Without this small heartbeat,
+    // a quiet AA/navigation session could stop refreshing an unchanged active
+    // state: the 15s gate alone only runs when a callback invokes navigationSend.
+    // Run only while a session exists; the gate handles duplicate suppression.
+    private val navigationHeartbeat = object : Runnable {
+        override fun run() {
+            if (session == null) return
+            if (aaSensorAssist || ftProjectionSensorAssist || latestNavigation.active)
+                navigationSend.run()
+            main.postDelayed(this, 5_000L)
+        }
+    }
+
     private val microphoneRetry = object : Runnable {
         override fun run() {
             if (microphone?.flush() == true) main.postDelayed(this, 500)
@@ -304,7 +317,10 @@ class IccoaService : Service() {
                 navigationGate.reset()
                 navigationRetries = 0
                 main.removeCallbacks(navigationSend)
+                main.removeCallbacks(navigationHeartbeat)
                 navigationSend.run()
+                // Repeat due-check independently of phone navigation callbacks.
+                main.postDelayed(navigationHeartbeat, 5_000L)
             } },
             trustedCarName = trustedCarName,
             tryRememberedPin = known)
@@ -415,6 +431,7 @@ class IccoaService : Service() {
         main.removeCallbacks(requestConfig)
         main.removeCallbacks(microphoneRetry)
         main.removeCallbacks(navigationSend)
+        main.removeCallbacks(navigationHeartbeat)
         navigationGate.reset()
         if (AaHeadUnitService.onNavigation === navigationHook) AaHeadUnitService.onNavigation = null
         navigationHook = null
