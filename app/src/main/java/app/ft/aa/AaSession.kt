@@ -201,7 +201,7 @@ class AaSession(
                     AaMessages.serviceDiscoveryResponse(prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
                         true, prefs.carName, prefs.aaControlsLeft,
                         advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
-                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA)
+                        advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA && prefs.aaGearTest)
                 )
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
@@ -331,7 +331,7 @@ class AaSession(
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
                     AaProtocol.SENSOR_NIGHT_MODE -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorNightMode(false))
                     AaProtocol.SENSOR_GEAR -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA)
+                        if (prefs.carProtocol == CarProtocol.ICCOA && prefs.aaGearTest)
                             startCarGear(ProtoReader(body).long(2, 500L))
                         else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGear.sensorError(3))
@@ -404,7 +404,7 @@ class AaSession(
             var lastSent: Int? = null
             var unavailable = false
             var delivered = 0L
-            while (isActive && lifecycle.running && carGearSubscribed) {
+            while (isActive && lifecycle.running && carGearSubscribed && prefs.aaGearTest) {
                 val now = System.currentTimeMillis()
                 val position = VehicleTelemetry.current.value
                 val gear = AaCarGear.aaGear(position, now)

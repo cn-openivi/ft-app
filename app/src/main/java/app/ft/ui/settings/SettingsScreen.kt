@@ -296,6 +296,11 @@ private fun PageContent(page: SettingsPage) {
             }
             Text(stringResource(R.string.aa_show_return_button_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             BoolSetting(stringResource(R.string.aa_match_car), p.aaMatchCar) { p.aaMatchCar = it }
+            BoolSetting(
+                "ICCOA: проверка передачи P/D в Android Auto",
+                p.aaGearTest,
+                detail = "По умолчанию выключено. Передаёт только реальную свежую передачу автомобиля, без подмены P в движении. Для изменения подписки нужно переподключить Android Auto."
+            ) { p.aaGearTest = it }
             BoolSetting(stringResource(R.string.aa_controls_left), p.aaControlsLeft) { p.aaControlsLeft = it }
             IntSetting(stringResource(R.string.aa_port), p.aaPort) { p.aaPort = it }
             IntSetting(stringResource(R.string.aa_width), p.aaWidth) { p.aaWidth = it }

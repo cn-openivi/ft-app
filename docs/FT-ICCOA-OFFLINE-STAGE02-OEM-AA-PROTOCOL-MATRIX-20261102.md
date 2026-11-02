@@ -55,6 +55,29 @@ allocation, so never blindly change FT's observed channel 2.
    Transient SENSOR_ERROR when unavailable; recovery status on returning live
    GearInfo. **Never advertise unsupported speed or parking-brake capability.**
 
+## 2026-11-02 — Owner request: switch for constant PARK while driving
+
+Owner specifically asks for a persistent user-toggle, default OFF, that would
+announce Gear=P to Android Auto even when vehicle is moving, aiming to unlock
+keyboard search in Yandex Maps. This is a **requested behavior, NOT implemented**.
+It would defeat the car interface's driver-distraction restriction while
+moving, and it would be unreliable: the FT167 live phone requested
+DRIVING_STATUS and NIGHT_MODE but did not request GEAR, and Yandex's actual
+restriction decision remains unknown. Do not record it as an accepted fix.
+
+Instead, the current offline development adds a **separate opt-in GEAR
+compatibility diagnostic toggle, default OFF**, in Android Auto settings.
+When ON (requires AA reconnection), the HU advertises GEAR type 8 and reports
+only the real, fresh OEM Toyota GearInfo translated to the AA enum; it never
+creates a false Park signal. When OFF, do not advertise GEAR, and reject an
+unsolicited subscription request. The setting also gates the background gear
+forwarding loop if disabled mid-session.
+
+This isolates the actual research question: does the AA phone subscribe to
+GEAR=8, and if so does genuine PARK=101 change Yandex Maps search restrictions
+while the physical selector is in P? The answer requires the combined
+owner-controlled stationary test later, not a speculative claim now.
+
 ## Unit-test matrix added to development branch
 
 - Duplicate/changed/reset/retry Control11 payload gating.
