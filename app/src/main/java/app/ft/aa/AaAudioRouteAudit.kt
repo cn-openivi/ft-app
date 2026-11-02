@@ -8,15 +8,18 @@ package app.ft.aa
  * a navigation app uses a particular Android AudioAttributes.USAGE_*.
  */
 internal class AaAudioRouteAudit {
-    private var navigationMessages = 0L
-    private val packets = LongArray(3)
-    private val bytes = LongArray(3)
+    // PCM delivery is a hot path. Atomic primitive counters avoid a
+    // monitor acquisition per packet and allocate nothing per update.
+    // This adds no thread, timer, buffer, or PCM copy.
+    private val navigationMessages = java.util.concurrent.atomic.AtomicLong()
+    private val packets = java.util.concurrent.atomic.AtomicLongArray(3)
+    private val bytes = java.util.concurrent.atomic.AtomicLongArray(3)
 
-    @Synchronized fun navigationMessage() {
-        navigationMessages++
+    fun navigationMessage() {
+        navigationMessages.incrementAndGet()
     }
 
-    @Synchronized fun pcm(channel: Int, byteCount: Int) {
+    fun pcm(channel: Int, byteCount: Int) {
         if (byteCount <= 0) return
         val i = when (channel) {
             AaProtocol.CH_MEDIA_AUDIO -> 0
@@ -24,15 +27,16 @@ internal class AaAudioRouteAudit {
             AaProtocol.CH_SYSTEM_AUDIO -> 2
             else -> return
         }
-        packets[i]++
-        bytes[i] += byteCount
+        packets.incrementAndGet(i)
+        bytes.addAndGet(i, byteCount.toLong())
     }
 
-    @Synchronized fun summary(): String =
-        "navigationMetadata=$navigationMessages " +
-            "mediaPackets=${packets[0]} mediaBytes=${bytes[0]} " +
-            "speechPackets=${packets[1]} speechBytes=${bytes[1]} " +
-            "systemPackets=${packets[2]} systemBytes=${bytes[2]}"
+    // Read only on session shutdown, never per PCM frame.
+    fun summary(): String =
+        "navigationMetadata=${navigationMessages.get()} " +
+            "mediaPackets=${packets.get(0)} mediaBytes=${bytes.get(0)} " +
+            "speechPackets=${packets.get(1)} speechBytes=${bytes.get(1)} " +
+            "systemPackets=${packets.get(2)} systemBytes=${bytes.get(2)}"
 
-    @Synchronized fun hasSpeechPcm(): Boolean = packets[1] > 0L || packets[2] > 0L
+    fun hasSpeechPcm(): Boolean = packets.get(1) > 0L || packets.get(2) > 0L
 }
