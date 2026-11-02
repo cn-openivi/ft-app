@@ -85,6 +85,8 @@ class IccoaSession(
         var pin: String? = null
         var pinAttempt = 0
         var reusingPin = false
+        val trustedCommitGate = IccoaTrustedCommitGate()
+        var pendingTrustedPin: String? = null
         var wifiRequested = false
         var authStarted = false
         var hasWifiAddress = false
@@ -443,11 +445,10 @@ class IccoaSession(
             if (!active(attempt)) return
             progress("send-confirm")
             socket.getOutputStream().run { write(IccoaControl.frame(3, 3, 0, auth.confirm(key, local), 2)); flush() }
-            if (trustedCarName.isNotBlank()) {
-                val stored = trustedPin.save(attempt.profile.id, trustedCarName, pin)
-                DiagLog.i("ICCOA", "Authenticated car credential storage: " +
-                    if (stored) "ENCRYPTED" else "UNAVAILABLE")
-            }
+            // Do NOT save just because AuthConfirm was written. Wait for the
+            // car to open the authenticated CONTROL lane as additional proof.
+            synchronized(attempt) { attempt.pendingTrustedPin = pin }
+            if (attempt.trustedCommitGate.onConfirmSent()) saveConfirmedCredential(attempt)
             status(attempt, "ICCOA: аутентификация завершена, ожидание каналов автомобиля…")
             later(attempt, 25_000) {
                 if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA")
@@ -485,6 +486,21 @@ class IccoaSession(
         }
     }
 
+    private fun saveConfirmedCredential(attempt: Attempt) {
+        if (!active(attempt)) return
+        // A missing/changed car name must never allow a credential to be saved
+        // under an ambiguous identity. No PIN or raw key is logged.
+        val pin = synchronized(attempt) {
+            val pending = attempt.pendingTrustedPin
+            attempt.pendingTrustedPin = null
+            pending
+        } ?: return
+        if (trustedCarName.isBlank()) return
+        val stored = trustedPin.save(attempt.profile.id, trustedCarName, pin)
+        DiagLog.i("ICCOA", "Authenticated CONTROL open; remembered credential: " +
+            if (stored) "ENCRYPTED" else "UNAVAILABLE")
+    }
+
     private fun listen(attempt: Attempt, local: String, peer: String, port: Int) {
         val lane = IccoaLaneServer(port, InetSocketAddress(local, port), InetAddress.getByName(peer),
             onConnected = { socket ->
@@ -502,7 +518,10 @@ class IccoaSession(
                         if (port == IccoaLaneServer.AUDIO_PORT) attempt.audio = socket
                     }
                 }
-                if (port == IccoaLaneServer.CONTROL_PORT && active(attempt)) onControlReady()
+                if (port == IccoaLaneServer.CONTROL_PORT && active(attempt)) {
+                    if (attempt.trustedCommitGate.onControlReady()) saveConfirmedCredential(attempt)
+                    onControlReady()
+                }
             },
             onDisconnected = { socket ->
                 val lostControl = synchronized(attempt) {
@@ -583,6 +602,8 @@ class IccoaSession(
             attempt.closed = true
             attempt.cipher = null
             attempt.pin = null
+            attempt.pendingTrustedPin = null
+            attempt.trustedCommitGate.cancel()
             attempt.resources.forEach { runCatching { it.close() } }
             attempt.resources.clear()
             attempt.control = null
