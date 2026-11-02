@@ -288,9 +288,12 @@ class IccoaService : Service() {
         val known = rememberedCar.matches(pendingCar, _state.value.discovery.peers)
         val trustedCarName = pendingCar?.name?.trim().orEmpty()
         endConnection()
+        // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
+        // as connecting BEFORE stopping it: otherwise that callback can
+        // auto-select the remembered car in the middle of a manual Connect.
+        _state.update { it.copy(connecting = true, status = "Connecting to the car…") }
         discovery?.stop()
         val token = generation
-        _state.update { it.copy(connecting = true, status = "Connecting to the car…") }
         main.postDelayed(connectionTimeout, 180_000)
         fun current(action: () -> Unit) { main.post { if (generation == token) action() } }
         lateinit var connection: IccoaSession
