@@ -1,33 +1,27 @@
 package app.ft.iccoa
 
 /**
- * Coalesce duplicate OEM NotifyNavigationInfo (ControlIndex method 11) frames.
- * True navigation payload changes still propagate immediately. An unchanged
- * request is reasserted after a bounded interval for receivers that forget it.
- * This is a send decision only; no change in vehicle safety state or sensor data.
+ * Coalesce OEM NotifyNavigationInfo (ControlIndex method 11) by payload.
+ *
+ * OEM Carlink.apk switches CarLinkSensorMgr on/off when navigation state changes.
+ * No periodic refresh interval or OEM timeout has been established: send on
+ * authenticated CONTROL readiness and real state changes, not on a timer.
+ *
+ * [accepted] is called only after the transport successfully queues a message.
+ * If queueing fails, the same payload stays eligible for bounded retry.
  */
-internal class IccoaControl11Gate(private val refreshMs: Long = 15_000L) {
+internal class IccoaControl11Gate {
     private var sentPayload: ByteArray? = null
-    private var sentAtMs: Long = -1L
 
-    init { require(refreshMs > 0L) }
+    fun shouldSend(payload: ByteArray): Boolean =
+        sentPayload?.contentEquals(payload) != true
 
-    fun shouldSend(payload: ByteArray, nowMs: Long): Boolean {
-        val previous = sentPayload ?: return true
-        if (!previous.contentEquals(payload)) return true
-        if (nowMs < sentAtMs) return true
-        return nowMs - sentAtMs >= refreshMs
-    }
-
-    /** Called only after sendControl successfully enqueues a frame. */
-    fun accepted(payload: ByteArray, nowMs: Long) {
+    fun accepted(payload: ByteArray) {
         sentPayload = payload.copyOf()
-        sentAtMs = nowMs
     }
 
-    /** Required on disconnect or a fresh authenticated CONTROL lane. */
+    /** A new authenticated CONTROL channel must receive the current state. */
     fun reset() {
         sentPayload = null
-        sentAtMs = -1L
     }
 }
