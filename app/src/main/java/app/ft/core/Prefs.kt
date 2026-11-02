@@ -143,6 +143,8 @@ class Prefs(context: Context) {
     var iccoaMicGain: Int
         get() = Pcm16Gain.clamp(int("iccoaMicGain", 1))
         set(v) = set("iccoaMicGain", Pcm16Gain.clamp(v))
+    /** ICCOA HU compatibility: optional 15s reassert of active OEM GPS request; OFF by default. */
+    var iccoaSensorRefresh: Boolean get() = bool("iccoaSensorRefresh", false); set(v) = set("iccoaSensorRefresh", v)
     var swapTrackKeys: Boolean get() = bool("swapTrackKeys", false); set(v) = set("swapTrackKeys", v)
     var guidanceMode: Int get() = int("directions", CarAudioBus.GUIDANCE_UNTOUCHED); set(v) = set("directions", v)
     var linkMode: Int get() = int("linkMode", 0); set(v) = set("linkMode", v)
