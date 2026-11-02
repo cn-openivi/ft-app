@@ -12,6 +12,9 @@ internal class IccoaRememberedCar(context: Context) {
             .putString("name", peer.name.trim()).commit()
     }
 
+    /** Explicit owner reset, independent from transport/authentication failures. */
+    fun clear(): Boolean = prefs.edit().remove("address").remove("name").commit()
+
     /**
      * Never try an encrypted remembered credential against a different car.
      * The BLE address may rotate; a uniquely discovered, hinted matching name
