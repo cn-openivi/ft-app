@@ -240,3 +240,30 @@ GitHub commits c6ca1ac12a8528b37981faad8ffc4c8a665b2764 and
 
 All entries are software/source evidence only. Do NOT claim a passing
 HU trial, inferred speed units, or plan edge advancement.
+
+## 2026-11-02 — owner-confirmed seek recovery and authenticated-link reconnect
+
+Owner's latest physical feedback: **audio and video timeline seeking WORKS**
+after the previously implemented touch correction. This is scoped to the
+seek gesture: it is not proof that all small/edge taps, portrait/landscape
+mirroring and Android Auto touch are accepted. **Remove seeking from the
+open defects**, protect the existing input-path behavior from unrelated
+changes, and do not request another interim HU test.
+
+Reconnect source repair (no APK built): after an actual established
+ICCOA projection connection drops unexpectedly, the service previously
+restarted BLE discovery with `autoConnectAttempted=true`, which blocked
+`maybeAutoConnect` from selecting the remembered car. It now resets the
+attempt flag **once** for that authenticated-link loss using
+`IccoaDropRecovery`. A second failure in the same service lifetime
+does not auto-loop. A manual Connect or Scan resets this bounded
+recovery budget. Failed GATT/bootstrap/PIN/TCP authentication, or
+disabled auto-connect, never authorizes an automatic retry. Reconnection
+still performs the original cryptographic handshake and cannot claim
+that the car accepts an earlier encrypted PIN.
+
+Source: `IccoaDropRecovery.kt`, `IccoaService.kt`;
+`IccoaDropRecoveryTest.kt` has four unexecuted JUnit cases (first
+authenticated-link loss, repeated drop, failed initial auth, owner
+manual reset). Owner combined HU acceptance and source CI remain
+pending. Keep both canonical plan NEXT_EDGE/CURRENT_ITEM untouched.
