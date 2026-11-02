@@ -240,6 +240,11 @@ class IccoaService : Service() {
                 dropRecovery.onExplicitOwnerRequest()
                 connectTo(address)
             }
+            CONNECT_NORMAL -> intent.getStringExtra("address")?.let { address ->
+                main.removeCallbacks(recoveryScan)
+                dropRecovery.onExplicitOwnerRequest()
+                connectTo(address, forceCurrentPin = true)
+            }
             PIN -> intent.getStringExtra("pin")?.let { pin ->
                 if (_state.value.pinRequired && pin.matches(Regex("[0-9]{6}"))) {
                     _state.update { it.copy(pinRequired = false, status = "Confirming the code with the car…") }
@@ -591,6 +596,7 @@ class IccoaService : Service() {
         private const val SCAN = "app.ft.iccoa.SCAN"
         private const val INSPECT = "app.ft.iccoa.INSPECT"
         private const val CONNECT = "app.ft.iccoa.CONNECT"
+        private const val CONNECT_NORMAL = "app.ft.iccoa.CONNECT_NORMAL"
         private const val PIN = "app.ft.iccoa.PIN"
         private const val DISCONNECT = "app.ft.iccoa.DISCONNECT"
         private val _state = MutableStateFlow(IccoaState())
@@ -600,6 +606,7 @@ class IccoaService : Service() {
         fun scanAgain(context: Context) = send(context, SCAN)
         fun inspect(context: Context, address: String) = send(context, INSPECT, address = address)
         fun connect(context: Context, address: String) = send(context, CONNECT, address = address)
+        fun connectNormal(context: Context, address: String) = send(context, CONNECT_NORMAL, address = address)
         fun submitPin(context: Context, pin: String) = send(context, PIN, pin = pin)
         fun disconnect(context: Context) = send(context, DISCONNECT)
         fun calibrateTouch() { if (_state.value.connected) instance?.projection?.startTouchCalibration() }
