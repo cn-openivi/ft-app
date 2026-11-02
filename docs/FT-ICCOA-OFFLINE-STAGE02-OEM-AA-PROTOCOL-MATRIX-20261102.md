@@ -22,7 +22,7 @@ allocation, so never blindly change FT's observed channel 2.
 |---|---|---|---|
 | ICCOA GATT clientInfo | FT `IccoaClientProfile`, owner HU live | Stable synthetic client MAC and 6-hex ID, misleading manufacturer Xiaomi | FT169 encrypted remembered-code pilot now with Xiaomi field tester; no new spoofing or client-ID reset pending results |
 | ICCOA TCP authentication | Owner successful FT166/167 sessions, `IccoaAuth` | ECDSA identity, nonce, PIN MAC, ephemeral ECDH, session key | No documented Toyota trusted-resume token; do not call cached-PIN experiment a proven seamless pairing solution |
-| ICCOA CONTROL method 11 | OEM `NotifyNavigationInfo.isNavigating = 1` | Enables `CarLinkSensorMgr`, repeated sends even if unchanged | Coalesce duplicates, resend after bounded 15-second window, ALWAYS immediately send state changes, reset on new control channel |
+| ICCOA CONTROL method 11 | OEM `NotifyNavigationInfo.isNavigating = 1` | Enables `CarLinkSensorMgr`, repeated sends even if unchanged | Event-driven synchronization: send initial state on authenticated CONTROL, send immediately on real state changes, retry failed queue, reset on CONTROL reconnect; no OEM refresh interval verified |
 | ICCOA SENSOR method 1 | OEM `Gps` fields 1-10 | 1024+ valid HU GPS frames received in FT167 | HU GPS producer proven; GPS on native FT home in FT168 awaits live validation, no independent CRS or speed scale acceptance |
 | ICCOA SENSOR method 6 | OEM `GearInfo.gear=1, speed=2` | FT168 preserves separate `gearRaw` and `gearSpeedRaw` | Interpret exact enum only while fresh: unknown=0, **P=1, D=2, R=3, N=4**. Do NOT assume units of `speed` |
 | AA SDP sensor channel | External AA 16.2/17.3 field maps and live phone report | Advertises GPS=1, status=13, night=10 | `location_characterization` optional uint32 field 2 omitted; available description treated as opaque by phone; do NOT invent fusion/DR quality or claim this alone fixes missing subscription |
@@ -37,12 +37,13 @@ allocation, so never blindly change FT's observed channel 2.
 
 ## Source changes made while FT169 is under owner/Xiaomi acceptance
 
-1. **OEM Control11 duplicate suppression:** pure `IccoaControl11Gate` keeps last
-   successful enqueue payload; sends promptly on changed navigation state,
-   refreshes unchanged payload at most every 15 seconds when invoked; resets when
-   connection closes or new CONTROL lane authenticates. Bounded retry logic
-   remains in service. This targets the verified Control11 over-transmission in
-   FT167 logs and does not alter H264 or navigation truth.
+1. **OEM Control11 state synchronization:** pure `IccoaControl11Gate` retains the last
+   successfully queued payload. A fresh authenticated CONTROL channel receives the
+   actual current state once; changed navigation/sensor state is sent immediately;
+   identical payloads are not re-sent. A failed queue operation stays eligible for
+   existing bounded retries. On reconnect the cache resets. No 5-second polling,
+   15-second refresh or unverified OEM TTL assumption. H.264 and real navigation
+   data are unchanged.
 2. **AA sensor subscription audit:** `AaSensorSubscriptions` stores only sensor
    type/counts (LOCATION, GEAR, NIGHT, DRIVING, etc.). Log at 12 seconds and AA
    shutdown. No precise coordinates, PINs, MACs or raw packets.
@@ -96,7 +97,9 @@ remain pending. Both canonical Nexus plans' protected edges unchanged.
 
 ## Unit-test matrix added to development branch
 
-- Duplicate/changed/reset/retry Control11 payload gating.
+- Event-driven Control11: repeated unchanged-state suppression regardless of elapsed
+  time, immediate changed-state delivery, failed-enqueue retry, reconnect reset and
+  defensive payload copying.
 - Sensor subscription counting without user data.
 - Complete OEM gear enumeration including rejecting AA enum input as OEM.
 - Source/freshness/unknown-gear validation for AA GEAR events.
@@ -109,3 +112,18 @@ signed APK, HU runtime behavior, AA receiving GEAR request, successful Google
 Maps keyboard in P, validated car-speed multiplier, PIN-free Xiaomi reconnect.
 Keep source commits on non-release branch until all approved software work is
 ready for *one* combined build and HU test.
+
+## 2026-11-02 — Control11 event-only correction
+
+The original owner HU Carlink.apk P1 bytecode chain calls
+`CarLinkSensorMgr.onStart()/onStop()` from navigation-state notifications.
+The OEM protocol has no established 15-second refresh TTL. The prior offline
+experiment used a 5-second heartbeat plus a 15-second duplicate gate; both are
+removed in this source-only correction. The event-driven rule is exact: initial
+authenticated CONTROL state, real payload changes and bounded retries on
+send failure. There is no timer in the success path.
+
+Verified in source from the development branch; regression tests have been
+updated. **No Android Gradle test, new APK or HU P0 acceptance is claimed.**
+An actual GPS dropout remains a separate runtime diagnostic, not evidence
+that the OEM needs periodic duplicate commands.
