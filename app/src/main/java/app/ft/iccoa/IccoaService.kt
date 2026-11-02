@@ -538,6 +538,8 @@ class IccoaService : Service() {
         }
 
     override fun onDestroy() {
+        main.removeCallbacks(recoveryScan)
+        dropRecovery.onExplicitOwnerRequest()
         bluetoothReconnect?.close(); bluetoothReconnect = null
         bluetoothCalls?.close(); bluetoothCalls = null
         discovery?.stop(); discovery = null
