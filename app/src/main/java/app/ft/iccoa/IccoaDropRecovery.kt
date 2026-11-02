@@ -1,10 +1,11 @@
 package app.ft.iccoa
 
 /**
- * A bounded recovery episode starts ONLY after an established ICCOA link drops.
+ * A bounded episode begins when FT auto-selects a previously remembered
+ * car, or after an already established ICCOA link unexpectedly drops.
  *
- * The first reconnect counts as attempt 1/3. A subsequent failure may consume
- * attempt 2 or 3 ONLY when the session explicitly reports a transport failure.
+ * The initial auto-connect or first reconnect is attempt 1/3. A subsequent
+ * failure may consume attempt 2 or 3 only for a confirmed transport failure.
  * PIN rejection, authentication errors, a new PIN prompt, and user disconnect
  * stop the episode. Never retry a secret or change the ICCOA handshake.
  */
