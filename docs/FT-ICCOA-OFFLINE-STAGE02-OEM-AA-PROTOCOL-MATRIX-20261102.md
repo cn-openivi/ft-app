@@ -267,3 +267,36 @@ Source: `IccoaDropRecovery.kt`, `IccoaService.kt`;
 authenticated-link loss, repeated drop, failed initial auth, owner
 manual reset). Owner combined HU acceptance and source CI remain
 pending. Keep both canonical plan NEXT_EDGE/CURRENT_ITEM untouched.
+
+## 2026-11-02 — owner-approved three-attempt transport reconnect
+
+The owner raised the previously implemented **one** automatic recovery attempt
+to **three** after an unexpectedly lost, formerly established ICCOA link.
+This replaces the one-attempt policy in the preceding source work; no APK
+or owner field retest is requested until the combined release.
+
+- Attempt **1/3**: scan for the remembered peer after the established link
+  unexpectedly disconnects. BLE address rotation is handled by existing
+  `IccoaRememberedCar.select` (unique hinted car name only).
+- Attempts **2/3** and **3/3**: only if discovery completes without the
+  remembered peer, or a *reconnecting attempt* fails with a typed transport
+  failure (Bluetooth, Wi-Fi loss, TCP connect, control/media socket loss).
+  Delays between the attempts are 3 and 6 seconds respectively.
+- Every attempt runs the original ICCOA GATT, PIN-bound cryptographic
+  handshake, and media setup. Failed initial pairing does not start recovery.
+  Incorrect/rejected PIN, auth cryptographic failure or a new PIN prompt
+  immediately stop the automatic sequence. Wi-Fi consent denial is not retried.
+  No automatic credential guessing.
+- Successful live projection, explicit owner Connect/Scan/Disconnect and
+  service shutdown stop/reset the sequence; exhausted attempts do not
+  produce a fourth retry. The owner may manually initiate a fresh connection.
+- Recoverable control-channel loss is now signaled to the service, rather than
+  silently leaving the old connection without its control socket.
+- `IccoaDropRecoveryTest`: 8 source-authored regression scenarios.
+  Pure gate source separately matched exact GitHub blob
+  `c637a7129b7b6fba2accb21ba7edb2394262dc37`; the JVM smoke exercise
+  passed 22 assertions. Full Android build/JUnit and live HU compatibility
+  remain UNTESTED until the planned combined candidate.
+
+This change does not prove OEM reused-PIN support or resolve the independent
+Android Auto LOCATION subscription issue. No canonical plan status/edge advance.
