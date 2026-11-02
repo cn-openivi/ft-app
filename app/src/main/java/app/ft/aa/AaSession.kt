@@ -43,6 +43,15 @@ class AaSession(
     @Volatile private var carGearSubscribed = false
     private val sensorSubscriptions = AaSensorSubscriptions()
     @Volatile private var sensorChannelOpened = false
+
+    /** Channel CLOSE invalidates *both* active stream subscriptions. */
+    private fun stopCarSensorStreams() {
+        carGpsSubscribed = false
+        carGearSubscribed = false
+        carGpsJob?.cancel(); carGpsJob = null
+        carGearJob?.cancel(); carGearJob = null
+    }
+
     private val lifecycle = AaSessionLifecycle(
         interrupt = {
             runCatching { input.close() }
@@ -50,10 +59,8 @@ class AaSession(
             job?.cancel()
         },
         cleanup = { reason ->
-            carGpsSubscribed = false
-            carGearSubscribed = false
-            carGpsJob?.cancel(); carGpsJob = null
-            carGearJob?.cancel(); carGearJob = null
+            stopCarSensorStreams()
+            sensorChannelOpened = false
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
             sensorSubscriptions.reset()
             microphoneInput.close()
@@ -260,8 +267,10 @@ class AaSession(
                 openChannels -= channel
                 if (channel == AaProtocol.CH_SENSOR) {
                     sensorChannelOpened = false
-                    carGpsSubscribed = false
-                    carGpsJob?.cancel(); carGpsJob = null
+                    DiagLog.i(tag, "AA SENSOR channel closed: stopping GPS and gear subscriptions; " +
+                        "last requests=${sensorSubscriptions.summary()}")
+                    stopCarSensorStreams()
+                    sensorSubscriptions.reset()
                 }
                 if (channel == AaProtocol.CH_NAVIGATION) synchronized(navigation) {
                     AaHeadUnitService.onNavigation?.invoke(navigation.reset())
