@@ -464,23 +464,25 @@ class IccoaService : Service() {
         if (audioPlayerState.pending && session != null) main.postDelayed(audioStateRetry, 500)
     }
 
-    private fun connectionFailed(reason: String) {
+    private fun connectionFailed(reason: String, retryableTransportFailure: Boolean = false) {
         DiagLog.w("ICCOA", reason)
-        // A stale autoConnectAttempted flag previously prevented rediscovery from
-        // selecting the remembered car after a *successful* session dropped.
-        // Recover at most once; never loop on a failed PIN/auth/bootstrap.
-        val resume = dropRecovery.onUnexpectedDrop(
-            _state.value.connected, FTApp.instance.prefs.autoConnect
+        // Three bounded reconnect attempts only for an established session's
+        // unexpected transport loss, or transport failure in its recovery chain.
+        val number = dropRecovery.onFailure(
+            _state.value.connected, FTApp.instance.prefs.autoConnect,
+            retryableTransportFailure
         )
+        main.removeCallbacks(recoveryScan)
         endConnection()
-        if (resume) {
+        if (number != null) {
             autoConnectAttempted = false
-            DiagLog.i("ICCOA", "Authenticated link dropped; one automatic remembered-car reconnect allowed")
+            _state.update { it.copy(status =
+                "$reason. Переподключение $number/${IccoaDropRecovery.MAX_ATTEMPTS}") }
+            scheduleRecoveryScan(number)
+        } else {
+            _state.update { it.copy(status = "$reason. Автоматические попытки остановлены") }
+            if (_state.value.running) discovery?.start()
         }
-        _state.update { it.copy(status = "$reason. Обновляю список устройств для новой попытки") }
-        // XA60 rotates its private BLE address. Discovery must resolve a new
-        // candidate, and the usual PIN-bound cryptographic handshake stays intact.
-        if (_state.value.running) discovery?.start()
     }
 
     private fun endConnection() {
