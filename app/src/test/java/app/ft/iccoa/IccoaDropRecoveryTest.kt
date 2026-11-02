@@ -28,6 +28,28 @@ class IccoaDropRecoveryTest {
         assertFalse(rejected.active)
     }
 
+    @Test fun cachedPinBleTimeoutCanRetryTransportButNeverFourthTime() {
+        val guard = IccoaDropRecovery()
+        // Initial remembered-car connection counted before the cached PIN is sent.
+        assertEquals(1, guard.onInitialRememberedCarAutoSelect())
+        // ATT queue failure or no BLE server-info after using a cached PIN:
+        // transport is retryable, NOT evidence of a rejected PIN.
+        assertEquals(2, lost(guard, transport = true))
+        assertEquals(3, lost(guard, transport = true))
+        assertNull(lost(guard, transport = true))
+        assertFalse(guard.active)
+    }
+
+    @Test fun cachedPinRejectionMustStopEvenAfterRecoverableGattError() {
+        val guard = IccoaDropRecovery()
+        assertEquals(1, guard.onInitialRememberedCarAutoSelect())
+        assertEquals(2, lost(guard, transport = true))
+        // Verified wrong PIN/auth failure is NOT a retryable transport error.
+        assertNull(lost(guard, transport = false))
+        assertFalse(guard.active)
+        assertNull(lost(guard, transport = true))
+    }
+
     @Test fun firstEstablishedLossStartsAttemptOneOfThree() {
         val guard = IccoaDropRecovery()
         assertEquals(3, IccoaDropRecovery.MAX_ATTEMPTS)
