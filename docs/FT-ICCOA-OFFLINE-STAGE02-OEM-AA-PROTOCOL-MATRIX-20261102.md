@@ -127,3 +127,29 @@ Verified in source from the development branch; regression tests have been
 updated. **No Android Gradle test, new APK or HU P0 acceptance is claimed.**
 An actual GPS dropout remains a separate runtime diagnostic, not evidence
 that the OEM needs periodic duplicate commands.
+
+## 2026-11-02 — AA sensor subscription acknowledgement corrected
+
+Exact source audit found `AaSession.handleSensor` acknowledged every
+`SENSOR_START_REQUEST` with `STATUS_OK`, even when the requested sensor
+was absent from service discovery and had no handler. This could leave AA
+believing FT supplies `CAR_SPEED=3`, `PARKING_BRAKE=7`, or unknown sensors.
+
+Source-only patch enforces matching capability and response semantics:
+- Supported unconditionally: `DRIVING_STATUS=13`, `NIGHT_MODE=10`.
+- Supported for ICCOA only: `LOCATION=1`; a valid subscription can still
+  receive transient `SENSOR_ERROR` when the OEM location stream is stale.
+- `GEAR=8` is supported for ICCOA only when its explicitly configured
+  test option is active; phone subscription is still necessary.
+- All other request types return `SENSOR_START_RESPONSE` with
+  `Status.INVALID_SENSOR=-9` (protobuf enum field 1), not false OK;
+  rejected types are not recorded as active subscriptions.
+
+Reference: external Android Auto sensor protocol source
+`mrmees/open-android-auto/oaa/common/StatusEnum.proto` and
+`oaa/sensor/SensorStartResponseMessage.proto` (static P2; phone runtime
+still remains P0). FT source `AaProtocol`, `AaMessages`, `AaSession`,
+and `AaSensorCapabilityTest` updated. No inference of vehicle speed units,
+location subscription by the AA phone, or Yandex restrictions.
+**NOT YET PASSED:** Android Gradle/JUnit execution and HU/phone acceptance.
+FT169 signed pilot remains unchanged; both Nexus plan edges protected.
