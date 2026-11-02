@@ -218,8 +218,7 @@ class AaSession(
                     prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
                     true, prefs.carName, prefs.aaControlsLeft,
                     advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
-                    advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA &&
-                        (prefs.aaGearTest || prefs.aaForcePark)
+                    advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA
                 )
                 // Audit actual serialized descriptor, rather than the setting
                 // supplied to the encoder. No coordinates or device identity.
@@ -240,8 +239,7 @@ class AaSession(
                                 "requests=${sensorSubscriptions.summary()}")
                             if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION))
                                 DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
-                            if ((prefs.aaGearTest || prefs.aaForcePark) &&
-                                !sensorSubscriptions.has(AaProtocol.SENSOR_GEAR))
+                            if (!sensorSubscriptions.has(AaProtocol.SENSOR_GEAR))
                                 DiagLog.w(tag, "AA phone did not request GEAR; " +
                                     "park override and OEM gear cannot affect apps without subscription")
                         }
@@ -384,8 +382,7 @@ class AaSession(
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
                 val supported = AaProtocol.supportsSensor(
-                    type, prefs.carProtocol == CarProtocol.ICCOA,
-                    prefs.aaGearTest || prefs.aaForcePark
+                    type, prefs.carProtocol == CarProtocol.ICCOA
                 )
                 if (!supported) {
                     // Reply with a protocol-level rejection instead of OK with no data.
@@ -402,8 +399,7 @@ class AaSession(
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
                     AaProtocol.SENSOR_NIGHT_MODE -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorNightMode(false))
                     AaProtocol.SENSOR_GEAR -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA &&
-                            (prefs.aaGearTest || prefs.aaForcePark))
+                        if (prefs.carProtocol == CarProtocol.ICCOA)
                             startCarGear(ProtoReader(body).long(2, 500L))
                         else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGear.sensorError(3))
@@ -478,8 +474,7 @@ class AaSession(
             var lastSentAtMs = 0L
             var unavailable = false
             var delivered = 0L
-            while (isActive && lifecycle.running && carGearSubscribed && sensorChannelOpened &&
-                (prefs.aaGearTest || prefs.aaForcePark)) {
+            while (isActive && lifecycle.running && carGearSubscribed && sensorChannelOpened) {
                 val now = System.currentTimeMillis()
                 val position = VehicleTelemetry.current.value
                 val gear = AaCarGear.aaGear(position, now, forcePark = prefs.aaForcePark)
@@ -513,15 +508,9 @@ class AaSession(
                 }
                 delay(interval)
             }
-            if (lifecycle.running && carGearSubscribed && sensorChannelOpened &&
-                !prefs.aaGearTest && !prefs.aaForcePark) {
-                // Switching both settings off must not leave an old PARK frame
-                // latched on the phone while the current session remains alive.
-                sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
-                    AaCarGear.sensorError(3))
-                DiagLog.i(tag, "GEAR disabled by owner; sent unavailable, reconnect to renegotiate")
-                carGearSubscribed = false
-            }
+            // GEAR remains available whenever ICCOA is connected. Switching
+            // force-P OFF returns to actual fresh OEM GEAR without renegotiation;
+            // if OEM data is unavailable, the loop above reports SENSOR_ERROR.
         }
         DiagLog.i(tag, "AA subscribed to GEAR; overridePark=${prefs.aaForcePark} interval=${interval}ms")
     }
