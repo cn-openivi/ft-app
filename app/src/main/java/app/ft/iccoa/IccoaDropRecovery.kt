@@ -14,6 +14,8 @@ internal class IccoaDropRecovery {
     private var recovering = false
     private var attempts = 0
 
+    val active: Boolean get() = recovering
+
     /** Returns the numbered attempt to start, or null when automation must stop. */
     fun onFailure(
         wasConnected: Boolean,
