@@ -195,7 +195,7 @@ class IccoaService : Service() {
         }
         projection = IccoaProjection(this, ::promoteProjection, {
             session?.sendControl(5, byteArrayOf())
-        }, { pcm -> media?.audio(pcm) }, onFailure = ::connectionFailed,
+        }, { pcm -> media?.audio(pcm) }, onFailure = { reason -> connectionFailed(reason) },
             onAaConnectionChanged = { connected ->
                 main.post {
                     if (aaSensorAssist != connected) {
