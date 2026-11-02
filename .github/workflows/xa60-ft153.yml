@@ -109,7 +109,7 @@ jobs:
           set -euo pipefail
           mkdir -p "$GRADLE_USER_HOME"
           cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
-          org.gradle.jvmargs=-Xmx768m -XX:MaxMetaspaceSize=384m -Dfile.encoding=UTF-8
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
           org.gradle.daemon=false
           org.gradle.parallel=false
           org.gradle.workers.max=1
