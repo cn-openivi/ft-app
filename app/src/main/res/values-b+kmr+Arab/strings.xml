@@ -477,4 +477,6 @@
     <string name="iccoa_mic_gain_about">Amplifies the car microphone for Android Auto. ×1 keeps the original level. Choose a value from ×1 to ×16; high values can distort speech. Applies to the next voice request.</string>
     <string name="vehicle_coordinate_log">Save GPS coordinates in diagnostic logs</string>
     <string name="vehicle_coordinate_log_about">Off by default. Enable only for a test you choose: exact vehicle position can reveal where you travel. GPS navigation works regardless. Previously recorded locations and exported reports are not deleted when you switch this off.</string>
+    <string name="iccoa_sensor_refresh">ICCOA: repeat sensor activation (compatibility)</string>
+    <string name="iccoa_sensor_refresh_about">Off by default. For head units that stop sending car GPS, repeat the active ICCOA sensor request every 15 seconds. Usually unnecessary; may increase control traffic and cannot enable unsupported GPS. Applies after reconnecting ICCOA.</string>
 </resources>
