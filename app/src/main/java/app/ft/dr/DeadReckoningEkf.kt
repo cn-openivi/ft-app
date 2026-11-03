@@ -76,8 +76,7 @@ internal class DeadReckoningEkf {
             !calibratedSpeedMetresPerSecond.isFinite() ||
             calibratedSpeedMetresPerSecond !in 0.0..65.0 ||
             !vehicleYawRateRadiansPerSecond.isFinite() ||
-            abs(vehicleYawRateRadiansPerSecond) > 3.0 ||
-            secondsWithoutGnss + dtSeconds > MAX_HOLD_SECONDS) return null
+            abs(vehicleYawRateRadiansPerSecond) > 3.0) return null
 
         val x = filter.state()
         val distance = calibratedSpeedMetresPerSecond * dtSeconds
@@ -147,13 +146,18 @@ internal class DeadReckoningEkf {
         return true
     }
 
+    /**
+     * No artificial timeout or uncertainty cutoff: keep estimating as long as
+     * verified wheel/yaw measurements continue. The uncertainty grows with
+     * covariance and callers must label it as estimated, never actual GNSS.
+     * Non-finite state/covariance is still rejected as numerically invalid.
+     */
     fun estimate(): Estimate? {
-        if (!initialized || secondsWithoutGnss > MAX_HOLD_SECONDS) return null
+        if (!initialized) return null
         val x = filter.state()
         val p = filter.covariance()
         val uncertainty = sqrt(max(0.0, max(p[0], p[STATE_SIZE + 1])))
-        if (!uncertainty.isFinite() || uncertainty > MAX_UNCERTAINTY_METRES ||
-            !x.all(Double::isFinite)) return null
+        if (!uncertainty.isFinite() || !x.all(Double::isFinite)) return null
         val degrees = (normalize(x[HEADING]) * 180.0 / PI + 360.0) % 360.0
         return Estimate(
             eastMetres = x[EAST],
@@ -181,7 +185,5 @@ internal class DeadReckoningEkf {
         const val NORTH = 1
         const val HEADING = 2
         const val GYRO_BIAS = 3
-        const val MAX_HOLD_SECONDS = 120.0
-        const val MAX_UNCERTAINTY_METRES = 150.0
     }
 }
