@@ -133,10 +133,24 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
 | `cra-ros-pkg/robot_localization` | BSD-family (LICENSE verified) | Proven GNSS + IMU + wheel odometry EKF/UKF and navsat conversion; **ROS 2 stack/Eigen/TF** is excessive for an Android FT client. Use as functional reference only. |
 | `PX4/PX4-ECL` | BSD-3-Clause (repo license) | Mature aviation-oriented estimator, over-complex for this ground-car 2D problem. |
 
-Recommended implementation: keep the protocol-neutral Kotlin model and
-vendor only the minimum reviewed MIT-permitted EKF logic if needed, retaining
-full attribution/license; evaluate TinyEKF vs lightweight Kotlin 2D estimator
-before adding Android NDK. Do not copy large ROS, autopilot or Python stacks.
+Implementation decision (owner-approved 2026-11-03): **TinyEKF selected and embedded**.
+Frozen original Simon D. Levy MIT header and full license are at
+`third_party/TinyEKF/{src/tinyekf.h,LICENSE.md}` (upstream exact commit
+`ba0d2a90e22f2f4e4120a91cb05ca2ca6a8e8da3`). Its EKF matrix
+prediction/update were ported directly to bounded pure Kotlin double
+precision as `app.ft.dr.TinyEkf` and used by source-neutral
+`app.ft.dr.DeadReckoningEkf`. The latter has 4 states
+[east_m, north_m, yaw_rad, gyro_bias_rad_per_sec], a 2D GNSS observation,
+Cholesky-positive innovation validation, outlier gates, bounded outage
+time and verified-input-only prediction. This avoids JNI, NDK, CMake,
+native ABI packaging and additional user setup on weak Android phones.
+The implementation includes exact synthetic source-independent tests.
+
+**Source integrated is NOT a functioning car DR**: raw OEM axes/units and
+wheel-speed units require verification before an adapter sets
+`wheelAndGyroVerified`; the existing calibrator is not wired into live
+production; FT widgets and AA keep the original unmodified GPS path.
+No new APK is built. Do not copy large ROS/autopilot stacks.
 
 ## 6. Proof gates & acceptance
 
