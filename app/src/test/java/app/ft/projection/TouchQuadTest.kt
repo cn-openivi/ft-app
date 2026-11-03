@@ -42,6 +42,31 @@ class TouchQuadTest {
         assertEquals(quad.map(400, 400, width, height), persisted!!.map(400, 400, width, height))
     }
 
+    @Test fun xiaomiLikeThirtySixPixelYShiftIsRemovedBySavedFourPointCalibration() {
+        // Field observation: tester had NOT performed the four-point HU
+        // calibration. This fixture validates the existing calibration-first
+        // path; it does not claim the field offset is a geometry code defect.
+        val shifted = listOf(
+            TouchPoint(360.0, 216.0), TouchPoint(2040.0, 216.0),
+            TouchPoint(360.0, 1056.0), TouchPoint(2040.0, 1056.0)
+        )
+        val saved = TouchQuad.fromSamples(shifted, width, height)!!
+        val restored = TouchQuad.deserialize(saved.serialize(), width, height)!!
+        for ((wantedX, wantedY) in listOf(
+            360 to 180, 2040 to 180,
+            360 to 1020, 2040 to 1020,
+            1200 to 600
+        )) {
+            val actual = restored.map(wantedX, wantedY + 36, width, height)
+            assertEquals(wantedX, actual.first)
+            assertEquals(wantedY, actual.second)
+        }
+        // A low keyboard row should still land inside the lower AA content.
+        val bottom = restored.map(1200, 1136, width, height)
+        assertEquals(1200, bottom.first)
+        assertEquals(1100, bottom.second)
+    }
+
     @Test fun cannotSaveOverlappingReversedOrCorruptedPoints() {
         assertNull(TouchQuad.fromSamples(listOf(
             TouchPoint(300.0, 200.0), TouchPoint(310.0, 200.0),
