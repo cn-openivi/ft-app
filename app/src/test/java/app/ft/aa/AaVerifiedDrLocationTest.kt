@@ -40,20 +40,37 @@ class AaVerifiedDrLocationTest {
         assertFalse(sensorConfig.int(2) and 0x100 != 0)
     }
 
-    @Test fun verifiedEkfToWgs84AaSensorEventHasExactMicrodegreesAndAccuracy() {
+    @Test fun verifiedEkfToWgs84AaSensorEventHasExactE7AndMillimetreAccuracy() {
         val now = 10_000L
         val source = drFix(now)
         val packet = AaCarGps.fusedEvent(source, now, 0x93)!!
-        // SensorEventIndication.location[0] {lat=55755826, lon=37617299,
-        // accuracy=20}, independently matched against GPSLocation proto2.
+        // SensorEventIndication.location[0] {latitude_e7=557558260,
+        // longitude_e7=376172990, accuracy_e3=20000}; independent proto2 fixture.
         assertArrayEquals(byteArrayOf(
-            10, 12, 16, -78, -120, -53, 26, 24, -109, -3, -9, 17, 32, 20
+            10, 16, 16, -12, -45, -18, -119, 2, 24, -66, -29, -81, -77, 1, 32, -96, -100, 1
         ), packet)
         val gps = ProtoReader(packet).message(1)!!
-        assertEquals(55_755_826, gps.int(2))
-        assertEquals(37_617_299, gps.int(3))
-        assertEquals(20, gps.int(4))
+        assertEquals(557_558_260, gps.int(2))
+        assertEquals(376_172_990, gps.int(3))
+        assertEquals(20_000, gps.int(4))
         assertEquals(setOf(2, 3, 4), gps.fields.keys)
+    }
+
+    @Test fun fusedLocationEncodesNegativeCoordinatesAndFractionalMetreAccuracy() {
+        val sample = DrNavigationFix(
+            -33.8688, -70.6693, 20.25, 90.0, GpsSourceMode.CAR,
+            10_000L, estimated = true, verifiedVehicleMotion = true
+        )
+        val bytes = AaCarGps.fusedEvent(sample, 10_000L, 0x93)!!
+        assertArrayEquals(byteArrayOf(
+            10, 26, 16, -128, -112, -64, -34, -2, -1, -1, -1, -1, 1,
+            24, -8, -16, -126, -81, -3, -1, -1, -1, -1, 1,
+            32, -102, -98, 1
+        ), bytes)
+        val decoded = ProtoReader(bytes).message(1)!!
+        assertEquals(-338_688_000, decoded.int(2))
+        assertEquals(-706_693_000, decoded.int(3))
+        assertEquals(20_250, decoded.int(4))
     }
 
     @Test fun neverInjectDrUnderRawGpsCharacterizationOrPhoneSource() {
