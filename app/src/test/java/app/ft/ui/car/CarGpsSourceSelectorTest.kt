@@ -152,6 +152,31 @@ class CarGpsSourceSelectorTest {
         }
     }
 
+    @Test fun invalidPhoneCoordinatesDoNotLeakIntoFallbackOrOverrideCar() {
+        val selector = CarGpsSourceSelector()
+        val invalidPhone = phone(10_000L).copy(latitude = 91.0)
+        val cold = selector.select(null, invalidPhone, 10_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, cold.source)
+        assertNull(cold.latitude)
+        assertNull(cold.longitude)
+        assertNull(cold.speedKmh)
+
+        // A valid car stream is preferred even while phone GNSS is corrupt.
+        for (t in 11_000L..18_000L step 1_000L)
+            selector.select(car(t), invalidPhone, t)
+        val carReading = selector.select(car(19_000L), invalidPhone, 19_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, carReading.source)
+        assertEquals(55.55207, carReading.latitude!!, 0.00001)
+
+        // After 7s without an OEM position, do not report invalid phone
+        // coordinates or misleading speed as if they were a valid fallback.
+        val fallback = selector.select(null, invalidPhone, 26_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.longitude)
+        assertNull(fallback.speedKmh)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
