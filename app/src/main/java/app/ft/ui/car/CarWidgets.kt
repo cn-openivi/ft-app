@@ -45,7 +45,8 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
-    val freshVehicle = vehicle?.takeIf { it.fresh(now) }
+    // The 1-second Compose clock may be older than a newly received GPS fix.
+    val displayNow = CarWidgetReadings.displayNow(now, vehicle)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -55,11 +56,11 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
             when (key) {
                 CarStyle.WIDGET_WEATHER -> WeatherChip(style.fahrenheit, preview)
                 CarStyle.WIDGET_BATTERY -> BatteryChip(preview)
-                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview, freshVehicle, now)
+                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview)
                 // Preserve the last valid car fix for display while visibly
                 // marking stale values. AA keeps its own strict freshness gate.
-                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(vehicle, preview, now)
-                CarStyle.WIDGET_COURSE -> CourseChip(vehicle, preview, now)
+                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(vehicle, preview, displayNow)
+                CarStyle.WIDGET_COURSE -> CourseChip(vehicle, preview, displayNow)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
             }
         }
@@ -85,19 +86,15 @@ private fun BatteryChip(preview: Boolean) {
 }
 
 @Composable
-private fun SpeedChip(mph: Boolean, preview: Boolean, vehicle: VehicleLocation?, now: Long) {
+private fun SpeedChip(mph: Boolean, preview: Boolean) {
     val live by CarInfo.speed.collectAsState()
-    // A displayed car speed is live only with a recent OEM GPS position.
-    val carSpeed = vehicle?.takeIf { it.positionFresh(now) }?.speedKmh
-        ?.takeIf { it.isFinite() && it in 0f..450f }
-    val speed = carSpeed ?: if (live < 0f && preview) 60f else live
-    if (speed < 0f) return
+    // Stable phone speed; OEM ICCOA getSpeed() was floored to whole m/s
+    // (3.6 km/h steps) and must not replace phone GPS mid-drive.
+    // OEM GPS coordinates remain visible; Android Auto feed is unchanged.
+    val speed = CarWidgetReadings.phoneSpeedKmh(live, preview) ?: return
     val shown = if (mph) speed * 0.621371f else speed
-    val source = if (carSpeed != null) (vehicle?.source ?: "CAR") else "PHONE"
-    val raw = vehicle?.speedRaw
-    val suffix = if (carSpeed == null && raw != null) " · ${vehicle?.source} raw=$raw" else " · $source"
     Chip(CarIcons.Speed, "${shown.roundToInt()}",
-        "${stringResource(if (mph) R.string.widget_mph else R.string.widget_kmh)}$suffix")
+        "${stringResource(if (mph) R.string.widget_mph else R.string.widget_kmh)} · PHONE")
 }
 
 @Composable
