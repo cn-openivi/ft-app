@@ -1,6 +1,7 @@
 package app.ft.ui.car
 
 import app.ft.core.CarInfo
+import app.ft.core.GpsSourceMode
 import app.ft.core.VehicleLocation
 import org.junit.Assert.*
 import org.junit.Test
@@ -17,130 +18,124 @@ class CarGpsSourceSelectorTest {
         bearingDegrees = 220f, receivedAtMs = t
     )
 
-    private fun connectedSelector(): CarGpsSourceSelector {
+    @Test fun carModeSelectsCarImmediatelyWithoutSevenSecondWait() {
         val selector = CarGpsSourceSelector()
-        for (t in 10_000L..17_000L step 1_000L) {
-            val selected = selector.select(car(t), phone(t), t)
-            if (t < 17_000L) assertEquals(CarGpsSourceSelector.Source.PHONE, selected.source)
-        }
-        return selector
+        val r = selector.select(car(10_000L), phone(10_000L), 10_000L, GpsSourceMode.CAR)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+        assertEquals(55.55207, r.latitude!!, 0.00001)
+        assertEquals(231f, r.headingDegrees!!, 0f)
     }
 
-    @Test fun carTakesPriorityOnlyAfterSevenSecondsOfContinuousGpsFrames() {
+    @Test fun carModeNeverFallsBackToPhoneAfterLongTunnel() {
         val selector = CarGpsSourceSelector()
-        var selection = selector.select(car(10_000L), phone(10_000L), 10_000L)
-        assertEquals(CarGpsSourceSelector.Source.PHONE, selection.source)
-        assertEquals(55.55, selection.latitude!!, 0.0001)
-        for (t in 11_000L..17_000L step 1_000L)
-            selection = selector.select(car(t), phone(t), t)
-        assertEquals(CarGpsSourceSelector.Source.ICCOA, selection.source)
-        assertEquals(55.55207, selection.latitude!!, 0.000001)
-        assertEquals(231f, selection.headingDegrees!!, 0f)
-    }
-
-    @Test fun oneToSixSecondGpsOutageNeverChangesSourceOrErasesLastCarFix() {
-        val selector = connectedSelector()
-        for (gap in 1_000L..6_000L step 1_000L) {
-            // The ICCOA service may clear VehicleTelemetry at disconnect.
-            val selected = selector.select(null, phone(17_000L + gap),
-                17_000L + gap)
-            assertEquals(CarGpsSourceSelector.Source.ICCOA, selected.source)
-            assertEquals(55.55207, selected.latitude!!, 0.000001)
-            assertEquals(gap, selected.lastPacketAgeMs)
+        selector.select(car(10_000L), phone(10_000L), 10_000L, GpsSourceMode.CAR)
+        for (gap in listOf(1_000L, 7_000L, 60_000L, 600_000L)) {
+            val r = selector.select(null, phone(10_000L + gap, 95f),
+                10_000L + gap, GpsSourceMode.CAR)
+            assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+            assertEquals(55.55207, r.latitude!!, 0.00001)
+            assertEquals(gap, r.lastPacketAgeMs)
+            assertTrue(r.speedKmh!! < 95f)
         }
     }
 
-    @Test fun sevenSecondGpsOutageFallsBackToRealPhoneCoordinatesAndSpeed() {
-        val selector = connectedSelector()
-        val fallback = selector.select(null, phone(24_000L, 27f), 24_000L)
-        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
-        assertEquals(55.55, fallback.latitude!!, 0.00001)
-        assertEquals(37.56, fallback.longitude!!, 0.00001)
-        assertEquals(27f, fallback.speedKmh!!, 0f)
-        assertEquals(220f, fallback.headingDegrees!!, 0f)
-    }
-
-    @Test fun sevenSecondStableReacquisitionReturnsToCarWithoutFlapping() {
-        val selector = connectedSelector()
-        selector.select(null, phone(24_000L), 24_000L)
-        for (t in 25_000L..31_000L step 1_000L) {
-            val result = selector.select(car(t), phone(t), t)
-            assertEquals(CarGpsSourceSelector.Source.PHONE, result.source)
-        }
-        val result = selector.select(car(32_000L), phone(32_000L), 32_000L)
-        assertEquals(CarGpsSourceSelector.Source.ICCOA, result.source)
-        assertEquals(55.55207, result.latitude!!, 0.000001)
-    }
-
-    @Test fun gearPacketsDoNotResetGpsLossTimer() {
-        val selector = connectedSelector()
-        for (t in 18_000L..24_000L step 1_000L) {
-            // GearInfo refreshes receivedAtMs but never positionAtMs.
-            val gearOnly = car(17_000L).copy(receivedAtMs = t,
-                gearSpeedRaw = 30L, gearAtMs = t)
-            val selected = selector.select(gearOnly, phone(t), t)
-            if (t < 24_000L)
-                assertEquals(CarGpsSourceSelector.Source.ICCOA, selected.source)
-            else assertEquals(CarGpsSourceSelector.Source.PHONE, selected.source)
-        }
-    }
-
-    @Test fun interruptedReacquisitionResetsTheSevenSecondCounter() {
+    @Test fun withoutCarFixCarModeShowsMissingNotPhoneCoordinates() {
         val selector = CarGpsSourceSelector()
-        for (t in 10_000L..12_000L step 1_000L)
-            selector.select(car(t), phone(t), t)
-        assertEquals(CarGpsSourceSelector.Source.PHONE,
-            selector.select(car(17_000L), phone(17_000L), 17_000L).source)
-        for (t in 18_000L..23_000L step 1_000L)
-            assertEquals(CarGpsSourceSelector.Source.PHONE,
-                selector.select(car(t), phone(t), t).source)
-        assertEquals(CarGpsSourceSelector.Source.ICCOA,
-            selector.select(car(24_000L), phone(24_000L), 24_000L).source)
+        val r = selector.select(null, phone(21_000L), 21_000L, GpsSourceMode.CAR)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+        assertNull(r.latitude)
+        assertNull(r.longitude)
+        assertNull(r.speedKmh)
     }
 
-    @Test fun oldStoredCarFixCannotActivateCarAfterScreenReopen() {
+    @Test fun phoneModeNeverBorrowsCarFixEvenAfterPhoneDisappears() {
         val selector = CarGpsSourceSelector()
-        val result = selector.select(car(1_000L), phone(20_000L), 20_000L)
-        assertEquals(CarGpsSourceSelector.Source.PHONE, result.source)
-        assertEquals(55.55, result.latitude!!, 0.000001)
+        val first = selector.select(car(10_000L), phone(10_000L), 10_000L,
+            GpsSourceMode.PHONE)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, first.source)
+        assertEquals(55.55, first.latitude!!, 0.00001)
+        val lost = selector.select(car(50_000L), null, 50_000L, GpsSourceMode.PHONE)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, lost.source)
+        assertNull(lost.latitude)
+        assertNull(lost.longitude)
+        assertNull(lost.speedKmh)
     }
 
-    @Test fun speedIsTakenFromSelectedSourceAndCarQuantizationIsSmoothed() {
-        val selector = connectedSelector()
-        val previous = selector.select(car(18_000L, 28.8f), phone(18_000L, 60f),18_000L)
-        assertEquals(CarGpsSourceSelector.Source.ICCOA, previous.source)
-        assertTrue(previous.speedKmh!! < 30f)
-        val next = selector.select(car(19_000L, 32.4f),phone(19_000L,60f),19_000L)
-        assertTrue(next.speedKmh!! > previous.speedKmh!!)
+    @Test fun switchingSettingTakesEffectImmediatelyWithoutHysteresis() {
+        val selector = CarGpsSourceSelector()
+        val phone = selector.select(car(10_000L), phone(10_000L), 10_000L,
+            GpsSourceMode.PHONE)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, phone.source)
+        val vehicle = selector.select(car(10_100L), phone(10_100L), 10_100L,
+            GpsSourceMode.CAR)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, vehicle.source)
+        assertEquals(55.55207, vehicle.latitude!!, 0.00001)
+        val back = selector.select(car(10_200L), phone(10_200L), 10_200L,
+            GpsSourceMode.PHONE)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, back.source)
+        assertEquals(55.55, back.latitude!!, 0.00001)
+    }
+
+    @Test fun carGearOnlyDoesNotPretendToBeNewGpsPosition() {
+        val selector = CarGpsSourceSelector()
+        val first = car(10_000L)
+        selector.select(first, phone(10_000L), 10_000L, GpsSourceMode.CAR)
+        for (now in 11_000L..30_000L step 1_000L) {
+            val gearOnly = first.copy(receivedAtMs = now, gearAtMs = now,
+                gearSpeedRaw = 22L)
+            val r = selector.select(gearOnly, phone(now), now, GpsSourceMode.CAR)
+            assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+            assertEquals(now - 10_000L, r.lastPacketAgeMs)
+            assertEquals(55.55207, r.latitude!!, 0.00001)
+        }
+    }
+
+    @Test fun freshZeroSatelliteOemPositionRemainsValidInCarMode() {
+        val selector = CarGpsSourceSelector()
+        for (now in 10_000L..30_000L step 1_000L) {
+            val r = selector.select(car(now).copy(
+                satellitesUsed = 0L, satellitesVisible = 0L
+            ), phone(now, 90f), now, GpsSourceMode.CAR)
+            assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+            assertEquals(55.55207, r.latitude!!, 0.00001)
+        }
+    }
+
+    @Test fun oldCachedCarFixIsNotAcceptedAsFreshWhenScreenReopens() {
+        val selector = CarGpsSourceSelector()
+        val r = selector.select(car(1_000L), phone(20_000L), 20_000L,
+            GpsSourceMode.CAR)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, r.source)
+        assertNull(r.latitude)
+    }
+
+    @Test fun invalidCarAndPhoneCoordinatesNeverCrossSourceBoundary() {
+        val selector = CarGpsSourceSelector()
+        assertNull(selector.select(car(10_000L).copy(latitude = 91.0),
+            phone(10_000L), 10_000L, GpsSourceMode.CAR).latitude)
+        assertNull(selector.select(car(11_000L),
+            phone(11_000L).copy(latitude = 91.0), 11_000L,
+            GpsSourceMode.PHONE).latitude)
+    }
+
+    @Test fun speedIsSmoothedFromCarOnly() {
+        val selector = CarGpsSourceSelector()
+        val first = selector.select(car(10_000L, 28.8f), phone(10_000L, 60f),
+            10_000L, GpsSourceMode.CAR)
+        val next = selector.select(car(11_000L, 32.4f), phone(11_000L, 60f),
+            11_000L, GpsSourceMode.CAR)
+        assertEquals(28.8f, first.speedKmh!!, 0f)
+        assertTrue(next.speedKmh!! > first.speedKmh!!)
         assertTrue(next.speedKmh!! < 32.4f)
-        // Phone readings must not override the selected OEM source.
-        assertEquals(55.55207,next.latitude!!,0.00001)
     }
 
-    @Test fun zeroSatelliteOemFramesKeepCarPrimaryUntilActualPacketLoss() {
-        // OEM position freshness, not satellite counters or GearInfo, decides
-        // the 7-second source hysteresis. This is not proof of real OEM DR.
-        val selector = connectedSelector()
-        for (t in 18_000L..40_000L step 1_000L) {
-            val underground = car(t, speed = 14.4f).copy(
-                satellitesUsed = 0L, satellitesVisible = 0L)
-            val chosen = selector.select(underground, phone(t, speed = 40f), t)
-            assertEquals(CarGpsSourceSelector.Source.ICCOA, chosen.source)
-            assertEquals(55.55207, chosen.latitude!!, 0.000001)
-            assertTrue(chosen.speedKmh!! < 40f)
-        }
-        assertEquals(CarGpsSourceSelector.Source.ICCOA,
-            selector.select(null, phone(46_000L), 46_000L).source)
-        assertEquals(CarGpsSourceSelector.Source.PHONE,
-            selector.select(null, phone(47_000L), 47_000L).source)
-    }
-
-    @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
+    @Test fun carCoordinatesNotYetVerifiedForBaiduNeverFallbackSilently() {
         val selector = CarGpsSourceSelector()
-        for (t in 10_000L..30_000L step 1_000L) {
-            val invalid = car(t).copy(latitude = 91.0)
-            assertEquals(CarGpsSourceSelector.Source.PHONE,
-                selector.select(invalid,phone(t),t).source)
-        }
+        val unverified = VehicleLocation("BAIDU", 11_000L,
+            latitude = 55.55, longitude = 37.56)
+        val selected = selector.select(unverified, phone(11_000L),
+            11_000L, GpsSourceMode.CAR)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, selected.source)
+        assertNull(selected.latitude)
     }
 }
