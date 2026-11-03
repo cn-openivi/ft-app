@@ -26,9 +26,15 @@ internal object AaCarGps {
         // int32 microdegrees, NOT ICCOA's double or Baidu's raw int32.
         val latMicro = (latitude * 1_000_000.0).roundToInt()
         val lonMicro = (longitude * 1_000_000.0).roundToInt()
+        // Protobuf int32 negative values are sign-extended to a 64-bit
+        // two's-complement varint (10 bytes). The shared ProtoWriter.int32()
+        // currently truncates to uint32 (5 bytes), which is not the canonical
+        // representation for western/southern hemisphere coordinates.
+        // Isolate this encoding correction to AA GPS so other OEM protocols
+        // retain their existing wire behavior.
         return ProtoWriter().message(1, ProtoWriter()
-            .int32(2, latMicro)
-            .int32(3, lonMicro)
+            .varint(2, latMicro.toLong())
+            .varint(3, lonMicro.toLong())
         ).toByteArray()
     }
 

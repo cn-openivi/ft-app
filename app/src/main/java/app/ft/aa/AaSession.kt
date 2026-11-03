@@ -227,10 +227,18 @@ class AaSession(
                     ?.message(2)?.messages(1)?.map { it.int(1) }.orEmpty()
                 val sensorConfig = ProtoReader(discovery).messages(1)
                     .firstOrNull { it.int(1) == AaProtocol.CH_SENSOR }?.message(2)
+                // Log whether the OEM source was genuinely ready during AA
+                // capability negotiation, without recording the coordinates.
+                // This separates an unrequested sensor from an unavailable fix.
+                val oemFixAtDiscovery = VehicleTelemetry.current.value
+                val gpsFreshAtDiscovery = oemFixAtDiscovery?.source == "ICCOA" &&
+                    oemFixAtDiscovery.coordinatesUnit == "ANDROID_LOCATION_WGS84" &&
+                    oemFixAtDiscovery.positionFresh()
                 DiagLog.i(tag, "AA SENSOR descriptor types=$advertised " +
                     "locationDeclared=${AaProtocol.SENSOR_LOCATION in advertised} " +
                     "locationCharacterization=${sensorConfig?.int(2) ?: 0} " +
-                    "characterizationPresent=${sensorConfig?.has(2) == true}")
+                    "characterizationPresent=${sensorConfig?.has(2) == true} " +
+                    "oemGpsFreshAtDiscovery=$gpsFreshAtDiscovery")
                 sendEnc(AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE, discovery)
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
