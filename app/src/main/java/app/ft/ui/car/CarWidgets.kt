@@ -49,7 +49,11 @@ import kotlin.math.roundToInt
 fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean = false) {
     // Explicit owner-requested OEM instrumentation is always on the ICCOA
     // launcher, even when other optional widgets are disabled.
-    val showInertial = !preview && FTApp.instance.prefs.carProtocol == CarProtocol.ICCOA
+    val showInertial = !preview
+    val motionSource = when (FTApp.instance.prefs.carProtocol) {
+        CarProtocol.ICCOA -> MotionSource.ICCOA
+        CarProtocol.CARLIFE -> MotionSource.BAIDU
+    }
     if (style.widgets.isEmpty() && !showInertial) return
     val inertial by VehicleMotionTelemetry.current.collectAsState()
     val vehicle by VehicleTelemetry.current.collectAsState()
@@ -79,9 +83,10 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
             }
         }
         if (showInertial) {
-            val sensors = inertial[MotionSource.ICCOA]
-            InertialChip("Гироскоп", CarIcons.Gyro, sensors?.gyro, now)
-            InertialChip("Акселерометр", CarIcons.Acceleration, sensors?.acceleration, now)
+            val sensors = inertial[motionSource]
+            InertialChip("Гироскоп", CarIcons.Gyro, motionSource, sensors?.gyro, now)
+            InertialChip("Акселерометр", CarIcons.Acceleration, motionSource,
+                sensors?.acceleration, now)
         }
     }
 }
@@ -94,6 +99,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
 private fun InertialChip(
     title: String,
     icon: ImageVector,
+    source: MotionSource,
     reading: MotionReading?,
     nowMs: Long
 ) {
@@ -118,7 +124,7 @@ private fun InertialChip(
                 Spacer(Modifier.width(7.dp))
                 Text(title, style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.width(7.dp))
-                Text("ICCOA · $state", style = MaterialTheme.typography.labelSmall,
+                Text("${source.name} · $state", style = MaterialTheme.typography.labelSmall,
                     color = Color.White.copy(alpha = 0.7f))
             }
             val data = reading?.vector
