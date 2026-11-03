@@ -114,9 +114,21 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
 - A 2D EKF/ESKF would track [east,north,yaw,velocity,gyro_bias,wheel_scale],
   covariance and data quality. Continuous true GNSS measurements correct
   position/yaw and calibrations; wheel/IMU drive the prediction step.
-- Short outages: smooth DR prediction. Long gap or growing uncertainty:
-  show explicit **DR · estimated / accuracy unknown**, then stop reporting
-  location rather than silently claiming valid GPS.
+- At any duration without trustworthy GNSS, maintain the 2D DR prediction
+  while **verified** wheel speed and vehicle yaw remain available. Do not
+  switch DR off solely because 120 seconds elapsed or uncertainty exceeded
+  150 metres. These two old arbitrary hard cutoffs were owner-rejected.
+- Continue propagating covariance and show **DR · расчётное положение**,
+  elapsed time since trustworthy GNSS and growing estimated horizontal
+  uncertainty. High covariance means increasingly uncertain, not GPS-valid.
+  Never claim those coordinates are a genuine GNSS fix.
+- When current verified wheel speed / yaw or numerical integrity is lost,
+  do **not** invent movement; hold last reported estimate with a stale/
+  unavailable-data label until prediction can be safely resumed.
+- Time delta, non-finite values, impossible raw sensor measurements and
+  suspicious jumps in GNSS still require validation. A spoofed but plausible
+  GNSS fix needs independent verification: the current five-sigma gate alone
+  cannot establish a fix is genuine.
 - On reacquired GNSS: innovation/outlier gate then time-limited blending,
   not a teleport, with original source annotation.
 - Do not inject generated locations into Android OS or mirrored Yandex
@@ -141,8 +153,9 @@ prediction/update were ported directly to bounded pure Kotlin double
 precision as `app.ft.dr.TinyEkf` and used by source-neutral
 `app.ft.dr.DeadReckoningEkf`. The latter has 4 states
 [east_m, north_m, yaw_rad, gyro_bias_rad_per_sec], a 2D GNSS observation,
-Cholesky-positive innovation validation, outlier gates, bounded outage
-time and verified-input-only prediction. This avoids JNI, NDK, CMake,
+Cholesky-positive innovation validation, outlier gates, unrestricted
+outage duration **while inputs remain verified** and propagated covariance
+(without an arbitrary 150m uncertainty cutoff). This avoids JNI, NDK, CMake,
 native ABI packaging and additional user setup on weak Android phones.
 The implementation includes exact synthetic source-independent tests.
 
