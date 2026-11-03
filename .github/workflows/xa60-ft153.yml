@@ -1,15 +1,15 @@
-name: FT XA60 build 171 (critical fixes candidate + full unit tests and lint)
+name: FT XA60 build 173 (Quick Auth + GPS Android Auto field candidate)
 
 on:
   push:
-    branches: [openivi/ft172-quick-auth-release-20261103]
+    branches: [openivi/ft173-aa-gps-field-20261103]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: ft-xa60-build172
+  group: ft-xa60-build173
   cancel-in-progress: true
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq '.int32(5, 2)' app/src/main/java/app/ft/iccoa/IccoaAudioPlayerState.kt
           grep -Fq 'preserveAspect' app/src/main/java/app/ft/iccoa/IccoaVideoPlan.kt
-          grep -Fq 'versionCode = 172' app/build.gradle.kts
+          grep -Fq 'versionCode = 173' app/build.gradle.kts
           grep -Fq 'viewport.map(mappedX, mappedY, app.prefs.aaWidth, app.prefs.aaHeight)' app/src/main/java/app/ft/iccoa/IccoaProjection.kt
           grep -Fq 'VehicleTelemetry.publish' app/src/main/java/app/ft/iccoa/IccoaService.kt
           grep -Fq 'CarLifeCarSensors.onGps' app/src/main/java/app/ft/carlife/CarLifeSession.kt
@@ -143,7 +143,7 @@ jobs:
           bt="$ANDROID_HOME/build-tools/36.0.0"
           "$bt/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/ft-apksigner.txt"
           grep -iq "$FT_XA60_PINNED_SIGNER_SHA256" "$RUNNER_TEMP/ft-apksigner.txt"
-          "$bt/aapt" dump badging "$apk" | grep -m1 "^package: name='app.ft.xa60' versionCode='172'"
+          "$bt/aapt" dump badging "$apk" | grep -m1 "^package: name='app.ft.xa60' versionCode='173'"
           if "$bt/aapt" dump badging "$apk" | grep -q '^application-debuggable'; then
             echo "REFUSE: APK is debuggable, not a user release" >&2
             exit 1
@@ -168,7 +168,7 @@ jobs:
           sha = os.environ["GITHUB_SHA"]
           apk = pathlib.Path(os.environ["FT_APK_PATH"])
           checksum = hashlib.sha256(apk.read_bytes()).hexdigest()
-          tag = "xa60-ft172-" + sha[:12]
+          tag = "xa60-ft173-" + sha[:12]
           base = "https://api.github.com/repos/" + repo
           token = os.environ["GH_TOKEN"]
           headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
@@ -189,12 +189,12 @@ jobs:
           if release is None:
               release = github(base + "/releases", method="POST", obj={
                   "tag_name": tag, "target_commitish": sha,
-                  "name": "FT 172 XA60 critical fixes test candidate " + sha[:12],
-                  "body": "Owner-signed FT172 TEST CANDIDATE, package app.ft.xa60. ICCOA PINless reconnect, AA LOCATION, rotation touch and navigation speech are not yet verified on Toyota XA60 HU. All available Android unit tests and release lint were executed as a publishing gate. This is NOT final HU acceptance. Do not override harmful-app warnings. APK SHA-256: " + checksum + ". Certificate SHA-256: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c.",
+                  "name": "FT 173 XA60 GPS/AA test candidate " + sha[:12],
+                  "body": "Owner-signed FT173 TEST CANDIDATE, package app.ft.xa60. Inherits FT172 Quick Auth fixes; GPS sensor discovery, signed coordinates and Android Auto navigation wire corrected. Actual phone LOCATION subscription is NOT yet confirmed. All unit tests and release lint are mandatory. Not final HU acceptance; do not override harmful-app warnings. APK SHA-256: " + checksum + ". Certificate SHA-256: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c.",
                   "prerelease": True, "draft": False
               })
           existing = {item["name"]:item for item in release.get("assets", [])}
-          filename = "ft-172-xa60-" + sha[:12] + ".apk"
+          filename = "ft-173-xa60-" + sha[:12] + ".apk"
           if filename in existing:
               asset = existing[filename]
               if asset["size"] != apk.stat().st_size or asset.get("digest") not in ("sha256:" + checksum, None):

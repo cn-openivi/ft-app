@@ -93,7 +93,10 @@ object VehicleTelemetry {
     @Synchronized fun updateIccoaSpeed(rawSpeed: Long, gearRaw: Long? = null) {
         if (rawSpeed < 0L || rawSpeed > 100_000L || (gearRaw != null && gearRaw !in 0L..4L)) return
         val now = System.currentTimeMillis()
-        val old = _current.value?.takeIf { it.source == "ICCOA" && it.fresh(now) }
+        // A new GearInfo frame must not erase the last GPS position after a
+        // long gap. Freshness uses positionAtMs independently; retaining the
+        // stale fix is for UI only and never makes it usable by Android Auto.
+        val old = _current.value?.takeIf { it.source == "ICCOA" }
         _current.value = (old ?: VehicleLocation("ICCOA", now, positionAtMs = 0L)).copy(
             receivedAtMs = now,
             gearSpeedRaw = rawSpeed,

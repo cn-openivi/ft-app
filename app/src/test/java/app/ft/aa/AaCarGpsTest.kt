@@ -20,6 +20,27 @@ class AaCarGpsTest {
         assertEquals(setOf(2, 3), gps.fields.keys)
     }
 
+    @Test fun positiveWgs84GpsUsesExactOfficialProtobufWireBytes() {
+        // Independently serialized with the reference Google Protobuf encoder.
+        // SensorEventIndication.location[0] {latitude=55755826,longitude=37617299}.
+        val packet = AaCarGps.event(car(55.755826, 37.617299), 1_500L)!!
+        assertArrayEquals(byteArrayOf(
+            10, 10, 16, -78, -120, -53, 26, 24, -109, -3, -9, 17
+        ), packet)
+    }
+
+    @Test fun negativeWgs84LatitudeUsesCanonicalTenByteInt32Encoding() {
+        // Reference Google Protobuf encoder, not an FT ProtoReader round-trip.
+        val packet = AaCarGps.event(car(-33.8688, 151.2093), 1_500L)!!
+        assertArrayEquals(byteArrayOf(
+            10, 16, 16, -128, -24, -20, -17, -1, -1, -1, -1,
+            -1, 1, 24, -44, -118, -115, 72
+        ), packet)
+        val parsed = ProtoReader(packet).message(1)!!
+        assertEquals(-33_868_800, parsed.int(2))
+        assertEquals(151_209_300, parsed.int(3))
+    }
+
     @Test fun rejectMissingStaleAndUnverifiedCoordinateReference() {
         assertNull(AaCarGps.event(null, 1_500L))
         assertNull(AaCarGps.event(car(55.75, 37.62), 4_100L))

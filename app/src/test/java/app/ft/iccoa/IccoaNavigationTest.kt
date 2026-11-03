@@ -38,6 +38,16 @@ class IccoaNavigationTest {
         assertEquals(guided, IccoaNavigation.sensorActivation(guided, aaConnected = false))
     }
 
+    @Test fun noUnprovenClusterArrowPayloadInControl11() {
+        val p = ProtoReader(IccoaNavigation.encode(NavigationInfo(
+            active = true, maneuver = 8, road = "Lenina", distanceMeters = 300)))
+        assertEquals(setOf(1, 3, 4, 6), p.fields.keys)
+        assertFalse(p.has(2))
+        assertFalse(p.has(5))
+        assertFalse(p.has(7))
+        assertFalse(p.has(8))
+    }
+
     @Test fun inactiveNavigationTellsCarLinkSensorManagerToStop() {
         val p = ProtoReader(IccoaNavigation.encode(NavigationInfo(active = false)))
         assertFalse(p.bool(1))

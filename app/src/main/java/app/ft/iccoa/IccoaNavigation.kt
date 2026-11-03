@@ -25,6 +25,10 @@ internal object IccoaNavigation {
     ): NavigationInfo =
         if ((aaConnected || ftProjectionActive) && !info.active) info.copy(active = true) else info
 
+    /** CarLinkAdapter Control11 toggles CarLinkSensorMgr and publishes NaviType.
+     * It does not forward icon/text/distance into MeterInfoService; no speculative
+     * turn icon or titles are sent. Preserve the earlier OEM payload.
+     */
     fun encode(info: NavigationInfo): ByteArray = ProtoWriter()
         .bool(1, info.active)
         .string(3, info.distanceMeters?.coerceAtLeast(0)?.toString() ?: "")

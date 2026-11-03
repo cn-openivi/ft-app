@@ -83,6 +83,7 @@ class IccoaService : Service() {
         override fun run() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
+            // OEM Control11 is sensor activation; the arrow-to-meter route is unproven.
             val encoded = IccoaNavigation.encode(activation)
             val now = android.os.SystemClock.elapsedRealtime()
             // Most HUs only need state changes; a compatibility resend is opt-in
@@ -156,6 +157,10 @@ class IccoaService : Service() {
                 // WGS84 is the Android API contract; confirm actual HU values on-road.
                 coordinatesUnit = "ANDROID_LOCATION_WGS84",
                 speedRaw = fix.speedRaw, headingRaw = fix.headingRaw,
+                speedKmh = IccoaGpsUnits.speedKmh(fix.speedRaw),
+                headingDegrees = IccoaGpsUnits.headingDegrees(fix.headingRaw),
+                speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
+                headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED",
                 satellitesUsed = fix.satellitesUsed, satellitesVisible = fix.satellitesVisible,
                 deviceTimestampRaw = fix.timestampRaw
             ))

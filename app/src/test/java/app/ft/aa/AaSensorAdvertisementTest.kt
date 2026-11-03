@@ -39,6 +39,9 @@ class AaSensorAdvertisementTest {
             advertiseCarLocation = true, advertiseCarGear = true)
         val sensor = ProtoReader(response).messages(1)
             .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        // Field 2 is a GPS capability bitmask, not a refresh interval.
+        assertEquals(256, sensor.int(2)) // RAW_GPS_ONLY (no dead reckoning)
+        assertTrue(sensor.has(2))
         val types = sensor.messages(1).map { it.int(1) }
         assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GEAR,
             AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), types)
@@ -49,5 +52,23 @@ class AaSensorAdvertisementTest {
     @Test fun noCarLocationIsAdvertisedInOtherProtocols() {
         assertEquals(listOf(AaProtocol.SENSOR_DRIVING_STATUS,
             AaProtocol.SENSOR_NIGHT_MODE), sensors(false))
+        val response = AaMessages.serviceDiscoveryResponse(
+            1920, 1008, 30, 160, false, "XA60",
+            advertiseCarLocation = false)
+        val config = ProtoReader(response).messages(1)
+            .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        assertFalse(config.has(2)) // No unsupported OEM GPS characterization
+    }
+
+    @Test fun locationCharacterizationIsNotRefreshIntervalOrInventedFusion() {
+        val response = AaMessages.serviceDiscoveryResponse(
+            1280, 720, 30, 160, true, "XA60",
+            advertiseCarLocation = true)
+        val config = ProtoReader(response).messages(1)
+            .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        val rawGpsOnly = config.int(2)
+        assertEquals(0x100, rawGpsOnly)
+        assertEquals(0, rawGpsOnly and 0xFF) // no advertised inertial / fused flags
+        assertNotEquals(1000, rawGpsOnly)
     }
 }
