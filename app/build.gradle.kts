@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 170
-        versionName = "3.9.56-xa60-critical-candidate"
+        versionCode = 171
+        versionName = "3.9.57-xa60-quick-auth-test"
     }
 
     signingConfigs {
