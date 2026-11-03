@@ -3,13 +3,18 @@ package app.ft.core
 /**
  * User-selected, persistent GPS origin; no automatic vehicle/handset fallback.
  *
- * CAR: only the head unit's verified vehicle position is eligible for FT
- * widgets and the future wheel/IMU DR pipeline. Phone coordinates are NEVER
- * treated as a correction or substitute for a lost car fix.
+ * The setting controls only the ABSOLUTE GNSS reference and LOCATION origin,
+ * not the car's independent wheel/IMU odometry.
  *
- * PHONE: only Android handset GPS is used for FT navigation widgets; FT does
- * not offer OEM LOCATION to Android Auto and does not feed the phone fix into
- * the vehicle DR estimator.
+ * CAR: accept only OEM GNSS as TinyEKF measurement; PHONE is never a fallback.
+ * PHONE: accept only handset GNSS as TinyEKF measurement; do not offer OEM
+ * LOCATION to AA. In BOTH modes the same verified OEM wheel-speed + yaw
+ * may power DR prediction if available. Phone accelerometer, gyro and
+ * magnetometer are deliberately not mixed into that estimate: handset axis
+ * mounting and magnetic interference are unverified.
+ *
+ * When no verified OEM speed/yaw is available, we cannot claim standalone
+ * FT DR merely from handset GPS or smartphone inertial sensors.
  *
  * This is independent of CarProtocol transport. Existing Baidu installs
  * default to PHONE until the user explicitly changes the source because
@@ -30,5 +35,9 @@ enum class GpsSourceMode(val id: String) {
     fun advertisesCarLocation(protocol: CarProtocol): Boolean =
         this == CAR && protocol == CarProtocol.ICCOA
 
-    fun permitsVehicleDr(): Boolean = this == CAR
+    /** Neither mode authorizes using GPS fixes from the other source. */
+    fun acceptsGnssFrom(origin: GpsSourceMode): Boolean = this == origin
+
+    /** DR may predict in either mode, using VERIFIED car odometry only. */
+    fun permitsVerifiedCarOdometry(): Boolean = true
 }
