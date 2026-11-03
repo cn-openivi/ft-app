@@ -14,8 +14,8 @@ internal object AaLocationCharacterization {
     const val DEAD_RECKONED = 0x80
     const val RAW_GNSS_ONLY = 0x100
 
-    const val VERIFIED_WHEEL_GYRO_DR =
-        PRIOR_LOCATIONS or GYROSCOPE_FUSION or WHEEL_SPEED_FUSION or DEAD_RECKONED
+    // 0x01 | 0x02 | 0x10 | 0x80 = 0x93; literal for Kotlin const val.
+    const val VERIFIED_WHEEL_GYRO_DR = 0x93
 
     fun forSession(hasVerifiedLiveDr: Boolean): Int =
         if (hasVerifiedLiveDr) VERIFIED_WHEEL_GYRO_DR else RAW_GNSS_ONLY
