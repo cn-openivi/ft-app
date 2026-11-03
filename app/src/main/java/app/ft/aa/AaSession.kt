@@ -276,6 +276,12 @@ class AaSession(
         when (id) {
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
+                if (!AaProtocol.supportsSensor(type)) {
+                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE,
+                        AaMessages.sensorStartResponse(AaProtocol.STATUS_INVALID_SENSOR))
+                    DiagLog.w(tag, "sensor start rejected unsupported type=$type")
+                    return
+                }
                 sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_START_RESPONSE, AaMessages.sensorStartResponse())
                 when (type) {
                     AaProtocol.SENSOR_DRIVING_STATUS -> sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, AaMessages.sensorDrivingStatus(0))
