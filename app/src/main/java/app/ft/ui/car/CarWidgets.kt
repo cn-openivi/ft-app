@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ft.R
 import app.ft.core.CarInfo
+import app.ft.core.CarGpsDisplaySwitch
 import app.ft.core.VehicleLocation
 import app.ft.core.VehicleTelemetry
 import kotlinx.coroutines.delay
@@ -42,10 +44,27 @@ import kotlin.math.roundToInt
 fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean = false) {
     if (style.widgets.isEmpty()) return
     val vehicle by VehicleTelemetry.current.collectAsState()
+    val phonePosition by CarInfo.phonePosition.collectAsState()
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
-    val freshVehicle = vehicle?.takeIf { it.fresh(now) }
+    // Read the current clock on every position-driven recomposition. A cached
+    // one-second Compose tick may otherwise be older than a new car GPS packet.
+    val displayNow = maxOf(now, System.currentTimeMillis())
+    val carPosition = vehicle?.takeIf {
+        val lat = it.displayLatitude
+        val lon = it.displayLongitude
+        (lat != null && lon != null && (lat != 0.0 || lon != 0.0)) ||
+            (it.rawLatitude != null && it.rawLongitude != null &&
+                (it.rawLatitude != 0L || it.rawLongitude != 0L))
+    }
+    val selected = remember { CarGpsDisplaySwitch() }
+        .select(displayNow, carPosition?.positionAtMs)
+    val shownCar = if (selected == CarGpsDisplaySwitch.Source.CAR) carPosition else null
+    val shownPhone = if (selected == CarGpsDisplaySwitch.Source.PHONE)
+        phonePosition?.takeIf { it.receivedAtMs <= displayNow &&
+            displayNow - it.receivedAtMs <= 10_000L &&
+            (it.latitude != 0.0 || it.longitude != 0.0) } else null
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -55,9 +74,9 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
             when (key) {
                 CarStyle.WIDGET_WEATHER -> WeatherChip(style.fahrenheit, preview)
                 CarStyle.WIDGET_BATTERY -> BatteryChip(preview)
-                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview, freshVehicle)
-                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(freshVehicle, preview, now)
-                CarStyle.WIDGET_COURSE -> CourseChip(freshVehicle, preview, now)
+                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview, shownCar)
+                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(shownCar, shownPhone)
+                CarStyle.WIDGET_COURSE -> CourseChip(shownCar, shownPhone)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
             }
         }
@@ -98,35 +117,41 @@ private fun SpeedChip(mph: Boolean, preview: Boolean, vehicle: VehicleLocation?)
 }
 
 @Composable
-private fun CoordinatesChip(vehicle: VehicleLocation?, preview: Boolean, now: Long) {
-    val fix = vehicle?.takeIf { it.positionFresh(now) }
-    val latitude = fix?.displayLatitude
-    val longitude = fix?.displayLongitude
+private fun CoordinatesChip(vehicle: VehicleLocation?, phone: CarInfo.PhonePosition?) {
+    // The coordinate widget displays decoded wire values as received. Source
+    // switching is time-based, not an artificial coordinate-quality score.
+    val latitude = vehicle?.displayLatitude ?: phone?.latitude
+    val longitude = vehicle?.displayLongitude ?: phone?.longitude
     val value = when {
         latitude != null && longitude != null -> String.format(Locale.US, "%.5f, %.5f", latitude, longitude)
-        fix?.rawLatitude != null && fix.rawLongitude != null ->
-            "${fix.rawLatitude}, ${fix.rawLongitude}"
+        vehicle?.rawLatitude != null && vehicle.rawLongitude != null ->
+            "${vehicle.rawLatitude}, ${vehicle.rawLongitude}"
         else -> "—"
     }
-    val detail = if (latitude != null) "${fix?.source ?: ""} · datum?"
-        else if (fix?.rawLatitude != null) "${fix.source} · raw"
-        else "${vehicle?.source ?: "CAR"} · NO FIX"
+    val detail = when {
+        vehicle != null -> vehicle.source
+        phone != null -> "PHONE"
+        else -> "NO FIX"
+    }
     Chip(CarIcons.Map, value, detail, wide = true)
 }
 
 @Composable
-private fun CourseChip(vehicle: VehicleLocation?, preview: Boolean, now: Long) {
-    val fix = vehicle?.takeIf { it.positionFresh(now) }
-    val degrees = fix?.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
-    val raw = fix?.headingRaw
+private fun CourseChip(vehicle: VehicleLocation?, phone: CarInfo.PhonePosition?) {
+    val degrees = vehicle?.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
+        ?: phone?.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
+    val raw = vehicle?.headingRaw
     val label = when {
         degrees != null -> "${degrees.roundToInt()}°"
         raw != null -> "$raw"
         else -> "—"
     }
-    val detail = if (degrees != null) (fix?.source ?: "CAR")
-        else if (raw != null) "${fix?.source ?: "CAR"} · raw"
-        else "${vehicle?.source ?: "CAR"} · NO FIX"
+    val detail = when {
+        vehicle != null && degrees == null && raw != null -> "${vehicle.source} · raw"
+        vehicle != null -> vehicle.source
+        phone != null -> "PHONE"
+        else -> "NO FIX"
+    }
     Chip(CarIcons.Rotate, label, detail)
 }
 
