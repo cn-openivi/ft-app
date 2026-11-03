@@ -26,9 +26,12 @@ internal class TinyEkf(
     private var x = DoubleArray(stateSize)
     private var p = DoubleArray(stateSize * stateSize)
 
+    @Synchronized
     fun state(): DoubleArray = x.copyOf()
+    @Synchronized
     fun covariance(): DoubleArray = p.copyOf()
 
+    @Synchronized
     fun reset(initialState: DoubleArray, covarianceDiagonal: DoubleArray) {
         require(initialState.size == stateSize)
         require(covarianceDiagonal.size == stateSize)
@@ -44,6 +47,7 @@ internal class TinyEkf(
      * TinyEKF: x = f(x, u), P = F P F' + Q.
      * Inputs are row-major, no mutable array is retained by this class.
      */
+    @Synchronized
     fun predict(
         predictedState: DoubleArray,
         jacobian: DoubleArray,
@@ -68,6 +72,7 @@ internal class TinyEkf(
      *
      * Returns false for a singular covariance without corrupting state.
      */
+    @Synchronized
     fun update(
         measurement: DoubleArray,
         expectedMeasurement: DoubleArray,
