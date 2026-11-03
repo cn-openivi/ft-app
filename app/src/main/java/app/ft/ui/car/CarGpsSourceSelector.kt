@@ -96,8 +96,15 @@ internal class CarGpsSourceSelector(
         // source-only branch when restoring FT174's car-primary hysteresis.
         // A corrupted/stale Android coordinate must not replace a lost OEM fix.
         val safePhone = phone?.takeIf {
+            // The fallback is valid only if the handset itself has a recent
+            // GNSS measurement. Receiving a cached Location callback now
+            // does not make its old elapsedRealtime fix physically current.
+            val callbackAge = nowMs - it.receivedAtMs
+            val fixAge = it.fixAgeNanosAtReceipt
             it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
-                it.longitude.isFinite() && it.longitude in -180.0..180.0
+                it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
+                callbackAge in 0L..switchAfterMs &&
+                (fixAge == null || fixAge in 0L..(switchAfterMs * 1_000_000L))
         }
         val carChosen = source == Source.ICCOA && lastCarFix != null
         return if (carChosen) {
