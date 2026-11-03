@@ -38,6 +38,39 @@ class IccoaNavigationTest {
         assertEquals(guided, IccoaNavigation.sensorActivation(guided, aaConnected = false))
     }
 
+    @Test fun guidedManeuverUsesExactOemFieldsAndRealImageBytes() {
+        val icon = byteArrayOf(0x01, 0x02, 0x03)
+        val p = ProtoReader(IccoaNavigation.encode(NavigationInfo(
+            active = true, maneuver = 8, road = "Lenina", distanceMeters = 300), icon))
+        assertTrue(p.bool(1))
+        assertArrayEquals(icon, p.bytes(2))
+        assertEquals("300", p.string(3))
+        assertEquals("m", p.string(4))
+        assertEquals("Turn left", p.string(5))
+        assertEquals("Lenina", p.string(6))
+        assertEquals("Turn left", p.string(7))
+        assertEquals("Lenina", p.string(8))
+        assertFalse(p.has(9))
+    }
+
+    @Test fun gpsOnlyActivationCannotInventTurnOrDirectionIcon() {
+        val activation = IccoaNavigation.sensorActivation(NavigationInfo(),
+            aaConnected = true)
+        val p = ProtoReader(IccoaNavigation.encode(activation, byteArrayOf(1, 2)))
+        assertTrue(p.bool(1))
+        assertFalse(p.has(2))
+        assertFalse(p.has(5))
+        assertFalse(p.has(7))
+        assertFalse(p.has(8))
+    }
+
+    @Test fun incompleteTurnDoesNotAdvertiseTurnIcon() {
+        val p = ProtoReader(IccoaNavigation.encode(NavigationInfo(
+            active = true, maneuver = 8, distanceMeters = null), byteArrayOf(1)))
+        assertFalse(p.has(2))
+        assertFalse(p.has(5))
+    }
+
     @Test fun inactiveNavigationTellsCarLinkSensorManagerToStop() {
         val p = ProtoReader(IccoaNavigation.encode(NavigationInfo(active = false)))
         assertFalse(p.bool(1))

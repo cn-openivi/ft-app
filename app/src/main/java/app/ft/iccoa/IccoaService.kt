@@ -27,6 +27,7 @@ import app.ft.core.ProtoWriter
 import app.ft.core.VehicleTelemetry
 import app.ft.core.VehicleLocation
 import app.ft.core.NavigationInfo
+import app.ft.carlife.NavigationIcons
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -83,7 +84,14 @@ class IccoaService : Service() {
         override fun run() {
             val connection = session ?: return
             val activation = IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
-            val encoded = IccoaNavigation.encode(activation)
+            // CarLink OEM accepts a PNG icon and turn text in NotifyNavigationInfo.
+            // Only a real AA maneuver gets a turn; GPS-only activation stays icon-free.
+            val turn = latestNavigation.takeIf {
+                FTApp.instance.prefs.aaClusterNavigation && it.active &&
+                    it.maneuver > 0 && it.distanceMeters != null
+            }
+            val icon = turn?.let { NavigationIcons.png(it.maneuver, it.exit) }
+            val encoded = IccoaNavigation.encode(activation, icon)
             val now = android.os.SystemClock.elapsedRealtime()
             // Most HUs only need state changes; a compatibility resend is opt-in
             // and only allowed for active sensor requests.
@@ -96,8 +104,9 @@ class IccoaService : Service() {
                 if (navigationRefreshEnabled && activation.active) {
                     main.postDelayed(navigationRefresh, IccoaControl11Gate.REFRESH_MS)
                 }
-                DiagLog.i("ICCOA", "OEM sensor activation request: active=${activation.active} " +
-                    "guided=${latestNavigation.active} aaConnected=$aaSensorAssist " +
+                DiagLog.i("ICCOA", "OEM navigation/GPS control queued: active=${activation.active} " +
+                    "guided=${latestNavigation.active} maneuverPresent=${turn != null} " +
+                    "iconBytes=${icon?.size ?: 0} aaConnected=$aaSensorAssist " +
                     "ftProjected=$ftProjectionSensorAssist")
             } else if (navigationRetries++ < 8) {
                 main.postDelayed(this, 500)

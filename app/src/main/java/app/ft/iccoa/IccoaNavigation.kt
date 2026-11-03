@@ -2,6 +2,7 @@ package app.ft.iccoa
 
 import app.ft.core.NavigationInfo
 import app.ft.core.ProtoWriter
+import app.ft.carlife.NavigationRelay
 
 /**
  * FAW RAV4 OEM Carlink.apk ucar.proto ControlIndex.notify_navigation_info = 11.
@@ -25,10 +26,35 @@ internal object IccoaNavigation {
     ): NavigationInfo =
         if ((aaConnected || ftProjectionActive) && !info.active) info.copy(active = true) else info
 
-    fun encode(info: NavigationInfo): ByteArray = ProtoWriter()
-        .bool(1, info.active)
-        .string(3, info.distanceMeters?.coerceAtLeast(0)?.toString() ?: "")
-        .string(4, "m")
-        .string(6, info.road)
-        .toByteArray()
+    /** Exact OEM ucar.proto NotifyNavigationInfo, not an Android Auto protobuf.
+     * Fields: 1 navigating, 2 PNG turn icon, 3 distance, 4 unit, 5 action,
+     * 6 where, 7/8 titles, 9 optional app id (not fabricated here).
+     * A projection-only GPS activation never invents a turn.
+     */
+    fun encode(info: NavigationInfo, directionIconPng: ByteArray? = null): ByteArray {
+        val guidedTurn = info.active && info.maneuver > 0 && info.distanceMeters != null
+        val road = info.road.take(128)
+        val w = ProtoWriter().bool(1, info.active)
+        if (guidedTurn) {
+            if (directionIconPng != null && directionIconPng.isNotEmpty() &&
+                directionIconPng.size <= 65_536) w.bytes(2, directionIconPng)
+            val operation = operation(info.maneuver)
+            w.string(5, operation)
+                .string(7, operation)
+                .string(8, road)
+        }
+        return w.string(3, info.distanceMeters?.coerceAtLeast(0)?.toString() ?: "")
+            .string(4, "m")
+            .string(6, road)
+            .toByteArray()
+    }
+
+    private fun operation(maneuver: Int): String = when (NavigationRelay.turnCode(maneuver)) {
+        2, 3, 4 -> "Turn right"
+        6, 7, 8 -> "Turn left"
+        5 -> "Make a U-turn"
+        9, 10 -> "At roundabout"
+        24 -> "Arrive"
+        else -> "Continue"
+    }
 }

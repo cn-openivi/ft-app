@@ -63,9 +63,12 @@ object AaMessages {
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_GEAR))
         sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_DRIVING_STATUS))
             .message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_NIGHT_MODE))
+        // OEM GPS normally updates at 1 Hz. Advertise the optional
+        // SensorChannelConfig.default_update_interval_ms, not just its types.
+        // The phone still owns subscription decisions; never push unsolicited GPS.
         val sensor = ProtoWriter()
             .int32(1, AaProtocol.CH_SENSOR)
-            .message(2, sensorTypes)
+            .message(2, sensorTypes.uint32(2, 1_000))
         val w = ProtoWriter()
             .message(1, video)
             .message(1, input)

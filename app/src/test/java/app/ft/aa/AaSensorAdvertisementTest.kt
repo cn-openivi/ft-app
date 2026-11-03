@@ -39,6 +39,7 @@ class AaSensorAdvertisementTest {
             advertiseCarLocation = true, advertiseCarGear = true)
         val sensor = ProtoReader(response).messages(1)
             .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        assertEquals(1000, sensor.int(2)) // GPS default interval in SensorChannelConfig
         val types = sensor.messages(1).map { it.int(1) }
         assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GEAR,
             AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), types)
