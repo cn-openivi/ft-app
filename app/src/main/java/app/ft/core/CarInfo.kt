@@ -55,6 +55,12 @@ object CarInfo {
     internal data class SpeedFix(val kmh: Float, val receivedAtMs: Long)
     private val phoneSpeedFix = MutableStateFlow<SpeedFix?>(null)
 
+    /** Current phone GPS position; unlike lastLatitude/Longitude this expires. */
+    data class PhonePosition(val latitude: Double, val longitude: Double,
+                             val headingDegrees: Float?, val receivedAtMs: Long)
+    private val _phonePosition = MutableStateFlow<PhonePosition?>(null)
+    val phonePosition: StateFlow<PhonePosition?> = _phonePosition
+
     internal fun freshPhoneSpeedKmh(nowMs: Long): Float? =
         phoneSpeedFix.value?.takeIf { fix ->
             nowMs >= fix.receivedAtMs && nowMs - fix.receivedAtMs <= 2_000L &&
@@ -76,7 +82,8 @@ object CarInfo {
         if (widgets.isEmpty()) return
         val ctx = context.applicationContext
         if (CarStyle.WIDGET_BATTERY in widgets) watchBattery(ctx)
-        if (CarStyle.WIDGET_SPEED in widgets) watchSpeed(ctx)
+        if (widgets.any { it == CarStyle.WIDGET_SPEED || it == CarStyle.WIDGET_COORDINATES ||
+                it == CarStyle.WIDGET_COURSE }) watchSpeed(ctx)
         if (CarStyle.WIDGET_WEATHER in widgets) {
             jobs += scope.launch {
                 cachedWeather()?.let { _weather.value = it }
@@ -109,6 +116,7 @@ object CarInfo {
         speedWatch = null
         _speed.value = -1f
         phoneSpeedFix.value = null
+        _phonePosition.value = null
     }
 
     private fun granted(context: Context, permission: String) =
@@ -142,10 +150,16 @@ object CarInfo {
         if (needsLocation(context)) return
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return
         val listener = LocationListener { location ->
+            val now = System.currentTimeMillis()
             val kmh = if (location.hasSpeed()) location.speed * 3.6f else -1f
             _speed.value = kmh
             phoneSpeedFix.value = if (kmh.isFinite() && kmh in 0f..300f)
-                SpeedFix(kmh, System.currentTimeMillis()) else null
+                SpeedFix(kmh, now) else null
+            _phonePosition.value = if (location.latitude.isFinite() && location.latitude in -90.0..90.0 &&
+                location.longitude.isFinite() && location.longitude in -180.0..180.0)
+                PhonePosition(location.latitude, location.longitude,
+                    location.bearing.takeIf { location.hasBearing() && it.isFinite() }, now)
+            else null
             remember(location)
         }
         val ok = try {
