@@ -1,7 +1,6 @@
 package app.ft.ui.car
 
 import app.ft.core.CarInfo
-import app.ft.core.GpsSourceMode
 import app.ft.core.VehicleLocation
 import org.junit.Assert.*
 import org.junit.Test
@@ -15,21 +14,25 @@ class CarWidgetReadingsTest {
         VehicleLocation("ICCOA", t, positionAtMs = t,
             latitude = 55.55207, longitude = 37.55462, speedKmh = speed)
 
-    @Test fun explicitlySelectedPhoneSpeedIsUsed() {
+    @Test fun phoneSpeedIsUsedBeforeCarReacquisitionHysteresis() {
         val selected = CarGpsSourceSelector().select(
-            car(10_000L), phone(10_000L), 10_000L, GpsSourceMode.PHONE)
+            car(10_000L), phone(10_000L), 10_000L)
         assertEquals("PHONE", CarWidgetReadings.sourceLabel(selected))
         assertEquals(26f, CarWidgetReadings.speedKmh(selected, false)!!, 0f)
     }
 
-    @Test fun carHoldsLastFixWithoutSwitchingToPhoneOnOutage() {
+    @Test fun carHoldsShortGpsGapThenSwitchesToPhoneAfterSevenSeconds() {
         val selector = CarGpsSourceSelector()
-        selector.select(car(10_000L), phone(10_000L), 10_000L, GpsSourceMode.CAR)
-        val selected = selector.select(null, phone(21_000L), 21_000L,
-            GpsSourceMode.CAR)
-        assertEquals(CarGpsSourceSelector.Source.ICCOA, selected.source)
-        assertEquals("ICCOA · HOLD 11s", CarWidgetReadings.sourceLabel(selected))
-        assertEquals(25.2f, CarWidgetReadings.speedKmh(selected, false)!!, 0f)
+        for (t in 10_000L..17_000L step 1_000L)
+            selector.select(car(t), phone(t), t)
+        val held = selector.select(null, phone(20_000L), 20_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, held.source)
+        assertEquals("ICCOA · HOLD 3s", CarWidgetReadings.sourceLabel(held))
+        assertEquals(25.2f, CarWidgetReadings.speedKmh(held, false)!!, 0f)
+        val fallback = selector.select(null, phone(24_000L), 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertEquals("PHONE", CarWidgetReadings.sourceLabel(fallback))
+        assertEquals(26f, CarWidgetReadings.speedKmh(fallback, false)!!, 0f)
     }
 
     @Test fun uiTickLagCannotMakeIncomingFixLookOld() {
@@ -41,18 +44,16 @@ class CarWidgetReadingsTest {
     @Test fun invalidSelectedPhoneSpeedIsNotDisplayedAsRealMeasurement() {
         val selector = CarGpsSourceSelector()
         val invalid = phone(10_000L).copy(speedKmh = Float.NaN)
-        val reading = selector.select(null, invalid, 10_000L, GpsSourceMode.PHONE)
+        val reading = selector.select(null, invalid, 10_000L)
         assertNull(CarWidgetReadings.speedKmh(reading, false))
         assertEquals(60f, CarWidgetReadings.speedKmh(reading, true)!!, 0f)
     }
 
-    @Test fun unavailableSelectedGpsDoesNotInventLocationOrSpeed() {
+    @Test fun unavailableGpsDoesNotInventLocationOrSpeed() {
         val selector = CarGpsSourceSelector()
-        for (source in GpsSourceMode.entries) {
-            val reading = selector.select(null, null, 10_000L, source)
-            assertNull(reading.latitude)
-            assertNull(reading.longitude)
-            assertNull(CarWidgetReadings.speedKmh(reading, false))
-        }
+        val reading = selector.select(null, null, 10_000L)
+        assertNull(reading.latitude)
+        assertNull(reading.longitude)
+        assertNull(CarWidgetReadings.speedKmh(reading, false))
     }
 }
