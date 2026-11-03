@@ -177,6 +177,35 @@ class CarGpsSourceSelectorTest {
         assertNull(fallback.speedKmh)
     }
 
+    @Test fun stalePhoneCallbackCannotBecomeARealBackupAtSevenSecondHandoff() {
+        val selector = connectedSelector()
+        val staleHandset = phone(10_000L, speed = 83f)
+        val fallback = selector.select(null, staleHandset, 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.longitude)
+        assertNull(fallback.speedKmh)
+        val recoveredPhone = selector.select(null, phone(24_500L, speed = 31f), 24_500L)
+        assertEquals(55.55, recoveredPhone.latitude!!, 0.00001)
+        assertEquals(31f, recoveredPhone.speedKmh!!, 0f)
+    }
+
+    @Test fun recentlyReceivedButOldGpsProviderFixIsNotFreshPhoneFallback() {
+        val selector = connectedSelector()
+        // LocationManager may replay a cached GNSS fix in a fresh callback.
+        val cachedLocation = phone(24_000L, speed = 74f)
+            .copy(fixAgeNanosAtReceipt = 12_000_000_000L)
+        val fallback = selector.select(null, cachedLocation, 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.speedKmh)
+        val currentFix = phone(24_100L, speed = 33f)
+            .copy(fixAgeNanosAtReceipt = 1_000_000_000L)
+        val current = selector.select(null, currentFix, 24_100L)
+        assertEquals(55.55, current.latitude!!, 0.00001)
+        assertEquals(33f, current.speedKmh!!, 0f)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
