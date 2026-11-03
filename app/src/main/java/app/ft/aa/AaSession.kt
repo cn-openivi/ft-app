@@ -225,8 +225,12 @@ class AaSession(
                 val advertised = ProtoReader(discovery).messages(1)
                     .firstOrNull { it.int(1) == AaProtocol.CH_SENSOR }
                     ?.message(2)?.messages(1)?.map { it.int(1) }.orEmpty()
+                val sensorConfig = ProtoReader(discovery).messages(1)
+                    .firstOrNull { it.int(1) == AaProtocol.CH_SENSOR }?.message(2)
                 DiagLog.i(tag, "AA SENSOR descriptor types=$advertised " +
-                    "locationDeclared=${AaProtocol.SENSOR_LOCATION in advertised}")
+                    "locationDeclared=${AaProtocol.SENSOR_LOCATION in advertised} " +
+                    "locationCharacterization=${sensorConfig?.int(2) ?: 0} " +
+                    "characterizationPresent=${sensorConfig?.has(2) == true}")
                 sendEnc(AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE, discovery)
                 _phase.value = Phase.DISCOVERED
                 if (prefs.carProtocol == CarProtocol.ICCOA) {
@@ -405,8 +409,12 @@ class AaSession(
                             AaCarGear.sensorError(3))
                     }
                     AaProtocol.SENSOR_LOCATION -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA)
-                            startCarGps(ProtoReader(body).long(2, 1_000L))
+                        if (prefs.carProtocol == CarProtocol.ICCOA) {
+                            val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
+                            DiagLog.i(tag, "AA phone requested car LOCATION " +
+                                "refreshIntervalMs=$requestedIntervalMs")
+                            startCarGps(requestedIntervalMs)
+                        }
                         else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGps.sensorError(3))
                     }

@@ -63,12 +63,15 @@ object AaMessages {
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_GEAR))
         sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_DRIVING_STATUS))
             .message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_NIGHT_MODE))
-        // OEM GPS normally updates at 1 Hz. Advertise the optional
-        // SensorChannelConfig.default_update_interval_ms, not just its types.
-        // The phone still owns subscription decisions; never push unsolicited GPS.
+        // SensorChannelConfig field 2 is LOCATION CHARACTERIZATION (a bitmask),
+        // NOT a sensor update interval. 256 = RAW_GPS_ONLY: OEM LocationManager
+        // fixes without dead-reckoning or fused wheel/gyro data (AA proxy source).
+        // SensorRequest field 2, issued separately by the phone, is the interval.
+        // Never advertise a car GPS characterization in Baidu-only mode.
+        if (advertiseCarLocation) sensorTypes.uint32(2, 256)
         val sensor = ProtoWriter()
             .int32(1, AaProtocol.CH_SENSOR)
-            .message(2, sensorTypes.uint32(2, 1_000))
+            .message(2, sensorTypes)
         val w = ProtoWriter()
             .message(1, video)
             .message(1, input)
