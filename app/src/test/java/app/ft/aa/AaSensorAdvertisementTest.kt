@@ -83,19 +83,21 @@ class AaSensorAdvertisementTest {
         // FT173 regressed to 1 and its sessions closed before NAVIGATION open.
         // Keep this observed SDP wire intact while adjusting sensor GPS encoding.
         for (offerGps in listOf(false, true)) {
-            val response = AaMessages.serviceDiscoveryResponse(
-                1920, 1008, 30, 240, true, "XA60",
-                advertiseCarLocation = offerGps,
-                advertiseCarGear = true
-            )
-            val nav = ProtoReader(response).messages(1)
-                .single { it.int(1) == AaProtocol.CH_NAVIGATION }
-            assertArrayEquals(
-                byteArrayOf(8, -24, 7, 16, 2),
-                nav.bytes(8)
-            )
-            assertEquals(2, nav.message(8)!!.int(2))
-            assertEquals(1000, nav.message(8)!!.int(1))
+            for (offerAudio in listOf(false, true)) {
+                val response = AaMessages.serviceDiscoveryResponse(
+                    1920, 1008, 30, 240, offerAudio, "XA60",
+                    advertiseCarLocation = offerGps,
+                    advertiseCarGear = true
+                )
+                val nav = ProtoReader(response).messages(1)
+                    .single { it.int(1) == AaProtocol.CH_NAVIGATION }
+                assertArrayEquals(
+                    byteArrayOf(8, -24, 7, 16, 2),
+                    nav.bytes(8)
+                )
+                assertEquals(2, nav.message(8)!!.int(2))
+                assertEquals(1000, nav.message(8)!!.int(1))
+            }
         }
     }
 
