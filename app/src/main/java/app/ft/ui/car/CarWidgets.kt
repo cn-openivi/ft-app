@@ -32,6 +32,12 @@ import app.ft.R
 import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
 import app.ft.core.VehicleTelemetry
+import app.ft.FTApp
+import app.ft.core.CarProtocol
+import app.ft.core.MotionSource
+import app.ft.core.MotionReading
+import app.ft.core.VehicleMotionTelemetry
+import androidx.compose.foundation.layout.Column
 import kotlinx.coroutines.delay
 import app.ft.ui.theme.ownDirection
 import java.util.Calendar
@@ -41,7 +47,11 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean = false) {
-    if (style.widgets.isEmpty()) return
+    // Explicit owner-requested OEM instrumentation is always on the ICCOA
+    // launcher, even when other optional widgets are disabled.
+    val showInertial = !preview && FTApp.instance.prefs.carProtocol == CarProtocol.ICCOA
+    if (style.widgets.isEmpty() && !showInertial) return
+    val inertial by VehicleMotionTelemetry.current.collectAsState()
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
     val selector = remember { CarGpsSourceSelector() }
@@ -67,6 +77,61 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
                 CarStyle.WIDGET_COURSE -> CourseChip(reading)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
             }
+        }
+        if (showInertial) {
+            val sensors = inertial[MotionSource.ICCOA]
+            InertialChip("Гироскоп", CarIcons.Gyro, sensors?.gyro, now)
+            InertialChip("Акселерометр", CarIcons.Acceleration, sensors?.acceleration, now)
+        }
+    }
+}
+
+/**
+ * Displays original OEM numeric vectors, not inferred degrees/second or m/s².
+ * Missing, invalid, and held readings are visibly distinct.
+ */
+@Composable
+private fun InertialChip(
+    title: String,
+    icon: ImageVector,
+    reading: MotionReading?,
+    nowMs: Long
+) {
+    val fresh = reading?.fresh(nowMs) == true
+    val state = when {
+        reading?.vector == null -> "Нет данных"
+        fresh -> "LIVE"
+        else -> "HOLD ${((reading.ageMs(nowMs) ?: 0L) / 1_000L)}с"
+    }
+    val hz = reading?.approximateHz?.takeIf { it.isFinite() && it > 0.0 }
+        ?.let { String.format(Locale.US, "%.1f Гц", it) }
+    val invalid = reading?.rejected?.takeIf { it > 0 }?.let { " · ошибок $it" } ?: ""
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = LocalCarCard.current,
+        contentColor = Color.White
+    ) {
+        Column(Modifier.widthIn(max = 320.dp).padding(horizontal = 12.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(7.dp))
+                Text(title, style = MaterialTheme.typography.labelLarge)
+                Spacer(Modifier.width(7.dp))
+                Text("ICCOA · $state", style = MaterialTheme.typography.labelSmall,
+                    color = Color.White.copy(alpha = 0.7f))
+            }
+            val data = reading?.vector
+            val axes = if (data == null) "X —   Y —   Z —"
+                else String.format(Locale.US, "X %.2f   Y %.2f   Z %.2f",
+                    data.x, data.y, data.z)
+            Text(axes, style = MaterialTheme.typography.bodySmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("RAW · ед./оси не проверены" +
+                (hz?.let { " · $it" } ?: "") + invalid,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                color = Color.White.copy(alpha = 0.62f))
         }
     }
 }
