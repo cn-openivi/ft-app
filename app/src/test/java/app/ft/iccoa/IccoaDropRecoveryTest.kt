@@ -119,4 +119,28 @@ class IccoaDropRecoveryTest {
         assertFalse(guard.active)
         assertNull(lost(guard))
     }
+    @Test fun oemControlMethod23IsConsumedInsideSessionAsTransportDisconnect() {
+        assertTrue(IccoaCloseEvent.isRemoteDisconnect(1, 23))
+        assertFalse(IccoaCloseEvent.isRemoteDisconnect(1, 22))
+        assertFalse(IccoaCloseEvent.isRemoteDisconnect(5, 23))
+    }
+
+    @Test fun typedCloseContractNeverConfusesQuickPinWithTransportRetry() {
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("quick rejected", quickNormalFallback = true).action)
+        assertEquals(IccoaCloseAction.RETRY_TRANSPORT,
+            IccoaCloseEvent.classify("car disconnected", transportFailure = true).action)
+        assertEquals(IccoaCloseAction.STOP,
+            IccoaCloseEvent.classify("bad PIN").action)
+    }
+
+    @Test fun typedCloseContractRejectsConflictingActions() {
+        try {
+            IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
+            fail("Conflicting recovery and PIN fallback should fail closed")
+        } catch (_: IllegalArgumentException) {
+            // Expected: never dispatch two incompatible terminal actions.
+        }
+    }
+
 }
