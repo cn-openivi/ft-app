@@ -20,6 +20,8 @@ import app.ft.core.GpsSourceMode
  */
 internal class DeadReckoningEkf {
     private val filter = TinyEkf(STATE_SIZE, GPS_MEASUREMENTS)
+    private val gnssContinuity = GnssContinuityGate()
+    private val odometryPlausibility = GnssOdometryPlausibility()
     private var initialized = false
     private var secondsWithoutGnss = 0.0
     private var previousWheelSpeedMetresPerSecond: Double? = null
@@ -37,6 +39,8 @@ internal class DeadReckoningEkf {
         initialized = false
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
+        gnssContinuity.reset()
+        // Resetting the model invalidates the preceding trust anchor.
     }
 
     /** A genuine, reliable GNSS fix, with verified true heading, starts DR. */
@@ -44,7 +48,8 @@ internal class DeadReckoningEkf {
         eastMetres: Double,
         northMetres: Double,
         headingDegrees: Double,
-        horizontalAccuracyMetres: Double
+        horizontalAccuracyMetres: Double,
+        measurementTimestampMs: Long? = null
     ): Boolean {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
@@ -61,6 +66,12 @@ internal class DeadReckoningEkf {
         initialized = true
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
+        gnssContinuity.reset()
+        odometryPlausibility.reset(eastMetres, northMetres)
+        if (measurementTimestampMs != null && measurementTimestampMs > 0L) {
+            gnssContinuity.confirmed(measurementTimestampMs, eastMetres, northMetres,
+                eastMetres, northMetres)
+        }
         return true
     }
 
@@ -126,6 +137,7 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(next, f, q)
         previousWheelSpeedMetresPerSecond = calibratedSpeedMetresPerSecond
+        odometryPlausibility.onVerifiedMotion(distance)
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
@@ -138,7 +150,8 @@ internal class DeadReckoningEkf {
         eastMetres: Double,
         northMetres: Double,
         horizontalAccuracyMetres: Double,
-        genuineGnss: Boolean
+        genuineGnss: Boolean,
+        measurementTimestampMs: Long? = null
     ): Boolean {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
@@ -163,6 +176,19 @@ internal class DeadReckoningEkf {
             (s11 * sq(de) - 2.0 * s01 * de * dn + s00 * sq(dn)) / determinant
         if (!innovationEnergy.isFinite() || innovationEnergy > 25.0) return false
 
+        // This bound does not inflate with EKF covariance during a tunnel.
+        // A stable but displaced GNSS cluster must not be "recovered"
+        // solely because a long blackout made NIS permissive.
+        if (!odometryPlausibility.permits(eastMetres, northMetres,
+            x[EAST], x[NORTH])) return false
+
+        // GNSS local continuity catches 10-20m reflections which can
+        // pass the probabilistic innovation test with a weak GPS accuracy.
+        // Only actual GNSS observation times may order this history.
+        if (measurementTimestampMs != null &&
+            !gnssContinuity.permits(measurementTimestampMs,
+                eastMetres, northMetres, x[EAST], x[NORTH])) return false
+
         // Mild multipath/urban-canyon disagreement is fed into the SAME
         // TinyEKF update with less measurement weight, not a second GPS
         // smoothing filter or artificial DR timeout.
@@ -178,6 +204,12 @@ internal class DeadReckoningEkf {
             doubleArrayOf(x[EAST], x[NORTH]), h, r
         )) return false
         secondsWithoutGnss = 0.0
+        val updated = filter.state()
+        if (measurementTimestampMs != null) {
+            gnssContinuity.confirmed(measurementTimestampMs,
+                eastMetres, northMetres, x[EAST], x[NORTH])
+        }
+        odometryPlausibility.confirmed(updated[EAST], updated[NORTH])
         return true
     }
 
@@ -198,11 +230,12 @@ internal class DeadReckoningEkf {
         eastMetres: Double,
         northMetres: Double,
         horizontalAccuracyMetres: Double,
-        sourceValidated: Boolean
+        sourceValidated: Boolean,
+        measurementTimestampMs: Long? = null
     ): Boolean {
         if (!selectedOrigin.acceptsGnssFrom(receivedOrigin)) return false
         return correctGnss(eastMetres, northMetres,
-            horizontalAccuracyMetres, sourceValidated)
+            horizontalAccuracyMetres, sourceValidated, measurementTimestampMs)
     }
 
     fun estimate(): Estimate? {
