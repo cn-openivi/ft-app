@@ -62,3 +62,19 @@ not a claim to have reproduced Xiaomi Error2, TLS early EOF or NAV
 subscription on a live XA60. Retain exact GitHub SHA, terminal
 `:app:testUnsignedTransitUnitTest` and explicit no-APK receipt.
 No signed release, merge or owner car trip until final joint acceptance.
+
+## 4. Same-session OEM GPS fallback compatibility (P0-B)
+
+The formerly separate source-only [PR #5](https://github.com/cn-openivi/ft-app/pull/5)
+was independently verified by CI run 41658414546. Its two exact
+GPS regression tests have now been ported into the consolidated FT/ICCOA
+PR #6: (a) fresh OEM WGS84 ICCOA packets with zero satellites remain the
+car-primary selection through its seven-second hysteresis, and only
+actual absence of new position packets triggers phone fallback;
+(b) zero satellite counters do not alter the exact Android Auto GPS
+protobuf serialization. These tests do not claim that the XA60 supplies
+new coordinates underground, or that phone AA subscribed to LOCATION.
+
+PR #5 itself remains untouched, so source history and its original CI
+receipt can be independently audited. Live vehicle acceptance is still
+reserved for the owner's single final combined FT+ICCOA campaign.
