@@ -70,7 +70,12 @@ internal class AaGpsGate {
             sample.positionFresh(nowMs)) return null
         val encoded = AaCarGps.event(sample, nowMs)
         if (encoded == null || sample == null) {
-            if (previous != null && nowMs - lastObservedAt > 3_000L) reset()
+            if (previous != null && nowMs - lastObservedAt > 3_000L) {
+                // An RF outage is not consent to discard our last *delivered*
+                // trusted location. Otherwise a spoofed post-tunnel cluster
+                // can re-anchor AA merely by sending three consistent fixes.
+                restartCandidateStream()
+            }
             return null
         }
         if (preceding != null && preceding.positionAtMs == sample.positionAtMs) return null
@@ -82,9 +87,9 @@ internal class AaGpsGate {
             val lon2 = sample.displayLongitude
             if (elapsedMs !in 1L..3_000L || lat1 == null || lon1 == null || lat2 == null || lon2 == null ||
                 unreasonableJump(lat1, lon1, lat2, lon2, elapsedMs)) {
-                // Only a genuine positive stream gap allows a fresh position anchor.
-                // A continuous but erroneous location cluster must not reset it.
-                if (elapsedMs > 3_000L) lastDelivered = null
+                // A real gap resets the *candidate stream*, not the
+                // last trusted position. Reacquisition must still satisfy
+                // the plausible displacement bound from lastDelivered.
                 previous = sample
                 consecutive = 1
                 lastObservedAt = nowMs
@@ -114,11 +119,16 @@ internal class AaGpsGate {
         return encoded
     }
 
-    fun reset() {
+    private fun restartCandidateStream() {
         previous = null
-        lastDelivered = null
         consecutive = 0
         lastObservedAt = Long.MIN_VALUE
+        // Deliberately preserve lastDelivered across GNSS outages.
+    }
+
+    fun reset() {
+        restartCandidateStream()
+        lastDelivered = null
     }
 
     private fun unreasonableJump(lat1: Double, lon1: Double, lat2: Double, lon2: Double, ms: Long): Boolean {
