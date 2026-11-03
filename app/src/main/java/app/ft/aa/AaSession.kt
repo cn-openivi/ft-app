@@ -34,6 +34,7 @@ class AaSession(
 
     private val tag = "AA"
     private val crypto = AaCrypto(context)
+    private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
     private val outLock = Any()
     private var job: Job? = null
@@ -202,7 +203,7 @@ class AaSession(
             AaProtocol.SSL_HANDSHAKE -> {
                 val out = crypto.handshakeStep(body)
                 if (out.isNotEmpty()) sendPlain(AaProtocol.CH_CONTROL, AaProtocol.SSL_HANDSHAKE, out, false)
-                if (crypto.handshakeDone) {
+                if (authCompletion.shouldSend(crypto.handshakeDone)) {
                     sendPlain(AaProtocol.CH_CONTROL, AaProtocol.AUTH_COMPLETE, AaMessages.authComplete(), false)
                     _phase.value = Phase.AUTHENTICATED
                     DiagLog.i(tag, "TLS handshake complete, auth complete sent")
