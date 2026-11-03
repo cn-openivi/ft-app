@@ -250,7 +250,7 @@ private fun PageContent(page: SettingsPage) {
         }
         SettingsPage.CAR -> {
             val protocol = CarProtocolSetting()
-            var gpsMode by remember { mutableStateOf(p.gpsSourceMode) }
+            var gpsMode by remember(protocol) { mutableStateOf(p.gpsSourceMode) }
             PickSetting(
                 title = stringResource(R.string.gps_source_title),
                 options = listOf(
