@@ -71,6 +71,8 @@ object AaProtocol {
     const val BINDING_RESPONSE = 0x8003
 
     const val STATUS_OK = 0
+    // Android Auto protocol status: unsupported sensor subscription.
+    const val STATUS_INVALID_SENSOR = -9
     const val CODEC_H264 = 3
     const val CODEC_AUDIO_PCM = 1
     const val RES_800x480 = 1
@@ -107,6 +109,10 @@ object AaProtocol {
     const val BT_WIFI_CONNECT_STATUS = 7
     const val WIFI_SECURITY_WPA2_PERSONAL = 8
     const val WIFI_AP_DYNAMIC = 1
+
+    /** The two sensor types advertised and actually emitted by FT. */
+    fun supportsSensor(type: Int): Boolean =
+        type == SENSOR_DRIVING_STATUS || type == SENSOR_NIGHT_MODE
 
     fun supportedFps(requested: Int): Int = if (requested >= 60) 60 else 30
 
