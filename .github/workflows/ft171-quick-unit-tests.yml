@@ -7,6 +7,10 @@ on:
       - openivi/ft-post170-source-only-no-build-20261102
     paths:
       - 'app/src/main/java/app/ft/iccoa/**'
+      - 'app/src/main/java/app/ft/aa/**'
+      - 'app/src/main/java/app/ft/ui/car/**'
+      - 'app/src/main/java/app/ft/core/VehicleTelemetry.kt'
+      - 'app/src/test/java/app/ft/aa/**'
       - 'app/src/main/java/app/ft/ui/home/**'
       - 'app/src/test/java/app/ft/iccoa/**'
       - '.github/workflows/ft171-quick-unit-tests.yml'
@@ -15,6 +19,10 @@ on:
       - openivi/ft-post170-source-only-no-build-20261102
     paths:
       - 'app/src/main/java/app/ft/iccoa/**'
+      - 'app/src/main/java/app/ft/aa/**'
+      - 'app/src/main/java/app/ft/ui/car/**'
+      - 'app/src/main/java/app/ft/core/VehicleTelemetry.kt'
+      - 'app/src/test/java/app/ft/aa/**'
       - 'app/src/main/java/app/ft/ui/home/**'
       - 'app/src/test/java/app/ft/iccoa/**'
       - '.github/workflows/ft171-quick-unit-tests.yml'
