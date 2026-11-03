@@ -2,6 +2,8 @@ package app.ft.aa
 
 import app.ft.core.ProtoWriter
 import app.ft.core.VehicleLocation
+import app.ft.dr.DrNavigationFix
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
@@ -35,6 +37,38 @@ internal object AaCarGps {
         return ProtoWriter().message(1, ProtoWriter()
             .varint(2, latMicro.toLong())
             .varint(3, lonMicro.toLong())
+        ).toByteArray()
+    }
+
+    /**
+     * FUSED WGS84 (not RAW_GNSS). Only for sessions that announced
+     * LocationCharacterization.DEAD_RECKONED and received an explicit
+     * SensorRequest(LOCATION). TinyEKF source and wheel/yaw units must be
+     * independently validated before DrNavigationTelemetry can supply it.
+     *
+     * Android Auto GPSLocation submessage fields 2,3 are signed int32
+     * microdegrees and optional field 4 is unsigned horizontal accuracy
+     * in metres. The wire has NO "estimated" flag, so characterization
+     * and conservative accuracy are mandatory.
+     */
+    fun fusedEvent(
+        estimate: DrNavigationFix?,
+        nowMs: Long,
+        sessionCharacterization: Int
+    ): ByteArray? {
+        if (estimate == null || !estimate.eligibleForAa(nowMs) ||
+            !AaLocationCharacterization.permitsEstimatedPosition(
+                sessionCharacterization)) return null
+        val accuracy = ceil(estimate.accuracyMetres)
+            .coerceAtLeast(1.0)
+        if (!accuracy.isFinite() || accuracy > Int.MAX_VALUE) return null
+        if (estimate.latitude == 0.0 && estimate.longitude == 0.0) return null
+        val lat = (estimate.latitude * 1_000_000.0).roundToInt()
+        val lon = (estimate.longitude * 1_000_000.0).roundToInt()
+        return ProtoWriter().message(1, ProtoWriter()
+            .varint(2, lat.toLong())
+            .varint(3, lon.toLong())
+            .uint32(4, accuracy.toInt())
         ).toByteArray()
     }
 
