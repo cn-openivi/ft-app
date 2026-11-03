@@ -82,7 +82,8 @@ internal class GnssContinuityGate {
         // Only a genuine gap in observed GNSS packets clears the local
         // continuity history. Repeated rejected measurements must never
         // reset it or provide a false re-anchor.
-        if (timestampMs == pendingActualGapAtMs) {
+        if (pendingActualGapAtMs != Long.MIN_VALUE &&
+            timestampMs >= pendingActualGapAtMs) {
             accepted.clear()
             cleanResiduals.clear()
             pendingActualGapAtMs = Long.MIN_VALUE
