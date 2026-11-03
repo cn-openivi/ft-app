@@ -6,6 +6,7 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 import kotlin.math.sqrt
+import app.ft.core.GpsSourceMode
 
 /**
  * A protocol-neutral 2D prediction/filter using the embedded MIT TinyEKF port.
@@ -21,6 +22,7 @@ internal class DeadReckoningEkf {
     private val filter = TinyEkf(STATE_SIZE, GPS_MEASUREMENTS)
     private var initialized = false
     private var secondsWithoutGnss = 0.0
+    private var previousWheelSpeedMetresPerSecond: Double? = null
 
     data class Estimate(
         val eastMetres: Double,
@@ -34,6 +36,7 @@ internal class DeadReckoningEkf {
     fun reset() {
         initialized = false
         secondsWithoutGnss = 0.0
+        previousWheelSpeedMetresPerSecond = null
     }
 
     /** A genuine, reliable GNSS fix, with verified true heading, starts DR. */
@@ -57,6 +60,7 @@ internal class DeadReckoningEkf {
         )
         initialized = true
         secondsWithoutGnss = 0.0
+        previousWheelSpeedMetresPerSecond = null
         return true
     }
 
@@ -69,14 +73,19 @@ internal class DeadReckoningEkf {
         dtSeconds: Double,
         calibratedSpeedMetresPerSecond: Double,
         vehicleYawRateRadiansPerSecond: Double,
-        wheelAndGyroVerified: Boolean
+        wheelAndGyroVerified: Boolean,
+        longitudinalAccelerationMetresPerSecond2: Double? = null,
+        accelerationVerified: Boolean = false
     ): Estimate? {
         if (!initialized || !wheelAndGyroVerified ||
             !dtSeconds.isFinite() || dtSeconds !in 0.001..1.0 ||
             !calibratedSpeedMetresPerSecond.isFinite() ||
             calibratedSpeedMetresPerSecond !in 0.0..65.0 ||
             !vehicleYawRateRadiansPerSecond.isFinite() ||
-            abs(vehicleYawRateRadiansPerSecond) > 3.0) return null
+            abs(vehicleYawRateRadiansPerSecond) > 3.0 ||
+            (accelerationVerified && (longitudinalAccelerationMetresPerSecond2 == null ||
+                !longitudinalAccelerationMetresPerSecond2.isFinite() ||
+                abs(longitudinalAccelerationMetresPerSecond2) > 20.0))) return null
 
         val x = filter.state()
         val distance = calibratedSpeedMetresPerSecond * dtSeconds
@@ -99,11 +108,24 @@ internal class DeadReckoningEkf {
 
         val q = DoubleArray(STATE_SIZE * STATE_SIZE)
         val travelledStdMetres = 0.15 + 0.03 * distance
-        q[EAST * STATE_SIZE + EAST] = sq(travelledStdMetres) * dtSeconds
-        q[NORTH * STATE_SIZE + NORTH] = sq(travelledStdMetres) * dtSeconds
+        // An independently verified longitudinal accelerometer can flag
+        // disagreement with wheel-speed derivatives (slip or transient lag).
+        // Increase EKF motion uncertainty; do not create a second filter,
+        // replace wheel velocity or double-integrate acceleration.
+        val previous = previousWheelSpeedMetresPerSecond
+        val accelMismatch = if (accelerationVerified && previous != null)
+            abs((calibratedSpeedMetresPerSecond - previous) / dtSeconds -
+                requireNotNull(longitudinalAccelerationMetresPerSecond2)) else 0.0
+        val motionUncertaintyFactor = 1.0 +
+            (accelMismatch / 2.0).coerceIn(0.0, 8.0)
+        q[EAST * STATE_SIZE + EAST] =
+            sq(travelledStdMetres) * dtSeconds * motionUncertaintyFactor
+        q[NORTH * STATE_SIZE + NORTH] =
+            sq(travelledStdMetres) * dtSeconds * motionUncertaintyFactor
         q[HEADING * STATE_SIZE + HEADING] = sq(0.01) * dtSeconds
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(next, f, q)
+        previousWheelSpeedMetresPerSecond = calibratedSpeedMetresPerSecond
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
@@ -121,23 +143,36 @@ internal class DeadReckoningEkf {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0) return false
+            horizontalAccuracyMetres < 0.0) return false
 
         val x = filter.state()
         val p = filter.covariance()
-        val uncertainty = sq(horizontalAccuracyMetres)
+        val uncertainty = sq(max(0.5, horizontalAccuracyMetres))
         val de = eastMetres - x[EAST]
         val dn = northMetres - x[NORTH]
-        // 5-sigma simple 2D innovation gate, without assuming false precision.
+        // Full 2D normalized innovation squared (NIS), including the
+        // east/north cross covariance predicted from IMU yaw and wheel speed.
+        // A single GPS multipath excursion should not teleport the trajectory.
+        val s00 = p[EAST * STATE_SIZE + EAST] + uncertainty
+        val s11 = p[NORTH * STATE_SIZE + NORTH] + uncertainty
+        val s01 = (p[EAST * STATE_SIZE + NORTH] +
+            p[NORTH * STATE_SIZE + EAST]) / 2.0
+        val determinant = s00 * s11 - s01 * s01
+        if (!determinant.isFinite() || determinant <= 0.0) return false
         val innovationEnergy =
-            sq(de) / max(1e-6, p[EAST * STATE_SIZE + EAST] + uncertainty) +
-            sq(dn) / max(1e-6, p[NORTH * STATE_SIZE + NORTH] + uncertainty)
+            (s11 * sq(de) - 2.0 * s01 * de * dn + s00 * sq(dn)) / determinant
         if (!innovationEnergy.isFinite() || innovationEnergy > 25.0) return false
 
+        // Mild multipath/urban-canyon disagreement is fed into the SAME
+        // TinyEKF update with less measurement weight, not a second GPS
+        // smoothing filter or artificial DR timeout.
+        val weightInflation = (innovationEnergy / 9.0).coerceIn(1.0, 4.0)
+        val observationVariance = uncertainty * weightInflation
         val h = DoubleArray(GPS_MEASUREMENTS * STATE_SIZE)
         h[0] = 1.0
         h[STATE_SIZE + 1] = 1.0
-        val r = doubleArrayOf(uncertainty, 0.0, 0.0, uncertainty)
+        val r = doubleArrayOf(observationVariance, 0.0,
+            0.0, observationVariance)
         if (!filter.update(
             doubleArrayOf(eastMetres, northMetres),
             doubleArrayOf(x[EAST], x[NORTH]), h, r
@@ -152,6 +187,24 @@ internal class DeadReckoningEkf {
      * covariance and callers must label it as estimated, never actual GNSS.
      * Non-finite state/covariance is still rejected as numerically invalid.
      */
+    /**
+     * The chosen origin is a hard source gate, independent of EKF quality.
+     * Neither selected GPS mode may silently use the other as a backup.
+     * Both can use the SAME verified vehicle wheel/IMU prediction above.
+     */
+    fun correctSelectedGnss(
+        selectedOrigin: GpsSourceMode,
+        receivedOrigin: GpsSourceMode,
+        eastMetres: Double,
+        northMetres: Double,
+        horizontalAccuracyMetres: Double,
+        sourceValidated: Boolean
+    ): Boolean {
+        if (!selectedOrigin.acceptsGnssFrom(receivedOrigin)) return false
+        return correctGnss(eastMetres, northMetres,
+            horizontalAccuracyMetres, sourceValidated)
+    }
+
     fun estimate(): Estimate? {
         if (!initialized) return null
         val x = filter.state()
