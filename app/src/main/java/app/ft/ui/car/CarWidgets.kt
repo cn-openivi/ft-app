@@ -34,6 +34,7 @@ import app.ft.core.VehicleLocation
 import app.ft.core.VehicleTelemetry
 import app.ft.FTApp
 import app.ft.core.CarProtocol
+import app.ft.core.GpsSourceMode
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -59,12 +60,13 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
     val selector = remember { CarGpsSourceSelector() }
+    val gpsMode = FTApp.instance.prefs.gpsSourceMode
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
     // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
     val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps)
-    val reading = selector.select(vehicle, phoneGps, displayNow)
+    val reading = selector.select(vehicle, phoneGps, displayNow, gpsMode)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -75,8 +77,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
                 CarStyle.WIDGET_WEATHER -> WeatherChip(style.fahrenheit, preview)
                 CarStyle.WIDGET_BATTERY -> BatteryChip(preview)
                 CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview, reading)
-                // ICCOA wins after 7s of continuous fixes, PHONE takes over
-                // after 7s without car GPS. Keep a held car fix in between.
+                // Strict user-selected GPS source. Never switch on packet loss.
                 CarStyle.WIDGET_COORDINATES -> CoordinatesChip(reading)
                 CarStyle.WIDGET_COURSE -> CourseChip(reading)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
