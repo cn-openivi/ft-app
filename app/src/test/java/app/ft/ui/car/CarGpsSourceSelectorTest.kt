@@ -102,7 +102,7 @@ class CarGpsSourceSelectorTest {
         val selector = CarGpsSourceSelector()
         val result = selector.select(car(1_000L), phone(20_000L), 20_000L)
         assertEquals(CarGpsSourceSelector.Source.PHONE, result.source)
-        assertEquals(55.55, result.latitude!!, 0f)
+        assertEquals(55.55, result.latitude!!, 0.000001)
     }
 
     @Test fun speedIsTakenFromSelectedSourceAndCarQuantizationIsSmoothed() {
