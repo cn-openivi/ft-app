@@ -23,7 +23,7 @@ internal class AaTlsCiphertextCarry(private val maxPending: Int = 65_536) {
 
     fun retain(buffer: ByteBuffer) {
         require(buffer.remaining() in 0..maxPending)
-        pending = ByteArray(buffer.remaining()).also(buffer::get)
+        pending = ByteArray(buffer.remaining()).also { buffer.get(it) }
     }
 
     fun pendingBytes(): Int = pending.size
