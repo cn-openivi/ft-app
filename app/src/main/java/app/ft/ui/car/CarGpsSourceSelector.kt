@@ -1,24 +1,19 @@
 package app.ft.ui.car
 
 import app.ft.core.CarInfo
+import app.ft.core.GpsSourceMode
 import app.ft.core.VehicleLocation
 
 /**
- * FT widget source hysteresis, independent of the Android Auto sensor channel.
+ * Hard GPS source selection, shared with the owner-approved CAR/PHONE setting.
  *
- * The car has priority. Do NOT fall back because a GPS coordinate is >3s old,
- * and do NOT allow GearInfo traffic to masquerade as a new GPS fix.
- * Change source only after a sustained 7s GPS gap / 7s recovery.
+ * No automatic switching to the handset when the car loses satellites,
+ * position frames or trusted coordinates. The handset is *never* a hidden
+ * input to CAR/DR. When the source is PHONE, no car position or speed is used.
+ * Future CAR-only TinyEKF may supply a separately labelled estimated position
+ * without changing this origin policy.
  */
-internal class CarGpsSourceSelector(
-    private val switchAfterMs: Long = 7_000L,
-    private val maxRecoveryGapMs: Long = 3_500L
-) {
-    init {
-        require(switchAfterMs in 5_000L..10_000L)
-        require(maxRecoveryGapMs in 1_000L until switchAfterMs)
-    }
-
+internal class CarGpsSourceSelector {
     enum class Source { ICCOA, PHONE }
 
     data class Reading(
@@ -37,67 +32,54 @@ internal class CarGpsSourceSelector(
         val label: String get() = source.name
     }
 
-    private var source = Source.PHONE
-    private var lastObservedCarPositionMs = Long.MIN_VALUE
-    private var lastCarPacketAtMs: Long? = null
-    private var stableCarSinceMs: Long? = null
+    private var lastCarPositionAtMs = Long.MIN_VALUE
     private var lastCarFix: VehicleLocation? = null
     private var carSpeedFilteredKmh: Float? = null
 
     fun select(
         vehicle: VehicleLocation?,
         phone: CarInfo.PhoneGpsFix?,
-        nowMs: Long
-    ): Reading {
-        val candidate = vehicle?.takeIf {
-            it.source == "ICCOA" && it.positionAtMs > 0L &&
-                it.displayLatitude != null && it.displayLongitude != null
-        }
-        if (candidate != null && candidate.positionAtMs != lastObservedCarPositionMs) {
-            val previousPosition = lastObservedCarPositionMs
-            lastObservedCarPositionMs = candidate.positionAtMs
-            // Newly mounted screens may see an old stored fix. That is not
-            // evidence of live telemetry, even though it can be displayed.
-            val age = nowMs - candidate.positionAtMs
-            if (candidate.positionAtMs > previousPosition &&
-                age >= -1_000L && age <= maxRecoveryGapMs) {
-                val last = lastCarPacketAtMs
-                if (last == null || nowMs < last || nowMs - last > maxRecoveryGapMs) {
-                    stableCarSinceMs = nowMs
-                    carSpeedFilteredKmh = null
-                }
-                lastCarPacketAtMs = nowMs
-                lastCarFix = candidate
-                val speed = candidate.speedKmh?.takeIf { it.isFinite() && it in 0f..300f }
-                if (speed != null) {
-                    // OEM Location.getSpeed was floored to integer m/s;
-                    // smooth only the widget display, never AA wire data.
-                    carSpeedFilteredKmh = carSpeedFilteredKmh?.let {
-                        it * 0.55f + speed * 0.45f
-                    } ?: speed
-                }
+        nowMs: Long,
+        mode: GpsSourceMode
+    ): Reading = when (mode) {
+        GpsSourceMode.PHONE -> {
+            val validPhone = phone?.takeIf {
+                it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
+                it.longitude.isFinite() && it.longitude in -180.0..180.0
             }
+            Reading(
+                Source.PHONE, null, validPhone,
+                (nowMs - (validPhone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
+                validPhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f }
+            )
         }
 
-        val lastCar = lastCarPacketAtMs
-        when (source) {
-            Source.ICCOA ->
-                if (lastCar == null || nowMs - lastCar >= switchAfterMs)
-                    source = Source.PHONE
-            Source.PHONE ->
-                if (lastCar != null && stableCarSinceMs != null &&
-                    nowMs - lastCar <= maxRecoveryGapMs &&
-                    nowMs - stableCarSinceMs!! >= switchAfterMs)
-                    source = Source.ICCOA
-        }
-        val carChosen = source == Source.ICCOA && lastCarFix != null
-        return if (carChosen) {
-            Reading(Source.ICCOA, lastCarFix, phone,
-                (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
-        } else {
-            Reading(Source.PHONE, null, phone,
-                (nowMs - (phone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
-                phone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
+        GpsSourceMode.CAR -> {
+            val candidate = vehicle?.takeIf {
+                it.source == "ICCOA" && it.positionAtMs > 0L &&
+                it.displayLatitude != null && it.displayLongitude != null
+            }
+            if (candidate != null && candidate.positionAtMs > lastCarPositionAtMs) {
+                val ageMs = nowMs - candidate.positionAtMs
+                // A new screen can read an old position cache; do not make
+                // that stale cache a fresh trusted measurement.
+                if (ageMs in -1_000L..3_500L) {
+                    lastCarPositionAtMs = candidate.positionAtMs
+                    lastCarFix = candidate
+                    val speed = candidate.speedKmh
+                        ?.takeIf { it.isFinite() && it in 0f..300f }
+                    if (speed != null) {
+                        // Widget-only smoothing; never used as DR wheel speed.
+                        carSpeedFilteredKmh = carSpeedFilteredKmh
+                            ?.let { it * 0.55f + speed * 0.45f } ?: speed
+                    }
+                }
+            }
+            Reading(
+                Source.ICCOA, lastCarFix, null,
+                lastCarFix?.let { (nowMs - it.positionAtMs).coerceAtLeast(0L) } ?: 0L,
+                carSpeedFilteredKmh
+            )
         }
     }
 }
