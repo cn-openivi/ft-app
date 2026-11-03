@@ -62,7 +62,7 @@ class AaCarGpsTest {
         // int32 sign-extended to 64-bit canonical varints.
         val bytes = AaCarGps.event(car(-33.8688, -70.6693), 1_500L)!!
         assertArrayEquals(byteArrayOf(
-            10, 23, 16, -128, -112, -64, -34, -2, -1, -1, -1, -1, 1,
+            10, 22, 16, -128, -112, -64, -34, -2, -1, -1, -1, -1, 1,
             24, -8, -16, -126, -81, -3, -1, -1, -1, -1, 1
         ), bytes)
         val gps = ProtoReader(bytes).message(1)!!
