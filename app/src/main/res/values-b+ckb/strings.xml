@@ -479,4 +479,8 @@
     <string name="vehicle_coordinate_log_about">Off by default. Enable only for a test you choose: exact vehicle position can reveal where you travel. GPS navigation works regardless. Previously recorded locations and exported reports are not deleted when you switch this off.</string>
     <string name="iccoa_sensor_refresh">ICCOA: repeat sensor activation (compatibility)</string>
     <string name="iccoa_sensor_refresh_about">Off by default. For head units that stop sending car GPS, repeat the active ICCOA sensor request every 15 seconds. Usually unnecessary; may increase control traffic and cannot enable unsupported GPS. Applies after reconnecting ICCOA.</string>
+    <string name="gps_source_title">سەرچاوەی GPS</string>
+    <string name="gps_source_car">GPS ـی ئۆتۆمبێل</string>
+    <string name="gps_source_phone">GPS ـی مۆبایل</string>
+    <string name="gps_source_about">یەک سەرچاوەی GPS هەڵبژێرە. لە کاتی نەمانی سیگناڵدا بەرنامەکە خۆکارانە سەرچاوە ناگۆڕێت. خێرایی چەرخ و ژیرۆسکۆپی ئۆتۆمبێل دەتوانن پێشبینی شوێن یارمەتی بدەن ئەگەر پشتڕاست کرابن. هەڵبژاردن بۆ Android Auto دوای پەیوەستبوونەوە جێبەجێ دەبێت.</string>
 </resources>
