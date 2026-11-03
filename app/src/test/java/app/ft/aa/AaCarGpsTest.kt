@@ -29,6 +29,23 @@ class AaCarGpsTest {
         ), packet)
     }
 
+    @Test fun zeroSatelliteOemLocationStillUsesVerifiedAaLocationWire() {
+        // A fresh OEM WGS84 Location with zero satellite counters is neither
+        // proof nor disproof of dead reckoning. Do not silently reject it.
+        // The exact protobuf payload is unchanged: satellite counters are
+        // NOT fields in the AA GPSLocationData message.
+        val gate = AaGpsGate()
+        assertNull(gate.accept(car(55.755800, 37.617200, 1_000L)
+            .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_000L))
+        assertNull(gate.accept(car(55.755810, 37.617210, 1_100L)
+            .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_100L))
+        val packet = gate.accept(car(55.755826, 37.617299, 1_200L)
+            .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_200L)
+        assertArrayEquals(byteArrayOf(
+            10, 10, 16, -78, -120, -53, 26, 24, -109, -3, -9, 17
+        ), packet)
+    }
+
     @Test fun negativeWgs84LatitudeUsesCanonicalTenByteInt32Encoding() {
         // Reference Google Protobuf encoder, not an FT ProtoReader round-trip.
         val packet = AaCarGps.event(car(-33.8688, 151.2093), 1_500L)!!
