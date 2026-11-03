@@ -412,7 +412,9 @@ class AaSession(
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
                 val supported = AaProtocol.supportsSensor(
-                    type, prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)
+                    type,
+                    isIccoa = prefs.carProtocol == CarProtocol.ICCOA,
+                    carLocationOffered = prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)
                 )
                 if (!supported) {
                     // Reply with a protocol-level rejection instead of OK with no data.
