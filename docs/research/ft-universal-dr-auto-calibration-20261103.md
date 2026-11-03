@@ -66,8 +66,15 @@ distance += v_DR_mps * delta_t
 Automatically accept a sample while driving normally only when:
 - wheel-speed units have been **verified for this protocol/vehicle**;
 - independent GNSS location has **fresh, accurate speed**, sourced from
-  Location.hasSpeed()/getSpeed()/hasSpeedAccuracy() or equivalent verified
-  external GNSS; do not use ICCOA GearInfo as the GNSS reference;
+  Android Location GPS_PROVIDER, hasSpeed(), hasSpeedAccuracy() and
+  hasAccuracy(), with a monotonic getElapsedRealtimeNanos() check. Never
+  interpret a newly delivered but old batched Location as fresh. The source
+  metadata is now retained in CarInfo.PhoneGpsFix and checked by
+  PhoneGnssQuality before calling WheelSpeedAutoCalibration.observePhoneGnss.
+  Both OEM wheel and motion unit-verification flags must be explicit;
+  no production caller is enabled until OEM units are validated.
+  GPS_PROVIDER and accuracy alone do NOT establish anti-spoof authenticity;
+  do not use ICCOA GearInfo as the GNSS reference;
 - both speeds 35–140 km/h, GNSS speed accuracy <=0.6 m/s, near-straight
   |yaw|<=2 deg/sec, |a|<=0.2 m/s²; readings synchronized;
 - ratio 0.90–1.10; at most one accepted sample per >=900ms; at least
@@ -131,6 +138,16 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
   cannot establish a fix is genuine.
 - On reacquired GNSS: innovation/outlier gate then time-limited blending,
   not a teleport, with original source annotation.
+- Android Auto's own AaGpsGate previously cleared its trusted emitted
+  location after a 3-second GNSS outage; three stable but distant spoofed
+  fixes could then be emitted. The source-only AA fix now preserves the
+  last *delivered* trusted anchor across any signal outage, while resetting
+  only the candidate triple. Subsequent fixes must be plausible relative to
+  the last actually delivered position and elapsed time; explicitly restarting
+  a new AA sensor session may still reset the anchor. This gate rejects
+  implausible jumps, NOT physically plausible spoofed GNSS drift. Independent
+  wheel/IMU-based plausibility gating remains future work pending verified
+  units and directional calibration.
 - Do not inject generated locations into Android OS or mirrored Yandex
   applications. Android Auto LOCATION requires actual phone SENSOR subscription
   and appropriate characterization; existing RAW_GPS_ONLY must not label
