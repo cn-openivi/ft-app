@@ -77,6 +77,14 @@ object CarIcons {
     const val ANDROID_AUTO_PATH =
         "M12 0c-.6 0-1.11.32-1.39.8L.48 18.4a1.6 1.6 0 0 0 1.39 2.4h2l7.7-13.58.43-.77 8.13 14.35h2a1.6 1.6 0 0 0 1.39-2.4L13.39.8A1.6 1.6 0 0 0 12 0zm0 7.47l-9.07 16 .54.53L12 20.8l8.53 3.2.54-.53z"
     val AndroidAuto = icon("AndroidAuto", ANDROID_AUTO_PATH)
+    val Gyro = icon(
+        "Gyroscope",
+        "M12,2a10,10 0,1 0,0 20a10,10 0,1 0,0 -20zM12,5a7,7 0,1 1,0 14a7,7 0,1 1,0 -14zM11,7h2v5l3,2 -1,2 -4,-3z"
+    )
+    val Acceleration = icon(
+        "Acceleration",
+        "M3,20h18v2H3zM5,18h3v-6H5zM10,18h3V8h-3zM15,18h3V4h-3zM8,7l4,-4 4,4 -1.4,1.4L13,6.8V12h-2V6.8L9.4,8.4z"
+    )
     val Compass = icon(
         "Compass",
         "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM14.19,14.19L6,18l3.81,-8.19L18,6l-3.81,8.19z"
