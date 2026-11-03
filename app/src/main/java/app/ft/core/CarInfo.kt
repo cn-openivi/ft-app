@@ -64,7 +64,8 @@ object CarInfo {
         val provider: String? = null,
         val speedAccuracyMps: Float? = null,
         val horizontalAccuracyMetres: Float? = null,
-        val fixAgeNanosAtReceipt: Long? = null
+        val fixAgeNanosAtReceipt: Long? = null,
+        val receivedElapsedRealtimeNanos: Long? = null
     )
     private val _phoneGps = MutableStateFlow<PhoneGpsFix?>(null)
     val phoneGps: StateFlow<PhoneGpsFix?> = _phoneGps
@@ -166,6 +167,7 @@ object CarInfo {
             val kmh = if (location.hasSpeed()) location.speed * 3.6f else -1f
             _speed.value = kmh
             val received = System.currentTimeMillis()
+            val monotonicAtReceipt = SystemClock.elapsedRealtimeNanos()
             phoneSpeedFix.value = if (kmh.isFinite() && kmh in 0f..300f)
                 SpeedFix(kmh, received) else null
             if (location.latitude.isFinite() && location.latitude in -90.0..90.0 &&
@@ -182,8 +184,9 @@ object CarInfo {
                         location.speedAccuracyMetersPerSecond else null,
                     horizontalAccuracyMetres = if (location.hasAccuracy())
                         location.accuracy else null,
-                    fixAgeNanosAtReceipt = SystemClock.elapsedRealtimeNanos() -
-                        location.elapsedRealtimeNanos
+                    fixAgeNanosAtReceipt = monotonicAtReceipt -
+                        location.elapsedRealtimeNanos,
+                    receivedElapsedRealtimeNanos = monotonicAtReceipt
                 )
                 remember(location)
             }
