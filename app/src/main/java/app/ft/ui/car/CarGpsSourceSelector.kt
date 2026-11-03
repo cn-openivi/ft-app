@@ -92,14 +92,21 @@ internal class CarGpsSourceSelector(
                     nowMs - stableCarSinceMs!! >= switchAfterMs)
                     source = Source.ICCOA
         }
+        // Preserve the defensive PHONE input validation from the newer
+        // source-only branch when restoring FT174's car-primary hysteresis.
+        // A corrupted/stale Android coordinate must not replace a lost OEM fix.
+        val safePhone = phone?.takeIf {
+            it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
+                it.longitude.isFinite() && it.longitude in -180.0..180.0
+        }
         val carChosen = source == Source.ICCOA && lastCarFix != null
         return if (carChosen) {
             Reading(Source.ICCOA, lastCarFix, phone,
                 (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
         } else {
-            Reading(Source.PHONE, null, phone,
-                (nowMs - (phone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
-                phone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
+            Reading(Source.PHONE, null, safePhone,
+                (nowMs - (safePhone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
+                safePhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
         }
     }
 }
