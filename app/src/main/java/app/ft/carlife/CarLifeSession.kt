@@ -13,6 +13,9 @@ import app.ft.core.Prefs
 import app.ft.core.ProtoReader
 import app.ft.core.ProtoWriter
 import app.ft.core.VehicleTelemetry
+import app.ft.core.VehicleMotionTelemetry
+import app.ft.core.MotionSource
+import app.ft.core.MotionKind
 import app.ft.projection.VideoPlan
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoProfile
@@ -166,6 +169,7 @@ class CarLifeSession(
         media.forget()
         navigation.reset()
         VehicleTelemetry.clear("BAIDU")
+        VehicleMotionTelemetry.clear(MotionSource.BAIDU)
         aaMusic.close()
         unwatchScreen()
     }
@@ -510,7 +514,18 @@ class CarLifeSession(
                 if (carGpsPackets <= 3L || carGpsPackets and (carGpsPackets - 1L) == 0L)
                     DiagLog.d(tag, "BAIDU vehicle GPS frames=$carGpsPackets bytes=${c.payload.size} parsed=$ok")
             }
-            CarLifeProtocol.CMD_CAR_GYROSCOPE, CarLifeProtocol.CMD_CAR_ACCELERATION,
+            CarLifeProtocol.CMD_CAR_GYROSCOPE, CarLifeProtocol.CMD_CAR_ACCELERATION -> {
+                val gyro = c.serviceId == CarLifeProtocol.CMD_CAR_GYROSCOPE
+                val reading = if (gyro) CarLifeInertialWire.gyro(c.payload)
+                    else CarLifeInertialWire.acceleration(c.payload)
+                val count = VehicleMotionTelemetry.accept(MotionSource.BAIDU,
+                    if (gyro) MotionKind.GYROSCOPE else MotionKind.ACCELERATION, reading)
+                val received = count.accepted + count.rejected
+                if (received <= 3L || received and (received - 1L) == 0L)
+                    DiagLog.d(tag, "BAIDU ${if (gyro) "Gyroscope" else "Acceleration"} " +
+                        "received=$received valid=${count.accepted} invalid=${count.rejected} " +
+                        "bytes=${c.payload.size} units=UNVERIFIED axes=OEM_RAW")
+            }
             CarLifeProtocol.CMD_CAR_OIL, CarLifeProtocol.CMD_ERROR_CODE, CarLifeProtocol.CMD_BT_HFP_INDICATION,
             CarLifeProtocol.CMD_BT_HFP_CONNECTION, CarLifeProtocol.CMD_BT_HFP_RESPONSE, CarLifeProtocol.CMD_BT_HFP_STATUS_RESPONSE,
             CarLifeProtocol.CMD_BT_START_IDENTIFY_REQ, CarLifeProtocol.CMD_VIDEO_ENCODER_JPEG -> Unit
