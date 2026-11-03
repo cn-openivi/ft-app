@@ -227,6 +227,11 @@ class AaSession(
                     ?.message(2)?.messages(1)?.map { it.int(1) }.orEmpty()
                 val sensorConfig = ProtoReader(discovery).messages(1)
                     .firstOrNull { it.int(1) == AaProtocol.CH_SENSOR }?.message(2)
+                val navConfig = ProtoReader(discovery).messages(1)
+                    .firstOrNull { it.int(1) == AaProtocol.CH_NAVIGATION }?.message(8)
+                DiagLog.i(tag, "AA NAV SDP capability type=${navConfig?.int(2, -1)} " +
+                    "intervalMs=${navConfig?.int(1, -1)} " +
+                    "imageOptionsPresent=${navConfig?.has(3)}")
                 // Log whether the OEM source was genuinely ready during AA
                 // capability negotiation, without recording the coordinates.
                 // This separates an unrequested sensor from an unavailable fix.

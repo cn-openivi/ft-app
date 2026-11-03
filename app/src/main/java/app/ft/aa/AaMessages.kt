@@ -77,7 +77,13 @@ object AaMessages {
             .message(1, sensor)
             .message(1, ProtoWriter().int32(1, AaProtocol.CH_MEDIA_STATUS).message(9, ProtoWriter()))
             .message(1, ProtoWriter().int32(1, AaProtocol.CH_NAVIGATION)
-                .message(8, ProtoWriter().int32(1, 1000).enum(2, 1)))
+                // 2026-11-03 field comparison: AA 17.9.664054 on SM-S916B
+                // successfully opened NAVIGATION and streamed with type=2
+                // (FT172 at 08:47). FT173 type=1 consistently omitted NAV
+                // and was closed by phone 11 times after 1-6s. Semantics
+                // of NavigationType are UNVERIFIED in public proto docs.
+                // Restore empirically working exact SDP wire, not image claims.
+                .message(8, ProtoWriter().int32(1, 1000).enum(2, 2)))
         if (advertiseAudio) {
             fun sink(ch: Int, type: Int, rate: Int, channels: Int) = ProtoWriter()
                 .int32(1, ch)

@@ -15,13 +15,21 @@ class AaNavigationTest {
             .message(1, ProtoWriter().string(2, value).enum(3, unit))
             .int64(2, seconds.toLong())).toByteArray()
 
-    @Test fun discoveryAdvertisesStructuredTurnByTurnWithoutImagePromises() {
+    @Test fun discoveryUsesLastVehicleVerifiedNavigationSdpWire() {
         val discovery = ProtoReader(AaMessages.serviceDiscoveryResponse(800, 480, 30, 160, false, "FT"))
         val service = discovery.messages(1).single { it.int(1) == AaProtocol.CH_NAVIGATION }
         val config = service.message(8)!!
         assertEquals(1000, config.int(1))
-        assertEquals(1, config.int(2)) // TURN_BY_TURN, not NEXT_TURN_IMAGE
-        assertFalse(config.has(3)) // no invented NavigationImageOptions
+        // Public 16.2/17.3 NavigationType enum semantics remain unverified.
+        // An actual 2026-11-03 Samsung AA17.9 car session streamed with 2,
+        // but 11 sessions with 1 were closed by the phone before any frame.
+        assertEquals(2, config.int(2))
+        assertFalse(config.has(3)) // do not invent NavigationImageOptions
+        // Nav descriptor field 8 = exact empirically working proto bytes.
+        assertArrayEquals(byteArrayOf(0x42, 0x05, 0x08,
+            0xE8.toByte(), 0x07, 0x10, 0x02),
+            ProtoWriter().message(8, ProtoWriter()
+                .int32(1, config.int(1)).enum(2, config.int(2))).toByteArray())
     }
 
     @Test fun modernNotificationWithSeparateDistanceAndMeters() {
