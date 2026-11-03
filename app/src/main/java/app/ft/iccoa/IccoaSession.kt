@@ -91,7 +91,6 @@ class IccoaSession(
         var quickMode = false
         var pinnedCarIdentity: ByteArray? = null
         val trustedCommitGate = IccoaTrustedCommitGate()
-        var pendingTrustedPin: String? = null
         var pendingTrustedCarIdentity: ByteArray? = null
         var wifiRequested = false
         var authStarted = false
@@ -533,10 +532,9 @@ class IccoaSession(
             // Do NOT save just because AuthConfirm was written. Wait for the
             // car to open the authenticated CONTROL lane as additional proof.
             synchronized(attempt) {
-                attempt.pendingTrustedPin = pin
                 if (pinned == null) attempt.pendingTrustedCarIdentity = verifiedCarIdentity.copyOf()
             }
-            if (attempt.trustedCommitGate.onConfirmSent()) saveConfirmedCredential(attempt)
+            if (attempt.trustedCommitGate.onConfirmSent()) confirmTrustedCarAfterControl(attempt)
             status(attempt, "ICCOA: аутентификация завершена, ожидание каналов автомобиля…")
             later(attempt, 25_000) {
                 if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA")
@@ -580,28 +578,35 @@ class IccoaSession(
         }
     }
 
-    private fun saveConfirmedCredential(attempt: Attempt) {
+    /**
+     * Both signed AuthConfirm and authenticated CONTROL acceptance are needed
+     * before a first Normal session may pin the server public key. An OEM
+     * Quick reconnection proves this same identity by signature, not by PIN.
+     */
+    private fun confirmTrustedCarAfterControl(attempt: Attempt) {
         if (!active(attempt)) return
-        // A missing/changed car name must never allow a credential to be saved
-        // under an ambiguous identity. No PIN or raw key is logged.
-        val (pin, carKey) = synchronized(attempt) {
-            val savedPin = attempt.pendingTrustedPin
-            val savedKey = attempt.pendingTrustedCarIdentity
-            attempt.pendingTrustedPin = null
-            attempt.pendingTrustedCarIdentity = null
-            savedPin to savedKey
+        if (attempt.quickMode) {
+            DiagLog.i("ICCOA", "QUICK_AUTH_PINLESS_CONFIRMED: signed response + CONTROL")
+            return
         }
-        if (trustedCarName.isBlank()) return
+        val carKey = synchronized(attempt) {
+            val saved = attempt.pendingTrustedCarIdentity
+            attempt.pendingTrustedCarIdentity = null
+            saved
+        }
+        if (trustedCarName.isBlank()) {
+            DiagLog.w("ICCOA", "TRUSTED_CAR_IDENTITY_NOT_SAVED: missing approved trust scope")
+            return
+        }
         if (carKey != null) {
             val pinned = trustedCarKey.saveIfAbsent(attempt.profile.id, trustedCarName, carKey)
             DiagLog.i("ICCOA", if (pinned) "Car authentication key PINNED after CONTROL" else
                 "Car authentication key NOT pinned: mismatch or storage unavailable")
+            carKey.fill(0)
         }
-        if (pin != null) {
-            val stored = trustedPin.save(attempt.profile.id, trustedCarName, pin)
-            DiagLog.i("ICCOA", "Authenticated CONTROL: saved legacy PIN " +
-                if (stored) "ENCRYPTED" else "UNAVAILABLE")
-        }
+        // Toyota shows a new six-digit PIN for each NORMAL connection. Keep
+        // the stable verified OEM server public key, not an expired PIN.
+        trustedPin.clear()
     }
 
     private fun listen(attempt: Attempt, local: String, peer: String, port: Int) {
@@ -622,7 +627,7 @@ class IccoaSession(
                     }
                 }
                 if (port == IccoaLaneServer.CONTROL_PORT && active(attempt)) {
-                    if (attempt.trustedCommitGate.onControlReady()) saveConfirmedCredential(attempt)
+                    if (attempt.trustedCommitGate.onControlReady()) confirmTrustedCarAfterControl(attempt)
                     onControlReady()
                 }
             },
@@ -706,7 +711,6 @@ class IccoaSession(
             attempt.closed = true
             attempt.cipher = null
             attempt.pin = null
-            attempt.pendingTrustedPin = null
             attempt.pendingTrustedCarIdentity = null
             attempt.pinnedCarIdentity = null
             attempt.quickMode = false
