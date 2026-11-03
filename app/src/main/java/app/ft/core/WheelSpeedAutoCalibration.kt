@@ -36,6 +36,35 @@ internal class WheelSpeedAutoCalibration(
     private var lastAcceptedAtMs: Long? = null
     private var appliedMultiplier = 1.0
 
+    /**
+     * Validated input bridge for ICCOA or Baidu. This method is deliberately
+     * not called by live navigation until the OEM wheel/IMU units and axes are
+     * confirmed and the source identity is established.
+     */
+    fun observePhoneGnss(
+        monotonicNowNanos: Long,
+        vehicleSpeedKmh: Double,
+        independentPhoneFix: CarInfo.PhoneGpsFix?,
+        yawRateDegreesPerSecond: Double,
+        accelerationMps2: Double,
+        wheelUnitsConfirmedKmh: Boolean,
+        motionUnitsVerified: Boolean
+    ): Estimate {
+        if (!motionUnitsVerified ||
+            !PhoneGnssQuality.usableForWheelCalibration(independentPhoneFix, monotonicNowNanos))
+            return estimate()
+        val fix = requireNotNull(independentPhoneFix)
+        return observe(Observation(
+            monotonicTimeMs = monotonicNowNanos / 1_000_000L,
+            vehicleSpeedKmh = vehicleSpeedKmh,
+            independentGnssSpeedKmh = requireNotNull(fix.speedKmh).toDouble(),
+            gnssSpeedAccuracyMps = requireNotNull(fix.speedAccuracyMps).toDouble(),
+            yawRateDegreesPerSecond = yawRateDegreesPerSecond,
+            accelerationMps2 = accelerationMps2,
+            wheelUnitsConfirmedKmh = wheelUnitsConfirmedKmh
+        ))
+    }
+
     /** Returns the previous estimate when this update is not reliable. */
     fun observe(sample: Observation): Estimate {
         if (!sample.wheelUnitsConfirmedKmh ||
