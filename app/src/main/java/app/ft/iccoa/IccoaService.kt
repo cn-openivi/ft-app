@@ -26,6 +26,10 @@ import app.ft.core.DiagLog
 import app.ft.core.ProtoWriter
 import app.ft.core.VehicleTelemetry
 import app.ft.core.VehicleLocation
+import app.ft.core.MotionSource
+import app.ft.core.MotionKind
+import app.ft.core.MotionVector
+import app.ft.core.VehicleMotionTelemetry
 import app.ft.core.NavigationInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -133,6 +137,26 @@ class IccoaService : Service() {
     private var gearSpeedValid = 0L
     private var lastCarGps: IccoaGpsFix? = null
     private fun onSensorMessage(method: Int, body: ByteArray) {
+        if (method == IccoaInertialWire.GYRO_METHOD || method == IccoaInertialWire.ACCEL_METHOD) {
+            val gyro = method == IccoaInertialWire.GYRO_METHOD
+            val decoded = if (gyro) IccoaInertialWire.decodeGyro(body)
+                else IccoaInertialWire.decodeAcceleration(body)
+            val kind = if (gyro) MotionKind.GYROSCOPE else MotionKind.ACCELERATION
+            val counter = VehicleMotionTelemetry.accept(
+                MotionSource.ICCOA, kind,
+                decoded?.let {
+                    MotionVector(it.x, it.y, it.z, it.deviceTimestampRaw, it.gyroType)
+                }
+            )
+            val total = counter.accepted + counter.rejected
+            if (total <= 3 || (total and (total - 1L)) == 0L) {
+                // The diagnostic log records counts, not per-frame raw readings.
+                DiagLog.i("ICCOA", "SENSOR ${if (gyro) "GyroScope" else "Acceleration"} " +
+                    "received=$total valid=${counter.accepted} invalid=${counter.rejected} " +
+                    "payloadBytes=${body.size} units=UNVERIFIED axes=OEM_RAW")
+            }
+            return
+        }
         if (method == IccoaGearWire.SENSOR_METHOD) {
             gearSpeedFrames++
             if (IccoaGearWire.accept(body)) gearSpeedValid++
@@ -560,6 +584,7 @@ class IccoaService : Service() {
         lastVideoConfig = null
         lastCarGps = null
         VehicleTelemetry.clear("ICCOA")
+        VehicleMotionTelemetry.clear(MotionSource.ICCOA)
         _state.update { it.copy(pinRequired = false, connecting = false, connected = false) }
     }
 
