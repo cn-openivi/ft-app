@@ -65,7 +65,7 @@ internal object IccoaInertialWire {
                 gyro && field == 1 -> {
                     require(wire == 0 && gyroType == null)
                     val type = p.varint()
-                    require(type in 0L..2L)
+                    require(type in 0L..Int.MAX_VALUE.toLong())
                     gyroType = type.toInt()
                 }
                 axis in 0..2 -> {
