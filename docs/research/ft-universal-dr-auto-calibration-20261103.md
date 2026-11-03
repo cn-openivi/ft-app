@@ -282,3 +282,11 @@ The owner defined THREE critical **real navigation outcomes**, not merely
 All three scenarios require the fifth owner gate only at the single final
 combined FT+ICCOA acceptance. Continue source/tests/CI in between, do not
 require another parking trip or interim signed APK.
+
+## 2026-11-04 P0-B handset fallback freshness
+
+- The restored FT174 display selector is still car-primary with 7s OEM loss/recovery hysteresis, keyed only to new car `positionAtMs` frames; GearInfo cannot falsely renew the fix. No automatic AA sensor subscription is inferred from this behavior.
+- Fresh source inspection of `CarInfo.watchSpeed` shows `PhoneGpsFix.receivedAtMs` is **callback receipt** time, while the independent `fixAgeNanosAtReceipt` measures actual Android GPS_PROVIDER Location age using monotonic elapsedRealtimeNanos. A provider may deliver an OLD cached GPS fix in a NEW callback.
+- Prior display selector validated only latitude/longitude range and would show a phone location/speed from minutes ago as if valid after the 7s OEM handoff. P0-B source correction accepts handset fallback only when BOTH callback age and, if present, monotonic GPS fix age are within the approved 7s source-switch interval; invalid/stale phone data yields unavailable coordinates/speed without falsifying OEM freshness or pretending estimated DR.
+- Deterministic `CarGpsSourceSelectorTest` checks stale callback at fallback, recently received yet 12-second-old provider fix, and recovery on genuinely new valid GPS. This is UI source selection only; Android Auto LOCATION remains phone-subscription gated and honest sensor data never silently falls back into OEM messages.
+- Mandatory owner HU test remains pending; no APK, head-unit write, plan stage advance or profile change.
