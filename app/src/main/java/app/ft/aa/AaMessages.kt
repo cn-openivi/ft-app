@@ -53,9 +53,8 @@ object AaMessages {
                     .packedInts(1, keycodes)
                     .message(2, ProtoWriter().int32(1, width).int32(2, height).int32(3, 1))
             )
-        // FT163 field log: the AA phone opened SENSOR but subscribed only to
-        // DRIVING_STATUS and NIGHT_MODE. Prioritize advertised LOCATION so it
-        // cannot be skipped by clients that enumerate a limited sensor subset.
+        // Advertise supported sensor types; Android Auto chooses subscriptions.
+        // Repeated field order is not a mechanism to force car GPS selection.
         val sensorTypes = ProtoWriter()
         if (advertiseCarLocation)
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_LOCATION))
@@ -78,7 +77,7 @@ object AaMessages {
             .message(1, sensor)
             .message(1, ProtoWriter().int32(1, AaProtocol.CH_MEDIA_STATUS).message(9, ProtoWriter()))
             .message(1, ProtoWriter().int32(1, AaProtocol.CH_NAVIGATION)
-                .message(8, ProtoWriter().int32(1, 1000).enum(2, 2)))
+                .message(8, ProtoWriter().int32(1, 1000).enum(2, 1)))
         if (advertiseAudio) {
             fun sink(ch: Int, type: Int, rate: Int, channels: Int) = ProtoWriter()
                 .int32(1, ch)

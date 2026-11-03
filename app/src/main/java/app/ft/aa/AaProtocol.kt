@@ -16,12 +16,20 @@ object AaProtocol {
     const val MEDIA_PLAYBACK_STATUS = 0x8001
     const val MEDIA_PLAYBACK_METADATA = 0x8003
 
+    // AA navigation channel (HU->Phone start; Phone->HU nav data).
+    // IDs established from Android Auto 16.2/17.3 APK protocol traces.
     const val NAV_START = 0x8001
+    const val NAV_STOP = 0x8002
     const val NAV_STATUS = 0x8003
-    const val NAV_NEXT_TURN = 0x8004
-    const val NAV_DISTANCE = 0x8005
-    const val NAV_STATE = 0x8006
-    const val NAV_CURRENT_POSITION = 0x8007
+    const val NAV_LEGACY_TURN_IMAGE = 0x8004
+    const val NAV_LEGACY_FLAT_TURN = 0x8005
+    const val NAV_NOTIFICATION = 0x8006
+    const val NAV_NEXT_TURN_DISTANCE = 0x8007
+    // Compatibility aliases for existing callers; not evidence of distance at 0x8005.
+    const val NAV_NEXT_TURN = NAV_LEGACY_TURN_IMAGE
+    const val NAV_DISTANCE = NAV_LEGACY_FLAT_TURN
+    const val NAV_STATE = NAV_NOTIFICATION
+    const val NAV_CURRENT_POSITION = NAV_NEXT_TURN_DISTANCE
 
     const val FRAME_MIDDLE = 0
     const val FRAME_FIRST = 1
