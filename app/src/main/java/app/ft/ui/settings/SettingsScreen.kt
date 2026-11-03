@@ -80,6 +80,7 @@ import app.ft.ui.car.CarStyles
 import app.ft.aa.AaInstaller
 import app.ft.core.CarAudioBus
 import app.ft.core.CarProtocol
+import app.ft.core.GpsSourceMode
 import app.ft.ui.components.CarProtocolSetting
 import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.projection.VideoPlans
@@ -249,6 +250,20 @@ private fun PageContent(page: SettingsPage) {
         }
         SettingsPage.CAR -> {
             val protocol = CarProtocolSetting()
+            var gpsMode by remember { mutableStateOf(p.gpsSourceMode) }
+            PickSetting(
+                title = stringResource(R.string.gps_source_title),
+                options = listOf(
+                    Option(stringResource(R.string.gps_source_car)),
+                    Option(stringResource(R.string.gps_source_phone))
+                ),
+                chosen = if (gpsMode == GpsSourceMode.CAR) 0 else 1,
+                about = stringResource(R.string.gps_source_about),
+                onPick = { index ->
+                    gpsMode = if (index == 0) GpsSourceMode.CAR else GpsSourceMode.PHONE
+                    p.gpsSourceMode = gpsMode
+                }
+            )
             BoolSetting(stringResource(R.string.car_bt_reconnect), p.carBtReconnect,
                 detail = stringResource(R.string.car_bt_reconnect_about)) { p.carBtReconnect = it }
             if (protocol == CarProtocol.ICCOA) {
