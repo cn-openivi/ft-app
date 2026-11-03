@@ -9,7 +9,7 @@ canonical Nexus CURRENT_ITEM/NEXT_EDGE, or claiming working DR**.
 ## 1. Architecture: same estimator for both protocols
 
 ```text
-FAW HU Carlink       Baidu CarLife HU          Phone GNSS (secondary)
+FAW HU Carlink       Baidu CarLife HU          Selected PHONE GNSS
      |                     |                        |
 ICCOA adapter         Baidu adapter           Android GPS_PROVIDER
 GPS / GearInfo /      GPS / Velocity /        Location with speed /
@@ -115,9 +115,16 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
   `east += distance * sin(heading)`,
   `north += distance * cos(heading)`,
   `heading += (omega_yaw - bias) * dt`.
-- Prefer car GNSS if available, then recent independent phone GNSS according
-  to the existing 7-second UI source gate; DR only if **both** absolute fixes
-  are absent and calibrated wheel speed + yaw are healthy.
+- Owner superseding decision: one persistent **hard GPS origin** setting,
+  CAR or PHONE. Never switch to the other source, on timeout or on spoofing.
+  There is **no 7-second car-to-phone GPS timer** in the new selector.
+  In CAR mode only verified OEM coordinates may update TinyEKF; in PHONE
+  mode only handset GNSS may update it. In BOTH modes, independently
+  verified vehicle wheel speed, gyro and accelerometer may drive the same
+  TinyEKF prediction; no second filter or handset IMU calibration.
+  When the selected GNSS disappears, DR predicts immediately using verified
+  car motion, never waiting seven seconds. Without verified OEM motion
+  the estimate is not advanced by guessed IMU data.
 - A 2D EKF/ESKF would track [east,north,yaw,velocity,gyro_bias,wheel_scale],
   covariance and data quality. Continuous true GNSS measurements correct
   position/yaw and calibrations; wheel/IMU drive the prediction step.
@@ -132,10 +139,23 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
 - When current verified wheel speed / yaw or numerical integrity is lost,
   do **not** invent movement; hold last reported estimate with a stale/
   unavailable-data label until prediction can be safely resumed.
+- The selected source's GNSS is assimilated through the SAME TinyEKF 2D
+  measurement update, not a separate smoothing filter. The update now
+  calculates full 2D normalized innovation squared (NIS) from East/North
+  residuals AND predicted cross-covariance. NIS >25 rejects single
+  implausible jumps; moderately inconsistent NIS 9..25 inflates the
+  measurement covariance for smaller EKF gain, reducing 10–100m
+  urban-canyon/mountain multipath displacement.
+- Verified longitudinal OEM acceleration (if the orientation and SI units
+  are independently established) cross-checks wheel-speed change and
+  inflates motion-process covariance during disagreement. Gyro yaw already
+  drives EKF heading prediction. Do not double-integrate the accelerometer
+  or create a second filter.
 - Time delta, non-finite values, impossible raw sensor measurements and
-  suspicious jumps in GNSS still require validation. A spoofed but plausible
-  GNSS fix needs independent verification: the current five-sigma gate alone
-  cannot establish a fix is genuine.
+  suspicious GNSS jumps are still validated. Adaptive NIS is only
+  *statistical consistency*, not a guarantee against slow, coordinated
+  or plausible GNSS spoofing. Other-source GNSS is never substituted
+  automatically. No hard 120s/150m DR shutdown.
 - On reacquired GNSS: innovation/outlier gate then time-limited blending,
   not a teleport, with original source annotation.
 - Android Auto's own AaGpsGate previously cleared its trusted emitted
@@ -176,10 +196,15 @@ outage duration **while inputs remain verified** and propagated covariance
 native ABI packaging and additional user setup on weak Android phones.
 The implementation includes exact synthetic source-independent tests.
 
-**Source integrated is NOT a functioning car DR**: raw OEM axes/units and
-wheel-speed units require verification before an adapter sets
-`wheelAndGyroVerified`; the existing calibrator is not wired into live
-production; FT widgets and AA keep the original unmodified GPS path.
+**Source integrated is NOT yet a functioning live car DR**: raw OEM axes/units
+and wheel-speed units require verification before an adapter sets
+`wheelAndGyroVerified`; the existing calibrator and TinyEKF are not
+wired into live production location output. FT launcher source selection
+now uses persisted strict CAR/PHONE choice; AA offers OEM LOCATION
+only in CAR+ICCOA mode after the next negotiation. DR GNSS gate
+`correctSelectedGnss` enforces the chosen origin inside the same TinyEKF
+kernel. Smartphone magnetometer/gyro are excluded because handset
+mounting is unknown; verified vehicle IMU may be used in both modes.
 No new APK is built. Do not copy large ROS/autopilot stacks.
 
 ## 6. Proof gates & acceptance
