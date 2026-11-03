@@ -1,24 +1,21 @@
 package app.ft.core
 
 /**
- * User-selected, persistent GPS origin; no automatic vehicle/handset fallback.
+ * GNSS provenance gate for future TinyEKF corrections and Android Auto SDP.
  *
- * The setting controls only the ABSOLUTE GNSS reference and LOCATION origin,
- * not the car's independent wheel/IMU odometry.
+ * This is NOT the FT dashboard GPS selector. The FT dashboard has a separate
+ * owner-approved car-primary automatic 7-second car/phone hysteresis, restored
+ * from the signed FT174 baseline; it never treats GearInfo as a new GPS fix.
  *
- * CAR: accept only OEM GNSS as TinyEKF measurement; PHONE is never a fallback.
- * PHONE: accept only handset GNSS as TinyEKF measurement; do not offer OEM
- * LOCATION to AA. In BOTH modes the same verified OEM wheel-speed + yaw
- * may power DR prediction if available. Phone accelerometer, gyro and
- * magnetometer are deliberately not mixed into that estimate: handset axis
- * mounting and magnetic interference are unverified.
+ * CAR: accept only verified OEM GNSS to correct TinyEKF and advertise car
+ * LOCATION in ICCOA. AA's phone chooses whether to subscribe to LOCATION and
+ * remains responsible for its own GNSS fallback; no unsolicited AA events.
+ * PHONE: accept handset GNSS for future DR reference; do not advertise OEM
+ * LOCATION. Both modes may predict with independently verified vehicle wheel
+ * and yaw data; phone IMU is never silently substituted.
  *
- * When no verified OEM speed/yaw is available, we cannot claim standalone
- * FT DR merely from handset GPS or smartphone inertial sensors.
- *
- * This is independent of CarProtocol transport. Existing Baidu installs
- * default to PHONE until the user explicitly changes the source because
- * Baidu OEM coordinate scale/CRS is not field-verified.
+ * Baidu defaults to PHONE until its OEM coordinate scale and CRS are verified.
+ * Existing stored values remain compatible; no profile or migration change.
  */
 enum class GpsSourceMode(val id: String) {
     CAR("car"),
