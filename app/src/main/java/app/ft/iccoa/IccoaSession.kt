@@ -658,7 +658,7 @@ class IccoaSession(
         val body = if (IccoaControl.isEncrypted(frame.body)) key.decrypt(frame.body) else frame.body
         if (!active(attempt)) return
         if (frame.category == 1 && frame.method == 23) {
-            fail(attempt, "Автомобиль завершил соединение ICCOA")
+            fail(attempt, "Автомобиль завершил соединение ICCOA", transportFailure = true)
             return
         }
         if (frame.category != 1 || frame.method != 1) onMessage(frame.category, frame.method, body)
