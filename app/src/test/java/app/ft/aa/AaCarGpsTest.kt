@@ -176,6 +176,30 @@ class AaCarGpsTest {
         }
     }
 
+    @Test fun gearInfoPacketsCannotRepairStaleGpsOrDiscardTrustedAnchor() {
+        val gate = AaGpsGate()
+        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
+        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
+        val last = car(55.75582, 37.61722, 1_200)
+        assertNotNull(gate.accept(last, 1_200))
+        // GearInfo traffic keeps receivedAtMs fresh, but OEM GPS
+        // positionAtMs remains stale during an underground blackout.
+        for (now in 5_000L..12_000L step 1_000L) {
+            val gearOnly = last.copy(
+                receivedAtMs = now, positionAtMs = 1_200L,
+                gearSpeedRaw = (now / 1_000L), gearAtMs = now)
+            assertNull(gate.accept(gearOnly, now))
+        }
+        // Three internally consistent but impossible GPS fixes must not
+        // acquire AA merely because GearInfo has been flowing all along.
+        assertNull(gate.accept(car(55.93000, 37.61730, 12_100), 12_100))
+        assertNull(gate.accept(car(55.93001, 37.61731, 12_200), 12_200))
+        assertNull(gate.accept(car(55.93002, 37.61732, 12_300), 12_300))
+        assertNull(gate.accept(car(55.75583, 37.61723, 12_400), 12_400))
+        assertNull(gate.accept(car(55.75584, 37.61724, 12_500), 12_500))
+        assertNotNull(gate.accept(car(55.75585, 37.61725, 12_600), 12_600))
+    }
+
     @Test fun baiduModeMustNotAdvertiseUnusableGps() {
         val response = AaMessages.serviceDiscoveryResponse(1280, 720, 30, 160, true, "RAV4", true)
         val config = ProtoReader(response).messages(1)
