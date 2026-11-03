@@ -394,14 +394,14 @@ class IccoaService : Service() {
                     else control(category, method, body)
                 }
             },
-            onClosed = { reason, transport, normalRequired -> current {
-                if (normalRequired) {
+            onClosed = { event -> current {
+                if (event.action == IccoaCloseAction.REQUIRE_NORMAL_PIN) {
                     val selected = pendingCar?.address
                     DiagLog.i("ICCOA", "OEM rejected QUICK; switching to NORMAL and asking for current PIN")
                     endConnection()
                     if (selected == null) connectionFailed("QUICK: select the car and enter its PIN")
                     else connectTo(selected, forceCurrentPin = true)
-                } else connectionFailed(reason, transport)
+                } else connectionFailed(event.message, event.action == IccoaCloseAction.RETRY_TRANSPORT)
             } },
             onControlReady = { current {
                 navigationGate.reset()
