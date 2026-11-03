@@ -1,8 +1,8 @@
-name: FT XA60 build 170 (critical fixes candidate + full unit tests and lint)
+name: FT XA60 build 171 (critical fixes candidate + full unit tests and lint)
 
 on:
   push:
-    branches: [openivi/ft-xa60-iccoa-offline-work-20261102]
+    branches: [openivi/ft171-quick-auth-release-20261103]
   workflow_dispatch:
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq '.int32(5, 2)' app/src/main/java/app/ft/iccoa/IccoaAudioPlayerState.kt
           grep -Fq 'preserveAspect' app/src/main/java/app/ft/iccoa/IccoaVideoPlan.kt
-          grep -Fq 'versionCode = 170' app/build.gradle.kts
+          grep -Fq 'versionCode = 171' app/build.gradle.kts
           grep -Fq 'viewport.map(mappedX, mappedY, app.prefs.aaWidth, app.prefs.aaHeight)' app/src/main/java/app/ft/iccoa/IccoaProjection.kt
           grep -Fq 'VehicleTelemetry.publish' app/src/main/java/app/ft/iccoa/IccoaService.kt
           grep -Fq 'CarLifeCarSensors.onGps' app/src/main/java/app/ft/carlife/CarLifeSession.kt
