@@ -34,7 +34,6 @@ import app.ft.core.VehicleLocation
 import app.ft.core.VehicleTelemetry
 import app.ft.FTApp
 import app.ft.core.CarProtocol
-import app.ft.core.GpsSourceMode
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -60,13 +59,12 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
     val selector = remember { CarGpsSourceSelector() }
-    val gpsMode = FTApp.instance.prefs.gpsSourceMode
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
     // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
     val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps)
-    val reading = selector.select(vehicle, phoneGps, displayNow, gpsMode)
+    val reading = selector.select(vehicle, phoneGps, displayNow)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
