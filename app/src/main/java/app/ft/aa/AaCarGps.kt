@@ -25,9 +25,9 @@ internal object AaCarGps {
         // An uninitialized OEM fix often uses Null Island: never send it to AA Maps.
         if (latitude == 0.0 && longitude == 0.0) return null
         // Android Auto GPSLocationData: repeated field 1; sub-fields 2 & 3 are required
-        // int32 microdegrees, NOT ICCOA's double or Baidu's raw int32.
-        val latMicro = (latitude * 1_000_000.0).roundToInt()
-        val lonMicro = (longitude * 1_000_000.0).roundToInt()
+        // int32 degrees × 1e7 (latitude_e7/longitude_e7), NOT ICCOA doubles or Baidu raw ints.
+        val latE7 = (latitude * 10_000_000.0).roundToInt()
+        val lonE7 = (longitude * 10_000_000.0).roundToInt()
         // Protobuf int32 negative values are sign-extended to a 64-bit
         // two's-complement varint (10 bytes). The shared ProtoWriter.int32()
         // currently truncates to uint32 (5 bytes), which is not the canonical
@@ -35,8 +35,8 @@ internal object AaCarGps {
         // Isolate this encoding correction to AA GPS so other OEM protocols
         // retain their existing wire behavior.
         return ProtoWriter().message(1, ProtoWriter()
-            .varint(2, latMicro.toLong())
-            .varint(3, lonMicro.toLong())
+            .varint(2, latE7.toLong())
+            .varint(3, lonE7.toLong())
         ).toByteArray()
     }
 
@@ -47,8 +47,8 @@ internal object AaCarGps {
      * independently validated before DrNavigationTelemetry can supply it.
      *
      * Android Auto GPSLocation submessage fields 2,3 are signed int32
-     * microdegrees and optional field 4 is unsigned horizontal accuracy
-     * in metres. The wire has NO "estimated" flag, so characterization
+     * degrees × 1e7 and optional field 4 is unsigned horizontal accuracy
+     * in millimetres (accuracy_e3). The wire has NO "estimated" flag, so characterization
      * and conservative accuracy are mandatory.
      */
     fun fusedEvent(
@@ -59,16 +59,16 @@ internal object AaCarGps {
         if (estimate == null || !estimate.eligibleForAa(nowMs) ||
             !AaLocationCharacterization.permitsEstimatedPosition(
                 sessionCharacterization)) return null
-        val accuracy = ceil(estimate.accuracyMetres)
-            .coerceAtLeast(1.0)
-        if (!accuracy.isFinite() || accuracy > Int.MAX_VALUE) return null
+        val accuracyE3 = ceil(estimate.accuracyMetres * 1_000.0)
+            .coerceAtLeast(1_000.0)
+        if (!accuracyE3.isFinite() || accuracyE3 > Int.MAX_VALUE) return null
         if (estimate.latitude == 0.0 && estimate.longitude == 0.0) return null
-        val lat = (estimate.latitude * 1_000_000.0).roundToInt()
-        val lon = (estimate.longitude * 1_000_000.0).roundToInt()
+        val lat = (estimate.latitude * 10_000_000.0).roundToInt()
+        val lon = (estimate.longitude * 10_000_000.0).roundToInt()
         return ProtoWriter().message(1, ProtoWriter()
             .varint(2, lat.toLong())
             .varint(3, lon.toLong())
-            .uint32(4, accuracy.toInt())
+            .uint32(4, accuracyE3.toInt())
         ).toByteArray()
     }
 
