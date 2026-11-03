@@ -73,14 +73,44 @@ class DeadReckoningEkfTest {
         assertEquals(0.0, dr.estimate()!!.secondsSinceGnss, 0.0)
     }
 
-    @Test fun noSyntheticLocationAfterTimeSafetyLimit() {
+    @Test fun uninterruptedVerifiedVehicleMotionSurvivesLongGnssOutage() {
         val dr = DeadReckoningEkf()
-        dr.anchor(0.0, 0.0, 0.0, 1.0)
-        repeat(120) { dr.predict(1.0, 0.0, 0.0, true) }
-        assertNull(dr.predict(1.0, 0.0, 0.0, true))
-        assertEquals(120.0, dr.estimate()!!.secondsSinceGnss, 1e-9)
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0))
+        var beforeLimit: DeadReckoningEkf.Estimate? = null
+        var pastLimit: DeadReckoningEkf.Estimate? = null
+        // Fifteen minutes, far beyond the previous artificial 120s ceiling.
+        repeat(900) { t ->
+            val value = dr.predict(1.0, 20.0, 0.0, true)
+            assertNotNull("DR stopped despite verified sensor data at second ${t + 1}", value)
+            if (t == 119) beforeLimit = value
+            if (t == 120) pastLimit = value
+        }
+        assertEquals(120.0, beforeLimit!!.secondsSinceGnss, 1e-9)
+        assertEquals(121.0, pastLimit!!.secondsSinceGnss, 1e-9)
+        val longPrediction = dr.estimate()!!
+        assertTrue(longPrediction.estimated)
+        assertEquals(900.0, longPrediction.secondsSinceGnss, 1e-9)
+        assertEquals(18_000.0, longPrediction.northMetres, 0.01)
+        assertTrue("Uncertainty must be reported, not clipped to 150m",
+            longPrediction.horizontalUncertaintyMetres > 150.0)
+        assertTrue(longPrediction.horizontalUncertaintyMetres.isFinite())
         dr.reset()
         assertNull(dr.estimate())
+    }
+
+    @Test fun accurateGnssFixCanCorrectAfterSeveralMinutesWithoutArtificialTimeout() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(20.0, 30.0, 0.0, 2.0))
+        repeat(300) {
+            assertNotNull(dr.predict(1.0, 10.0, 0.0, true))
+        }
+        val prior = dr.estimate()!!
+        assertTrue(prior.secondsSinceGnss > 120.0)
+        assertTrue(dr.correctGnss(20.0, 3_030.0, 2.0, genuineGnss = true))
+        val after = dr.estimate()!!
+        assertFalse(after.estimated)
+        assertEquals(0.0, after.secondsSinceGnss, 0.0)
+        assertEquals(3_030.0, after.northMetres, 1e-6)
     }
 
     @Test fun noCorrectionFromPredictedOrUnverifiedGps() {
