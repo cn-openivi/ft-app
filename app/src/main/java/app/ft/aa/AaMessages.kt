@@ -121,7 +121,8 @@ object AaMessages {
     fun mediaAck(session: Int): ByteArray = ProtoWriter().int32(1, session).uint32(2, 1).toByteArray()
     fun videoFocusIndication(mode: Int, unrequested: Boolean): ByteArray = ProtoWriter().enum(1, mode).bool(2, unrequested).toByteArray()
     fun bindingResponse(): ByteArray = ProtoWriter().enum(1, AaProtocol.STATUS_OK).toByteArray()
-    fun sensorStartResponse(): ByteArray = ProtoWriter().enum(1, AaProtocol.STATUS_OK).toByteArray()
+    fun sensorStartResponse(status: Int = AaProtocol.STATUS_OK): ByteArray =
+        ProtoWriter().enum(1, status).toByteArray()
     fun sensorDrivingStatus(status: Int): ByteArray = ProtoWriter().message(13, ProtoWriter().int32(1, status)).toByteArray()
     fun sensorNightMode(night: Boolean): ByteArray = ProtoWriter().message(10, ProtoWriter().bool(1, night)).toByteArray()
     fun pingResponse(timestamp: Long): ByteArray = ProtoWriter().int64(1, timestamp).toByteArray()
