@@ -104,3 +104,15 @@ new permissions or user-facing settings were changed.
 - New `AaSensorAdvertisementTest.empiricallyWorkingFt172NavDescriptorIsExactAndSurvivesGpsAdvertisement` locks NAV submessage field8 to `08 E8 07 10 02`, both with and without the car GPS sensor advertised. This validates the existing source, not a live Error2 fix.
 - `aaLocationSubscriptionWireIsPhoneInitiatedAndNotAnSdpHint` independently pins phone->HU LOCATION request body `08 01 10 E8 07`, success response `08 00` and transient error body `08 01 10 02`. The production session only emits car GPS after real phone subscription; no unsolicited injection.
 - P0-A and P0-B automated tests will be checked together in source-only CI at an exact branch SHA. Physical Samsung/Xiaomi session survival is pending the single final owner field campaign; no APK generated at this stage.
+
+## 7. P0-A source-verified ICCOA GEAR/LOCATION capability bug
+
+- Prior source `AaSession.handleSensor` called `AaProtocol.supportsSensor(type, prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol))`. This passed the **optional LOCATION policy** as if it were the **ICCOA transport identity**. When source mode was PHONE in ICCOA, SDP continued advertising OEM GEAR=8 while runtime rejected `SensorRequest(GEAR=8)` as `INVALID_SENSOR`; that is a protocol contradiction even without a GPS fix.
+- `AaProtocol.supportsSensor` now separately accepts `isIccoa` and `carLocationOffered`. GEAR depends only on ICCOA support; LOCATION depends on both ICCOA and the separate offered-location gate. The session passes both independently. Existing 0x8001 request, 0x8002 response and 0x8003 gear event wire message IDs are unchanged.
+- `AaSensorCapabilityTest.iccoaGearRemainsSupportedWhenGnssLocationIsDisabled` asserts exact advertised sensor enum list `[8,13,10]` and matching accept/reject decisions for ICCOA, Baidu and LOCATION-disabled conditions. This is a code-level regression fix; it is NOT evidence that Samsung requested LOCATION.
+
+## 8. P0-C calibration-first geometry guard (no speculative touch fix)
+
+- Owner correction: Xiaomi tester had **not** performed the existing four-point touch calibration. Therefore the observed ~36px Y offset is not an established geometry defect. Added deterministic `TouchQuadTest.xiaomiLikeThirtySixPixelYShiftIsRemovedBySavedFourPointCalibration` covering saved/reloaded 4-point vertical-offset correction and lower keyboard row.
+- Added `AaViewportTest.aaPadded1080FrameStillRoutesTouchesToNegotiated1008Content`: independent AA negotiated touch content 1920×1008 must remain distinct from video frame 1920×1080; exact center, top, bottom and outside-content tap coordinates asserted. The production touch mapper is unchanged.
+- Live Xiaomi FT/AA/mirror tap/drag/seek proof remains postponed until one combined owner HU acceptance, after actual calibration. Source-only CI is not a field touch result.
