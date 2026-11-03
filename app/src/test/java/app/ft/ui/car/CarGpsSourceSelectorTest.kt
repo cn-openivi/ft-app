@@ -117,6 +117,26 @@ class CarGpsSourceSelectorTest {
         assertEquals(55.55207,next.latitude!!,0.00001)
     }
 
+    @Test fun zeroSatelliteOemFramesKeepCarPrimaryUntilActualPacketLoss() {
+        // An underground OEM Location stream may report 0 satellites. Whether
+        // the vehicle implements dead reckoning is a P0 question, not a reason
+        // for FT to discard otherwise valid packets.
+        val selector = connectedSelector()
+        for (t in 18_000L..40_000L step 1_000L) {
+            val underground = car(t, speed = 14.4f).copy(
+                satellitesUsed = 0L, satellitesVisible = 0L)
+            val chosen = selector.select(underground, phone(t, speed = 40f), t)
+            assertEquals(CarGpsSourceSelector.Source.ICCOA, chosen.source)
+            assertEquals(55.55207, chosen.latitude!!, 0.000001)
+            assertTrue(chosen.speedKmh!! < 40f) // never mix in phone speed
+        }
+        // Only the absence of new OEM position packets starts the 7s switch.
+        assertEquals(CarGpsSourceSelector.Source.ICCOA,
+            selector.select(null, phone(46_000L), 46_000L).source)
+        assertEquals(CarGpsSourceSelector.Source.PHONE,
+            selector.select(null, phone(47_000L), 47_000L).source)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
