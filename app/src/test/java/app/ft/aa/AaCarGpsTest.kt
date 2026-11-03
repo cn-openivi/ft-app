@@ -98,22 +98,56 @@ class AaCarGpsTest {
         assertNull(gate.accept(car(55.93001, 37.61731, 1400), 1400))
         // Three wrong fixes in the same distant location remain a teleport.
         assertNull(gate.accept(car(55.93002, 37.61732, 1500), 1500))
-        // Once the source is genuinely stale, fall back and reacquire cautiously.
+        // Losing the OEM fix cannot by itself make a distant fake trustworthy.
         assertNull(gate.accept(null, 5_000))
         assertNull(gate.accept(car(55.93003, 37.61733, 5_100), 5_100))
         assertNull(gate.accept(car(55.93004, 37.61734, 5_200), 5_200))
-        assertNotNull(gate.accept(car(55.93005, 37.61735, 5_300), 5_300))
+        assertNull(gate.accept(car(55.93005, 37.61735, 5_300), 5_300))
+        // A plausible real fix near the trusted location can still recover.
+        assertNull(gate.accept(car(55.75583, 37.61723, 5_400), 5_400))
+        assertNull(gate.accept(car(55.75584, 37.61724, 5_500), 5_500))
+        assertNotNull(gate.accept(car(55.75585, 37.61725, 5_600), 5_600))
     }
 
-    @Test fun trueSensorGapAllowsReacquisitionAfterThreeFreshFixes() {
+    @Test fun genuineSensorGapAllowsOnlyPhysicallyPlausibleReacquisition() {
         val gate = AaGpsGate()
         assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
         assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
         assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        // No fix between 1200 and 6000 ms, e.g. tunnel or reconnection.
-        assertNull(gate.accept(car(55.9300, 37.6173, 6000), 6000))
-        assertNull(gate.accept(car(55.93001, 37.61731, 6100), 6100))
-        assertNotNull(gate.accept(car(55.93002, 37.61732, 6200), 6200))
+        // A 4.8-second tunnel exit plausibly moved ~90 metres, not 19 km.
+        assertNull(gate.accept(car(55.75660, 37.6173, 6000), 6000))
+        assertNull(gate.accept(car(55.75661, 37.61731, 6100), 6100))
+        assertNotNull(gate.accept(car(55.75662, 37.61732, 6200), 6200))
+    }
+
+    @Test fun postBlackoutStableSpoofClusterNeverClearsLastTrustedLocation() {
+        val gate = AaGpsGate()
+        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
+        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
+        assertNotNull(gate.accept(car(55.75582, 37.61722, 1_200), 1_200))
+        // No car GPS for 60 seconds; this is not evidence that a sudden
+        // ~19 km new position can be trusted (under any normal car speed).
+        assertNull(gate.accept(null, 61_200))
+        for (i in 0..12) {
+            val time = 61_300L + i * 100L
+            assertNull("AA accepted spoofed post-gap location at $time",
+                gate.accept(car(55.930 + i * 0.000001, 37.6173, time), time))
+        }
+        // Previously delivered near-location is still the comparison anchor.
+        assertNull(gate.accept(car(55.75583, 37.61723, 62_700), 62_700))
+        assertNull(gate.accept(car(55.75584, 37.61724, 62_800), 62_800))
+        assertNotNull(gate.accept(car(55.75585, 37.61725, 62_900), 62_900))
+    }
+
+    @Test fun explicitNewSensorSessionResetDoesNotReuseAnOldCarAnchor() {
+        val gate = AaGpsGate()
+        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
+        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
+        assertNotNull(gate.accept(car(55.75582, 37.61722, 1_200), 1_200))
+        gate.reset() // Explicit new session; not an ordinary GNSS blackout.
+        assertNull(gate.accept(car(55.930, 37.6173, 2_000), 2_000))
+        assertNull(gate.accept(car(55.93001, 37.61731, 2_100), 2_100))
+        assertNotNull(gate.accept(car(55.93002, 37.61732, 2_200), 2_200))
     }
 
     @Test fun returnsToTrustedPositionAfterLongQuarantinedStream() {
