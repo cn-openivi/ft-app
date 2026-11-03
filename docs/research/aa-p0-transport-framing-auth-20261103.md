@@ -78,3 +78,22 @@ new coordinates underground, or that phone AA subscribed to LOCATION.
 PR #5 itself remains untouched, so source history and its original CI
 receipt can be independently audited. Live vehicle acceptance is still
 reserved for the owner's single final combined FT+ICCOA campaign.
+
+## 5. TLS partial-record continuity across AA frames
+
+Fresh comparison of existing `AaCrypto.decrypt` found that SSLEngine's
+`BUFFER_UNDERFLOW` returned with encrypted input bytes still remaining,
+but the caller discarded that ByteBuffer. If a peer's TLS record spans
+multiple encrypted AA frames, the next decode sees only the suffix and
+will fail; this is a correctness issue, not proof that Samsung's Error2
+was caused by a split TLS record.
+
+The new bounded `AaTlsCiphertextCarry` retains the unconsumed bytes and
+prepends them to the next encrypted frame. `AaCrypto.decrypt` treats
+`BUFFER_UNDERFLOW` as a pause, not a silent discard; `CLOSED` is a real
+error, and no-progress `OK` stops busy-looping. Each AaCrypto instance
+owns its private 64 KiB carry buffer, so a subsequent AA session cannot
+inherit old ciphertext. Unit fixtures verify two successive underflows,
+consumed-prefix exclusion, new session isolation, and oversized malformed
+input rejection. No protocol IDs, TLS cipher configuration, signing keys,
+new permissions or user-facing settings were changed.
