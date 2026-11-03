@@ -1,6 +1,8 @@
 package app.ft.aa
 
 import app.ft.core.ProtoReader
+import app.ft.core.CarProtocol
+import app.ft.core.GpsSourceMode
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -12,6 +14,22 @@ class AaSensorAdvertisementTest {
         val sensorChannel = ProtoReader(response).messages(1)
             .first { it.int(1) == AaProtocol.CH_SENSOR }
         return sensorChannel.message(2)!!.messages(1).map { it.int(1) }
+    }
+
+    @Test fun explicitPhoneGpsDisablesOemLocationWithoutDroppingRealGear() {
+        val advertise = GpsSourceMode.PHONE.advertisesCarLocation(CarProtocol.ICCOA)
+        assertFalse(advertise)
+        val response = AaMessages.serviceDiscoveryResponse(
+            1920, 1008, 30, 240, false, "XA60",
+            advertiseCarLocation = advertise,
+            advertiseCarGear = true
+        )
+        val sensor = ProtoReader(response).messages(1)
+            .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        val offered = sensor.messages(1).map { it.int(1) }
+        assertFalse(offered.contains(AaProtocol.SENSOR_LOCATION))
+        assertTrue(offered.contains(AaProtocol.SENSOR_GEAR))
+        assertFalse(sensor.has(2)) // No false RAW_GPS_ONLY descriptor.
     }
 
     @Test fun carGpsIsAdvertisedFirstWithoutDroppingOtherSensors() {
