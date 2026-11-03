@@ -238,12 +238,12 @@ class IccoaService : Service() {
             CONNECT -> intent.getStringExtra("address")?.let { address ->
                 main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
-                connectTo(address)
+                connectTo(address, ownerSelected = true)
             }
             CONNECT_NORMAL -> intent.getStringExtra("address")?.let { address ->
                 main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
-                connectTo(address, forceCurrentPin = true)
+                connectTo(address, forceCurrentPin = true, ownerSelected = true)
             }
             PIN -> intent.getStringExtra("pin")?.let { pin ->
                 if (_state.value.pinRequired && pin.matches(Regex("[0-9]{6}"))) {
@@ -305,10 +305,16 @@ class IccoaService : Service() {
         connectTo(car.address)
     }
 
-    private fun connectTo(address: String, forceCurrentPin: Boolean = false) {
+    private fun connectTo(address: String, forceCurrentPin: Boolean = false,
+                          ownerSelected: Boolean = false) {
         pendingCar = _state.value.discovery.peers.singleOrNull { it.address.equals(address, ignoreCase = true) }
         val known = rememberedCar.matches(pendingCar, _state.value.discovery.peers)
-        val trustedCarName = pendingCar?.name?.trim().orEmpty()
+        // BLE advertisements from the real XA60 contain an empty name. The
+        // owner's PRIMARY trusted car slot is stable; the pinned OEM EC key,
+        // not a BLE name/address, authenticates the receiver in QUICK.
+        val trustedCarName = IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE
+        val canTryQuick = IccoaQuickTrustPolicy.mayAttemptQuick(known, ownerSelected, forceCurrentPin)
+        DiagLog.i("ICCOA", "Quick eligibility remembered=$known manuallySelected=$ownerSelected forcedNormal=$forceCurrentPin eligible=$canTryQuick")
         endConnection()
         // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
         // as connecting BEFORE stopping it: otherwise that callback can
@@ -402,7 +408,7 @@ class IccoaService : Service() {
                 navigationSend.run()
             } },
             trustedCarName = trustedCarName,
-            tryRememberedPin = known,
+            tryRememberedPin = canTryQuick,
             forceCurrentPin = forceCurrentPin)
         session = connection
         main.postDelayed({
