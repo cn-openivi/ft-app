@@ -264,8 +264,15 @@ class NavigationRelayTest {
         relay.subscribe(true)
         relay.update(decoder.accept(AaProtocol.NAV_STATE,
             byteArrayOf(10, 14, 10, 2, 8, 8, 18, 8, 10, 6, 76, 101, 110, 105, 110, 97))!!)
-        relay.update(decoder.accept(AaProtocol.NAV_CURRENT_POSITION,
-            byteArrayOf(10, 7, 10, 3, 8, -84, 2, 16, 25))!!)
+        // AA 0x8007 step_distance.distance uses display_text (f2) and
+        // DistanceDisplayUnit (f3). The old fixture invented raw meters (f1)
+        // without a unit, which must now be rejected rather than guessed.
+        val distance = ProtoWriter().message(1, ProtoWriter()
+            .message(1, ProtoWriter().string(2, "300").enum(3, 1))
+            .int64(2, 25)).toByteArray()
+        assertArrayEquals(byteArrayOf(0x0a,0x0b,0x0a,0x07,0x12,0x03,
+            0x33,0x30,0x30,0x18,0x01,0x10,0x19), distance)
+        relay.update(decoder.accept(AaProtocol.NAV_NEXT_TURN_DISTANCE, distance)!!)
         val (action, info, total) = turns.single()
         val icon = byteArrayOf(-119, 80, 78, 71)
         val r = ProtoReader(NavigationRelay.payload(action, info, total, icon))
