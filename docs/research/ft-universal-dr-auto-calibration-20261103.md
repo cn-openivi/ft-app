@@ -115,13 +115,16 @@ gyro(X/Y/Z), accelerometer(X/Y/Z), source identity, provenance and freshness.
   `east += distance * sin(heading)`,
   `north += distance * cos(heading)`,
   `heading += (omega_yaw - bias) * dt`.
-- Owner superseding decision: one persistent **hard GPS origin** setting,
-  CAR or PHONE. Never switch to the other source, on timeout or on spoofing.
-  There is **no 7-second car-to-phone GPS timer** in the new selector.
-  In CAR mode only verified OEM coordinates may update TinyEKF; in PHONE
-  mode only handset GNSS may update it. In BOTH modes, independently
-  verified vehicle wheel speed, gyro and accelerometer may drive the same
-  TinyEKF prediction; no second filter or handset IMU calibration.
+- LATEST CANONICAL P0-B (2026-11-03 Nexus rev39): the FT on-screen GPS
+  selector is **car-primary with automatic 7-second car/phone fallback and
+  7-second continuous-car reacquisition**, restored from signed FT174.
+  This supersedes the earlier hard dashboard CAR/PHONE manual mode above.
+  A fresh GearInfo timestamp MUST NOT be treated as fresh GPS positionAtMs.
+  Separately, the future TinyEKF GNSS correction source gate remains strict:
+  CAR accepts verified OEM GNSS only, PHONE accepts handset GNSS only; that
+  never disables the independent FT dashboard 7s source selector.
+  Verified vehicle speed/gyro may drive DR prediction without GNSS; no
+  second filter or unverified handset IMU substitution.
   When the selected GNSS disappears, DR predicts immediately using verified
   car motion, never waiting seven seconds. Without verified OEM motion
   the estimate is not advanced by guessed IMU data.
@@ -200,8 +203,9 @@ The implementation includes exact synthetic source-independent tests.
 and wheel-speed units require verification before an adapter sets
 `wheelAndGyroVerified`; the existing calibrator and TinyEKF are not
 wired into live production location output. FT launcher source selection
-now uses persisted strict CAR/PHONE choice; AA offers OEM LOCATION
-only in CAR+ICCOA mode after the next negotiation. DR GNSS gate
+uses the restored FT174 **automatic 7-second car-primary switch**; AA offers
+OEM LOCATION in the CAR+ICCOA provenance mode after negotiation only when
+the phone explicitly subscribes. DR GNSS gate
 `correctSelectedGnss` enforces the chosen origin inside the same TinyEKF
 kernel. Smartphone magnetometer/gyro are excluded because handset
 mounting is unknown; verified vehicle IMU may be used in both modes.
@@ -232,7 +236,8 @@ The owner defined THREE critical **real navigation outcomes**, not merely
 1. **Tunnel / missing satellites:** when the selected GPS signal is lost,
    TinyEKF continues IMMEDIATELY with independently verified OEM wheel
    speed + mapped yaw/gyro, including turns inside the tunnel. No seven-
-   second warm-up, no forced switch to phone, no 120-second timeout.
+   second wait for the DR predictor itself, while the independent FT widget
+   retains its automatic 7-second fallback; no 120-second timeout.
    An existing destination/turn-by-turn navigation client must actually
    consume the resulting position, otherwise this acceptance case fails.
 2. **Urban-canyon / mountain multipath:** if the selected receiver reports
