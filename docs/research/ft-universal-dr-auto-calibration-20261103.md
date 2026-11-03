@@ -223,3 +223,57 @@ No new APK is built. Do not copy large ROS/autopilot stacks.
 
 Preserve owner-approved current FT/ICCOA stage numbers. Do not advance
 Nexus plan or claim runtime DR until independently verified.
+
+## 7. Owner acceptance: tunnel, canyon and Kremlin (2026-11-03)
+
+The owner defined THREE critical **real navigation outcomes**, not merely
+"GPS numbers visible in the FT overlay":
+
+1. **Tunnel / missing satellites:** when the selected GPS signal is lost,
+   TinyEKF continues IMMEDIATELY with independently verified OEM wheel
+   speed + mapped yaw/gyro, including turns inside the tunnel. No seven-
+   second warm-up, no forced switch to phone, no 120-second timeout.
+   An existing destination/turn-by-turn navigation client must actually
+   consume the resulting position, otherwise this acceptance case fails.
+2. **Urban-canyon / mountain multipath:** if the selected receiver reports
+   fresh positions but reflections introduce 10-100 m lateral excursions,
+   the SAME TinyEKF position update checks 2D normalized innovation squared
+   against the verified wheel/yaw trajectory. Reject gross jumps and
+   down-weight moderate innovations with adaptive measurement noise;
+   acceleration-to-wheel derivative disagreement increases process
+   uncertainty. Do not create a second GPS smoothing filter. Arbitrary
+   hard stops and fake map-matching claims are forbidden.
+3. **Kremlin-like jamming and spoofing:** absent, non-finite or impossible
+   jumps to an airport or another district cannot overwrite the trusted
+   odometric trajectory, even when the GNSS receiver claims excellent
+   precision and plenty of satellites. Remain on current selected CAR/PHONE
+   GNSS origin without covert substitution. Continue labelled DR with
+   verified car wheel/IMU, rising covariance, and validated correction
+   when the genuine selected GPS returns.
+
+**Limitations accepted as implementation blockers, not successes:**
+- TinyEKF innovation gating cannot guarantee detection of smoothly
+  drifting, plausible spoofing. Both car and handset can be attacked by
+  the same source. Require independent verified odometry for cross-check.
+- Verified OEM wheel units, IMU mounting-axis mapping, yaw sign and
+  inertial timestamp units remain P0 hardware-evidence gates; do NOT
+  enable prediction from unknown raw methods 3/4 merely because packets
+  exist. Never invent confidence or mark synthetic DR as genuine GPS.
+- **Navigation output remains unimplemented:** the current standalone
+  `DeadReckoningEkf` is NOT yet wired to FT's user-facing location stream
+  or Android Auto's phone-subscribed LOCATION sensor channel. Android
+  Auto must negotiate genuine sensor subscription and suitable fused
+  location characterization before delivering a derived estimate.
+  A mirrored phone Yandex app reads Android's own LocationManager, not
+  FT's private TinyEKF, and will not automatically receive our estimated
+  position; do not claim tunnel turn-by-turn works for mirroring.
+- Source-only deterministic tests:
+  `app/src/test/java/app/ft/dr/DrRealWorldScenariosTest.kt`
+  cover tunnel exit turn without new GNSS, 10-100m canyon excursions,
+  bad-coordinate jamming, stable airport teleport spoof, PHONE-only
+  GNSS mode with shared verified car odometry, and explicit fail-closed
+  for unverified yaw. Synthetic fixtures are **not on-car acceptance**.
+
+All three scenarios require the fifth owner gate only at the single final
+combined FT+ICCOA acceptance. Continue source/tests/CI in between, do not
+require another parking trip or interim signed APK.
