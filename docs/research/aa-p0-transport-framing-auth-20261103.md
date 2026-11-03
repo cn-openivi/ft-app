@@ -97,3 +97,10 @@ inherit old ciphertext. Unit fixtures verify two successive underflows,
 consumed-prefix exclusion, new session isolation, and oversized malformed
 input rejection. No protocol IDs, TLS cipher configuration, signing keys,
 new permissions or user-facing settings were changed.
+
+## 6. Added regression for empirically working Samsung NAV SDP
+
+- The owner FT172 AA 17.9 session successfully opened NAVIGATION with NavigationChannelConfig type=2, interval=1000ms. Changing this field to type=1 in FT173 coincided with repeated early EOF/AA Error2. Protocol meaning of enum remains unverified; preserve the exact field-tested bytes, not an imagined capability.
+- New `AaSensorAdvertisementTest.empiricallyWorkingFt172NavDescriptorIsExactAndSurvivesGpsAdvertisement` locks NAV submessage field8 to `08 E8 07 10 02`, both with and without the car GPS sensor advertised. This validates the existing source, not a live Error2 fix.
+- `aaLocationSubscriptionWireIsPhoneInitiatedAndNotAnSdpHint` independently pins phone->HU LOCATION request body `08 01 10 E8 07`, success response `08 00` and transient error body `08 01 10 02`. The production session only emits car GPS after real phone subscription; no unsolicited injection.
+- P0-A and P0-B automated tests will be checked together in source-only CI at an exact branch SHA. Physical Samsung/Xiaomi session survival is pending the single final owner field campaign; no APK generated at this stage.
