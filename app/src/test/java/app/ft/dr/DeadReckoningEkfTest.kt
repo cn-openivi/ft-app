@@ -113,6 +113,23 @@ class DeadReckoningEkfTest {
         assertEquals(3_030.0, after.northMetres, 1e-6)
     }
 
+    @Test fun invalidSensorsPauseButDoNotEraseLongOutagePrediction() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 3.0))
+        repeat(180) {
+            assertNotNull(dr.predict(1.0, 8.0, 0.0, true))
+        }
+        val before = dr.estimate()!!
+        assertNull(dr.predict(1.0, Double.NaN, 0.0, true))
+        assertNull(dr.predict(1.0, 8.0, 0.0, false))
+        val held = dr.estimate()!!
+        assertEquals(before.northMetres, held.northMetres, 0.0)
+        assertEquals(before.secondsSinceGnss, held.secondsSinceGnss, 0.0)
+        val resumed = dr.predict(1.0, 8.0, 0.0, true)!!
+        assertEquals(before.northMetres + 8.0, resumed.northMetres, 1e-8)
+        assertTrue(resumed.horizontalUncertaintyMetres.isFinite())
+    }
+
     @Test fun noCorrectionFromPredictedOrUnverifiedGps() {
         val dr = DeadReckoningEkf()
         dr.anchor(0.0, 0.0, 30.0, 3.0)
