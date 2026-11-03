@@ -52,15 +52,13 @@ internal class WheelSpeedAutoCalibration(
         ) return estimate()
 
         val last = lastAcceptedAtMs
-        if (last != null && sample.monotonicTimeMs - last < 900L)
+        if (last != null && sample.monotonicTimeMs < last) reset()
+        else if (last != null && sample.monotonicTimeMs - last < 900L)
             return estimate()
         val ratio = sample.independentGnssSpeedKmh / sample.vehicleSpeedKmh
         if (!ratio.isFinite() || ratio !in 0.90..1.10)
             return estimate()
 
-        if (last != null && sample.monotonicTimeMs < last) {
-            reset()
-        }
         ratios.addLast(ratio)
         lastAcceptedAtMs = sample.monotonicTimeMs
         if (ratios.size > maxSamples) ratios.removeFirst()
@@ -70,7 +68,8 @@ internal class WheelSpeedAutoCalibration(
             val median = if (count % 2 == 1) sorted[count / 2]
                 else (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0
             // Robust gradual convergence, never jump on individual observations.
-            appliedMultiplier = (0.98 * appliedMultiplier + 0.02 * median)
+            appliedMultiplier = (if (ratios.size == minimumSamples) median
+                else (0.98 * appliedMultiplier + 0.02 * median))
                 .coerceIn(0.90, 1.10)
         }
         return estimate()
