@@ -218,7 +218,7 @@ class AaSession(
                 val discovery = AaMessages.serviceDiscoveryResponse(
                     prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
                     true, prefs.carName, prefs.aaControlsLeft,
-                    advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
+                    advertiseCarLocation = prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol),
                     advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA
                 )
                 // Audit actual serialized descriptor, rather than the setting
@@ -247,8 +247,8 @@ class AaSession(
                     "oemGpsFreshAtDiscovery=$gpsFreshAtDiscovery")
                 sendEnc(AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE, discovery)
                 _phase.value = Phase.DISCOVERED
-                if (prefs.carProtocol == CarProtocol.ICCOA) {
-                    DiagLog.i(tag, "ICCOA car LOCATION advertised to AA; waiting for actual phone subscription")
+                if (prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)) {
+                    DiagLog.i(tag, "ICCOA car LOCATION selected for AA; waiting for actual phone subscription")
                     scope.launch(Dispatchers.IO) {
                         delay(12_000L)
                         if (lifecycle.running) {
@@ -400,7 +400,7 @@ class AaSession(
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
                 val supported = AaProtocol.supportsSensor(
-                    type, prefs.carProtocol == CarProtocol.ICCOA
+                    type, prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)
                 )
                 if (!supported) {
                     // Reply with a protocol-level rejection instead of OK with no data.
@@ -423,7 +423,7 @@ class AaSession(
                             AaCarGear.sensorError(3))
                     }
                     AaProtocol.SENSOR_LOCATION -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA) {
+                        if (prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)) {
                             val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
                             DiagLog.i(tag, "AA phone requested car LOCATION " +
                                 "refreshIntervalMs=$requestedIntervalMs")
