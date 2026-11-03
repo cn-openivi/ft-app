@@ -36,6 +36,30 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+/** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
+enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
+
+data class IccoaCloseEvent(val message: String, val action: IccoaCloseAction) {
+    companion object {
+        fun classify(message: String, transportFailure: Boolean = false,
+                     quickNormalFallback: Boolean = false): IccoaCloseEvent {
+            require(!(transportFailure && quickNormalFallback)) {
+                "Quick PIN fallback cannot also be a transport retry"
+            }
+            val action = when {
+                quickNormalFallback -> IccoaCloseAction.REQUIRE_NORMAL_PIN
+                transportFailure -> IccoaCloseAction.RETRY_TRANSPORT
+                else -> IccoaCloseAction.STOP
+            }
+            return IccoaCloseEvent(message, action)
+        }
+
+        /** OEM CONTROL 1/23 is consumed in the session, not in the service. */
+        fun isRemoteDisconnect(category: Int, method: Int) =
+            category == 1 && method == 23
+    }
+}
+
 /**
  * One independently owned ICCOA connection: GATT bootstrap, AP join, PIN SignIn and UCAR lanes.
  * Current AP credentials and agreement keys are never persisted. If owner chooses
@@ -51,7 +75,7 @@ class IccoaSession(
     private val onPinRequired: () -> Unit,
     private val onReady: (Network, String) -> Unit,
     private val onMessage: (Int, Int, ByteArray) -> Unit,
-    private val onClosed: (String, Boolean, Boolean) -> Unit,
+    private val onClosed: (IccoaCloseEvent) -> Unit,
     private val onControlReady: () -> Unit = {},
     private val trustedCarName: String = "",
     private val tryRememberedPin: Boolean = false,
@@ -657,7 +681,7 @@ class IccoaSession(
         // Empty/plain protocol messages exist in the reference; encrypted envelopes fail closed.
         val body = if (IccoaControl.isEncrypted(frame.body)) key.decrypt(frame.body) else frame.body
         if (!active(attempt)) return
-        if (frame.category == 1 && frame.method == 23) {
+        if (IccoaCloseEvent.isRemoteDisconnect(frame.category, frame.method)) {
             fail(attempt, "Автомобиль завершил соединение ICCOA", transportFailure = true)
             return
         }
@@ -703,7 +727,7 @@ class IccoaSession(
             current = null
             close(attempt)
         }
-        onClosed(message, transportFailure, quickNormalFallback)
+        onClosed(IccoaCloseEvent.classify(message, transportFailure, quickNormalFallback))
     }
 
     private fun close(attempt: Attempt) {
