@@ -32,12 +32,13 @@ internal object IccoaNavigation {
      * A projection-only GPS activation never invents a turn.
      */
     fun encode(info: NavigationInfo, directionIconPng: ByteArray? = null): ByteArray {
-        val guidedTurn = info.active && info.maneuver > 0 && info.distanceMeters != null
+        val icon = directionIconPng?.takeIf { it.size in 1..65_536 }
+        val guidedTurn = info.active && info.maneuver > 0 &&
+            info.distanceMeters != null && icon != null
         val road = info.road.take(128)
         val w = ProtoWriter().bool(1, info.active)
         if (guidedTurn) {
-            if (directionIconPng != null && directionIconPng.isNotEmpty() &&
-                directionIconPng.size <= 65_536) w.bytes(2, directionIconPng)
+            w.bytes(2, requireNotNull(icon))
             val operation = operation(info.maneuver)
             w.string(5, operation)
                 .string(7, operation)
