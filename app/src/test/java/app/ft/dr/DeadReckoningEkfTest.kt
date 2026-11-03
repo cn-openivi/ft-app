@@ -1,6 +1,7 @@
 package app.ft.dr
 
 import org.junit.Assert.*
+import app.ft.core.GpsSourceMode
 import org.junit.Test
 import kotlin.math.PI
 import kotlin.math.abs
@@ -128,6 +129,90 @@ class DeadReckoningEkfTest {
         val resumed = dr.predict(1.0, 8.0, 0.0, true)!!
         assertEquals(before.northMetres + 8.0, resumed.northMetres, 1e-8)
         assertTrue(resumed.horizontalUncertaintyMetres.isFinite())
+    }
+
+    @Test fun selectedGnssOriginIsHardGatedInSameTinyEkfEngine() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 1.0)
+        dr.predict(1.0, 8.0, 0.0, true)
+        val before = dr.estimate()!!
+        // Two independent coordinates cannot cross the selected source.
+        assertFalse(dr.correctSelectedGnss(GpsSourceMode.CAR, GpsSourceMode.PHONE,
+            0.0, 8.5, 1.0, sourceValidated = true))
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertTrue(dr.correctSelectedGnss(GpsSourceMode.CAR, GpsSourceMode.CAR,
+            0.0, 8.5, 1.0, sourceValidated = true))
+        assertFalse(dr.correctSelectedGnss(GpsSourceMode.PHONE, GpsSourceMode.CAR,
+            0.0, 9.0, 1.0, sourceValidated = true))
+        assertTrue(dr.correctSelectedGnss(GpsSourceMode.PHONE, GpsSourceMode.PHONE,
+            0.0, 8.6, 1.0, sourceValidated = true))
+    }
+
+    @Test fun tinyEkfRejectsHugeReflectionJumpInsteadOfTeleport() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 1.0)
+        dr.predict(1.0, 10.0, 0.0, true)
+        val original = dr.estimate()!!
+        // 100m urban-canyon multipath while wheels/gyro predict 10m forward.
+        assertFalse(dr.correctGnss(100.0, 10.0, 1.0, true))
+        assertEquals(original.eastMetres, dr.estimate()!!.eastMetres, 0.0)
+        assertEquals(original.northMetres, dr.estimate()!!.northMetres, 0.0)
+        // A real GPS measurement consistent with the motion is still usable.
+        assertTrue(dr.correctGnss(0.2, 10.2, 1.0, true))
+        assertTrue(dr.estimate()!!.eastMetres < 1.0)
+    }
+
+    @Test fun urbanCanyonTenMetreJitterIsDownweightedInsideSameEkf() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 1.0)
+        dr.predict(1.0, 10.0, 0.0, true)
+        // 10m with advertised 3m accuracy: moderate innovation, not reliable
+        // enough for a 10m lateral teleport, but not an invalid location.
+        val old = dr.estimate()!!
+        assertTrue(dr.correctGnss(10.0, 10.0, 3.0, true))
+        val fused = dr.estimate()!!
+        assertTrue(fused.eastMetres > old.eastMetres)
+        assertTrue(fused.eastMetres < 3.0)
+        assertTrue(fused.horizontalUncertaintyMetres.isFinite())
+        assertFalse(fused.estimated)
+    }
+
+    @Test fun independentVehicleAccelerationInflatesMotionCovarianceOnWheelSlip() {
+        val consistent = DeadReckoningEkf()
+        val disagrees = DeadReckoningEkf()
+        consistent.anchor(0.0, 0.0, 0.0, 2.0)
+        disagrees.anchor(0.0, 0.0, 0.0, 2.0)
+        consistent.predict(1.0, 10.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = 0.0,
+            accelerationVerified = true)
+        disagrees.predict(1.0, 10.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = 0.0,
+            accelerationVerified = true)
+        consistent.predict(1.0, 15.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = 5.0,
+            accelerationVerified = true)
+        disagrees.predict(1.0, 15.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = 0.0,
+            accelerationVerified = true)
+        assertEquals(25.0, disagrees.estimate()!!.northMetres, 0.001)
+        assertTrue(disagrees.estimate()!!.horizontalUncertaintyMetres >
+            consistent.estimate()!!.horizontalUncertaintyMetres)
+    }
+
+    @Test fun unverifiedOrImpossibleAccelerometerNeverPoisonsPosition() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 2.0)
+        assertNull(dr.predict(1.0, 10.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = Double.NaN,
+            accelerationVerified = true))
+        assertNull(dr.predict(1.0, 10.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = 30.0,
+            accelerationVerified = true))
+        // Unverified raw vector is ignored, not treated as valid SI units.
+        assertNotNull(dr.predict(1.0, 10.0, 0.0, true,
+            longitudinalAccelerationMetresPerSecond2 = Double.NaN,
+            accelerationVerified = false))
+        assertEquals(10.0, dr.estimate()!!.northMetres, 0.0001)
     }
 
     @Test fun noCorrectionFromPredictedOrUnverifiedGps() {
