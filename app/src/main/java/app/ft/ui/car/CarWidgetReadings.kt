@@ -1,15 +1,30 @@
 package app.ft.ui.car
 
+import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
 
-/** Presentation-only input selection; never affects AA location or ICCOA wire. */
+/** Presentation-only helpers; Android Auto GPS delivery is independent. */
 internal object CarWidgetReadings {
-    fun phoneSpeedKmh(phoneKmh: Float, preview: Boolean): Float? {
-        val value = if (phoneKmh < 0f && preview) 60f else phoneKmh
-        return value.takeIf { it.isFinite() && it in 0f..300f }
+    fun displayNow(
+        uiNowMs: Long,
+        vehicle: VehicleLocation?,
+        phone: CarInfo.PhoneGpsFix? = null
+    ): Long = maxOf(
+        uiNowMs, vehicle?.receivedAtMs ?: uiNowMs, phone?.receivedAtMs ?: uiNowMs
+    )
+
+    fun speedKmh(reading: CarGpsSourceSelector.Reading, preview: Boolean): Float? {
+        val selected = reading.speedKmh
+        return when {
+            selected != null && selected.isFinite() && selected in 0f..300f -> selected
+            preview -> 60f
+            else -> null
+        }
     }
 
-    /** The 1-second UI tick can precede an incoming event by under a second. */
-    fun displayNow(uiNowMs: Long, vehicle: VehicleLocation?): Long =
-        maxOf(uiNowMs, vehicle?.receivedAtMs ?: uiNowMs)
+    /** No STALE=0s labels. A short GPS pause does not switch the source. */
+    fun sourceLabel(reading: CarGpsSourceSelector.Reading): String =
+        if (reading.lastPacketAgeMs >= 2_000L)
+            "${reading.label} · HOLD ${reading.lastPacketAgeMs / 1000L}s"
+        else reading.label
 }

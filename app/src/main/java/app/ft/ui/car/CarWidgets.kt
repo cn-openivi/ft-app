@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -42,11 +43,14 @@ import kotlin.math.roundToInt
 fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean = false) {
     if (style.widgets.isEmpty()) return
     val vehicle by VehicleTelemetry.current.collectAsState()
+    val phoneGps by CarInfo.phoneGps.collectAsState()
+    val selector = remember { CarGpsSourceSelector() }
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
-    // The 1-second Compose clock may be older than a newly received GPS fix.
-    val displayNow = CarWidgetReadings.displayNow(now, vehicle)
+    // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
+    val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps)
+    val reading = selector.select(vehicle, phoneGps, displayNow)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -56,11 +60,11 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
             when (key) {
                 CarStyle.WIDGET_WEATHER -> WeatherChip(style.fahrenheit, preview)
                 CarStyle.WIDGET_BATTERY -> BatteryChip(preview)
-                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview)
-                // Preserve the last valid car fix for display while visibly
-                // marking stale values. AA keeps its own strict freshness gate.
-                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(vehicle, preview, displayNow)
-                CarStyle.WIDGET_COURSE -> CourseChip(vehicle, preview, displayNow)
+                CarStyle.WIDGET_SPEED -> SpeedChip(style.mph, preview, reading)
+                // ICCOA wins after 7s of continuous fixes, PHONE takes over
+                // after 7s without car GPS. Keep a held car fix in between.
+                CarStyle.WIDGET_COORDINATES -> CoordinatesChip(reading)
+                CarStyle.WIDGET_COURSE -> CourseChip(reading)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
             }
         }
@@ -86,58 +90,28 @@ private fun BatteryChip(preview: Boolean) {
 }
 
 @Composable
-private fun SpeedChip(mph: Boolean, preview: Boolean) {
-    val live by CarInfo.speed.collectAsState()
-    // Stable phone speed; OEM ICCOA getSpeed() was floored to whole m/s
-    // (3.6 km/h steps) and must not replace phone GPS mid-drive.
-    // OEM GPS coordinates remain visible; Android Auto feed is unchanged.
-    val speed = CarWidgetReadings.phoneSpeedKmh(live, preview) ?: return
-    val shown = if (mph) speed * 0.621371f else speed
-    Chip(CarIcons.Speed, "${shown.roundToInt()}",
-        "${stringResource(if (mph) R.string.widget_mph else R.string.widget_kmh)} · PHONE")
+private fun SpeedChip(mph: Boolean, preview: Boolean, reading: CarGpsSourceSelector.Reading) {
+    val speed = CarWidgetReadings.speedKmh(reading, preview)
+    val shown = speed?.let { if (mph) it * 0.621371f else it }
+    val label = shown?.roundToInt()?.toString() ?: "—"
+    Chip(CarIcons.Speed, label,
+        "${stringResource(if (mph) R.string.widget_mph else R.string.widget_kmh)} · ${CarWidgetReadings.sourceLabel(reading)}")
 }
 
 @Composable
-private fun CoordinatesChip(vehicle: VehicleLocation?, preview: Boolean, now: Long) {
-    val fix = vehicle?.takeIf { it.positionAtMs > 0L }
-    val fresh = fix?.positionFresh(now) == true
-    val latitude = fix?.displayLatitude
-    val longitude = fix?.displayLongitude
-    val value = when {
-        latitude != null && longitude != null -> String.format(Locale.US, "%.5f, %.5f", latitude, longitude)
-        fix?.rawLatitude != null && fix.rawLongitude != null ->
-            "${fix.rawLatitude}, ${fix.rawLongitude}"
-        else -> "—"
-    }
-    val detail = when {
-        latitude != null && fresh -> "${fix?.source ?: "CAR"} · GPS"
-        latitude != null -> "${fix?.source ?: "CAR"} · STALE ${((now - fix!!.positionAtMs).coerceAtLeast(0L) / 1000L)}s"
-        fix?.rawLatitude != null && fresh -> "${fix.source} · raw"
-        fix?.rawLatitude != null -> "${fix.source} · raw STALE"
-        else -> "${vehicle?.source ?: "CAR"} · NO FIX"
-    }
-    Chip(CarIcons.Map, value, detail, wide = true)
+private fun CoordinatesChip(reading: CarGpsSourceSelector.Reading) {
+    val latitude = reading.latitude
+    val longitude = reading.longitude
+    val value = if (latitude != null && longitude != null)
+        String.format(Locale.US, "%.5f, %.5f", latitude, longitude) else "—"
+    Chip(CarIcons.Map, value, CarWidgetReadings.sourceLabel(reading), wide = true)
 }
 
 @Composable
-private fun CourseChip(vehicle: VehicleLocation?, preview: Boolean, now: Long) {
-    val fix = vehicle?.takeIf { it.positionAtMs > 0L }
-    val fresh = fix?.positionFresh(now) == true
-    val degrees = fix?.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
-    val raw = fix?.headingRaw
-    val label = when {
-        degrees != null -> "${degrees.roundToInt()}°"
-        raw != null -> "$raw"
-        else -> "—"
-    }
-    val detail = when {
-        degrees != null && fresh -> fix?.source ?: "CAR"
-        degrees != null -> "${fix?.source ?: "CAR"} · STALE ${((now - fix!!.positionAtMs).coerceAtLeast(0L) / 1000L)}s"
-        raw != null && fresh -> "${fix?.source ?: "CAR"} · raw"
-        raw != null -> "${fix?.source ?: "CAR"} · raw STALE"
-        else -> "${vehicle?.source ?: "CAR"} · NO FIX"
-    }
-    Chip(CarIcons.Rotate, label, detail)
+private fun CourseChip(reading: CarGpsSourceSelector.Reading) {
+    val bearing = reading.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
+    Chip(CarIcons.Rotate, bearing?.let { "${it.roundToInt()}°" } ?: "—",
+        CarWidgetReadings.sourceLabel(reading))
 }
 
 @Composable

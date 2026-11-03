@@ -51,7 +51,18 @@ object CarInfo {
     private val _speed = MutableStateFlow(-1f)
     val speed: StateFlow<Float> = _speed
 
-    /** Fresh independent phone GNSS speed, captured only while the speed widget runs. */
+    /** Phone GNSS backup for the car widgets; separate from ICCOA/AA projection. */
+    data class PhoneGpsFix(
+        val latitude: Double,
+        val longitude: Double,
+        val speedKmh: Float?,
+        val bearingDegrees: Float?,
+        val receivedAtMs: Long
+    )
+    private val _phoneGps = MutableStateFlow<PhoneGpsFix?>(null)
+    val phoneGps: StateFlow<PhoneGpsFix?> = _phoneGps
+
+    /** Existing vehicle diagnostic output retains its independent 2s phone speed gate. */
     internal data class SpeedFix(val kmh: Float, val receivedAtMs: Long)
     private val phoneSpeedFix = MutableStateFlow<SpeedFix?>(null)
 
@@ -76,7 +87,9 @@ object CarInfo {
         if (widgets.isEmpty()) return
         val ctx = context.applicationContext
         if (CarStyle.WIDGET_BATTERY in widgets) watchBattery(ctx)
-        if (CarStyle.WIDGET_SPEED in widgets) watchSpeed(ctx)
+        if (widgets.any { it == CarStyle.WIDGET_SPEED ||
+                it == CarStyle.WIDGET_COORDINATES || it == CarStyle.WIDGET_COURSE })
+            watchSpeed(ctx)
         if (CarStyle.WIDGET_WEATHER in widgets) {
             jobs += scope.launch {
                 cachedWeather()?.let { _weather.value = it }
@@ -109,6 +122,7 @@ object CarInfo {
         speedWatch = null
         _speed.value = -1f
         phoneSpeedFix.value = null
+        _phoneGps.value = null
     }
 
     private fun granted(context: Context, permission: String) =
@@ -144,9 +158,21 @@ object CarInfo {
         val listener = LocationListener { location ->
             val kmh = if (location.hasSpeed()) location.speed * 3.6f else -1f
             _speed.value = kmh
+            val received = System.currentTimeMillis()
             phoneSpeedFix.value = if (kmh.isFinite() && kmh in 0f..300f)
-                SpeedFix(kmh, System.currentTimeMillis()) else null
-            remember(location)
+                SpeedFix(kmh, received) else null
+            if (location.latitude.isFinite() && location.latitude in -90.0..90.0 &&
+                location.longitude.isFinite() && location.longitude in -180.0..180.0) {
+                _phoneGps.value = PhoneGpsFix(
+                    latitude = location.latitude, longitude = location.longitude,
+                    speedKmh = kmh.takeIf { it.isFinite() && it in 0f..300f },
+                    bearingDegrees = location.bearing.takeIf {
+                        location.hasBearing() && it.isFinite() && it in 0f..360f
+                    },
+                    receivedAtMs = received
+                )
+                remember(location)
+            }
         }
         val ok = try {
             manager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, listener, Looper.getMainLooper())
