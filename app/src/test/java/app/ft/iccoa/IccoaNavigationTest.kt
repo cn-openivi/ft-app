@@ -46,9 +46,9 @@ class IccoaNavigationTest {
         assertArrayEquals(icon, p.bytes(2))
         assertEquals("300", p.string(3))
         assertEquals("m", p.string(4))
-        assertEquals("Turn left", p.string(5))
+        assertEquals("Turn right", p.string(5))
         assertEquals("Lenina", p.string(6))
-        assertEquals("Turn left", p.string(7))
+        assertEquals("Turn right", p.string(7))
         assertEquals("Lenina", p.string(8))
         assertFalse(p.has(9))
     }
