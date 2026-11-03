@@ -22,10 +22,14 @@ internal class GnssContinuityGate {
     private data class Fix(val timestampMs: Long, val east: Double, val north: Double)
     private val accepted = ArrayDeque<Fix>(5)
     private val cleanResiduals = ArrayDeque<Double>(5)
+    private var lastObservedTimestampMs = Long.MIN_VALUE
+    private var pendingActualGapAtMs = Long.MIN_VALUE
 
     fun reset() {
         accepted.clear()
         cleanResiduals.clear()
+        lastObservedTimestampMs = Long.MIN_VALUE
+        pendingActualGapAtMs = Long.MIN_VALUE
     }
 
     /**
@@ -42,9 +46,17 @@ internal class GnssContinuityGate {
     ): Boolean {
         if (timestampMs <= 0L || !east.isFinite() || !north.isFinite() ||
             !predictedEast.isFinite() || !predictedNorth.isFinite()) return false
+        // Use the stream of ALL GNSS candidates, including rejected ones,
+        // for gap detection and out-of-order protection. A stable reflection
+        // series cannot re-anchor simply because none was accepted recently.
+        if (timestampMs <= lastObservedTimestampMs) return false
+        val actualGap = lastObservedTimestampMs != Long.MIN_VALUE &&
+            timestampMs - lastObservedTimestampMs > GPS_GAP_MS
+        lastObservedTimestampMs = timestampMs
+        if (actualGap) pendingActualGapAtMs = timestampMs
         val last = accepted.peekLast() ?: return true
         if (timestampMs <= last.timestampMs) return false
-        if (timestampMs - last.timestampMs > GPS_GAP_MS) return true
+        if (actualGap) return true
         if (accepted.size < HISTORY_REQUIRED) return true
 
         val projected = forecast(timestampMs) ?: return true
@@ -67,8 +79,15 @@ internal class GnssContinuityGate {
         predictedEast: Double,
         predictedNorth: Double
     ) {
-        val last = accepted.peekLast()
-        if (last != null && timestampMs - last.timestampMs > GPS_GAP_MS) reset()
+        // Only a genuine gap in observed GNSS packets clears the local
+        // continuity history. Repeated rejected measurements must never
+        // reset it or provide a false re-anchor.
+        if (timestampMs == pendingActualGapAtMs) {
+            accepted.clear()
+            cleanResiduals.clear()
+            pendingActualGapAtMs = Long.MIN_VALUE
+        }
+        if (timestampMs > lastObservedTimestampMs) lastObservedTimestampMs = timestampMs
         val line = if (accepted.size >= HISTORY_REQUIRED)
             forecast(timestampMs) else null
         if (line != null) {
