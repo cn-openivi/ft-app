@@ -11,21 +11,21 @@ class AaCarGpsTest {
             latitude = latitude, longitude = longitude,
             coordinatesUnit = "ANDROID_LOCATION_WGS84")
 
-    @Test fun iccoaToAndroidAutoUsesMicrodegreesAndRequiredFields() {
+    @Test fun iccoaToAndroidAutoUsesDegreesE7AndRequiredFields() {
         val packet = AaCarGps.event(car(55.755826, 37.617299), 1_500L)!!
         val gps = ProtoReader(packet).message(1)!!
-        assertEquals(55_755_826, gps.int(2))
-        assertEquals(37_617_299, gps.int(3))
+        assertEquals(557_558_260, gps.int(2))
+        assertEquals(376_172_990, gps.int(3))
         assertFalse(gps.has(1))
         assertEquals(setOf(2, 3), gps.fields.keys)
     }
 
     @Test fun positiveWgs84GpsUsesExactOfficialProtobufWireBytes() {
         // Independently serialized with the reference Google Protobuf encoder.
-        // SensorEventIndication.location[0] {latitude=55755826,longitude=37617299}.
+        // Independent AA LocationData proto2 latitude_e7=557558260, longitude_e7=376172990.
         val packet = AaCarGps.event(car(55.755826, 37.617299), 1_500L)!!
         assertArrayEquals(byteArrayOf(
-            10, 10, 16, -78, -120, -53, 26, 24, -109, -3, -9, 17
+            10, 12, 16, -12, -45, -18, -119, 2, 24, -66, -29, -81, -77, 1
         ), packet)
     }
 
@@ -41,7 +41,7 @@ class AaCarGpsTest {
         val packet = gate.accept(car(55.755826, 37.617299, 1_200L)
             .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_200L)
         assertArrayEquals(byteArrayOf(
-            10, 10, 16, -78, -120, -53, 26, 24, -109, -3, -9, 17
+            10, 12, 16, -12, -45, -18, -119, 2, 24, -66, -29, -81, -77, 1
         ), packet)
     }
 
@@ -49,12 +49,25 @@ class AaCarGpsTest {
         // Reference Google Protobuf encoder, not an FT ProtoReader round-trip.
         val packet = AaCarGps.event(car(-33.8688, 151.2093), 1_500L)!!
         assertArrayEquals(byteArrayOf(
-            10, 16, 16, -128, -24, -20, -17, -1, -1, -1, -1,
-            -1, 1, 24, -44, -118, -115, 72
+            10, 17, 16, -128, -112, -64, -34, -2, -1, -1, -1,
+            -1, 1, 24, -56, -22, -126, -47, 5
         ), packet)
         val parsed = ProtoReader(packet).message(1)!!
-        assertEquals(-33_868_800, parsed.int(2))
-        assertEquals(151_209_300, parsed.int(3))
+        assertEquals(-338_688_000, parsed.int(2))
+        assertEquals(1_512_093_000, parsed.int(3))
+    }
+
+    @Test fun westAndSouthWgs84UseE7WithSignedTenByteVarints() {
+        // Reference proto2 LocationData required int32 fields 2/3 with negative
+        // int32 sign-extended to 64-bit canonical varints.
+        val bytes = AaCarGps.event(car(-33.8688, -70.6693), 1_500L)!!
+        assertArrayEquals(byteArrayOf(
+            10, 23, 16, -128, -112, -64, -34, -2, -1, -1, -1, -1, 1,
+            24, -8, -16, -126, -81, -3, -1, -1, -1, -1, 1
+        ), bytes)
+        val gps = ProtoReader(bytes).message(1)!!
+        assertEquals(-338_688_000, gps.int(2))
+        assertEquals(-706_693_000, gps.int(3))
     }
 
     @Test fun rejectMissingStaleAndUnverifiedCoordinateReference() {
