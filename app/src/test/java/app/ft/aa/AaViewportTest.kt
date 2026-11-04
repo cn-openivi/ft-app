@@ -160,4 +160,18 @@ class AaViewportTest {
         assertEquals(null, gesture.map(1, 500, 265, viewport, 1280, 720))
     }
 
+
+    @Test fun cancelledOrUnknownAaActionInvalidatesDownBeforeLaterMoveAndUp() {
+        val viewport = AaViewport(100, 40, 800, 450)
+        for (invalidAction in listOf(-1, 3, 4, 99)) {
+            val gesture = AaTouchGestureViewport()
+            assertEquals(640 to 360, gesture.map(0, 500, 265, viewport, 1280, 720))
+            assertEquals(null, gesture.map(invalidAction, 500, 265, viewport, 1280, 720))
+            assertEquals(null, gesture.map(2, 600, 290, viewport, 1280, 720))
+            assertEquals(null, gesture.map(1, 600, 290, viewport, 1280, 720))
+            // The next valid DOWN is a fresh gesture, not a continuation.
+            assertEquals(800 to 400, gesture.map(0, 600, 290, viewport, 1280, 720))
+            assertEquals(800 to 400, gesture.map(1, 600, 290, viewport, 1280, 720))
+        }
+    }
 }
