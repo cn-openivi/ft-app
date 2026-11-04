@@ -69,6 +69,34 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+    @Test fun stopDuringEmptyReadPauseDoesNotRetryOrPublishPcm() {
+        val record = mock(AudioRecord::class.java)
+        val inPause = CountDownLatch(1)
+        val resumePause = CountDownLatch(1)
+        val reads = AtomicInteger()
+        val delivered = AtomicInteger()
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            reads.incrementAndGet()
+            0
+        }
+        val capture = AudioCapture(
+            { record },
+            { delivered.incrementAndGet() },
+            { inPause.countDown(); await(resumePause) }
+        )
+        try {
+            assertTrue(capture.start(projection))
+            await(inPause)
+            capture.stop()
+        } finally {
+            resumePause.countDown()
+        }
+        assertEquals(1, reads.get())
+        assertEquals(0, delivered.get())
+        assertFalse(capture.active)
+        verify(record, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
