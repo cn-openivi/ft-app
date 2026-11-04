@@ -4,6 +4,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VehicleTelemetryTest {
+    @Test fun zeroTimestampCannotReplaceAcceptedPosition() {
+        val now = System.currentTimeMillis()
+        fun fix(position: Long, lat: Double) = VehicleLocation(
+            source = "ICCOA", receivedAtMs = now, positionAtMs = position,
+            latitude = lat, longitude = 37.6,
+            coordinatesUnit = "ANDROID_LOCATION_WGS84"
+        )
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            VehicleTelemetry.publish(fix(now - 1_000L, 55.1))
+            VehicleTelemetry.updateIccoaSpeed(12L, gearRaw = 2L)
+            VehicleTelemetry.publish(fix(0L, 55.9))
+            val retained = VehicleTelemetry.current.value!!
+            assertEquals(now - 1_000L, retained.positionAtMs)
+            assertEquals(55.1, retained.latitude!!, 0.000001)
+            assertEquals(12L, retained.gearSpeedRaw)
+            assertEquals(2L, retained.gearRaw)
+            VehicleTelemetry.publish(fix(now, 55.2))
+            assertEquals(now, VehicleTelemetry.current.value!!.positionAtMs)
+            assertEquals(55.2, VehicleTelemetry.current.value!!.latitude!!, 0.000001)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun rejectedFuturePositionCannotBlockLaterValidCarFix() {
         val now = System.currentTimeMillis()
         fun fix(position: Long, received: Long, latitude: Double) = VehicleLocation(
