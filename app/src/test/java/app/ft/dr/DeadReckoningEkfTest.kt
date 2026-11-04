@@ -245,6 +245,24 @@ class DeadReckoningEkfTest {
         assertEquals(100.0, dr.estimate()!!.eastMetres, 0.0)
     }
 
+    @Test fun unboundedGnssAccuracyCannotConfirmEstimatedPosition() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0))
+        assertNotNull(dr.holdUnverifiedMotion(1.0))
+        val before = dr.estimate()!!
+        // A receiver reporting a 1km uncertainty is not a reliable
+        // independent position observation, even if EKF NIS is permissive.
+        assertFalse(dr.correctGnss(100.0, 0.0, 1000.0, genuineGnss = true))
+        assertFalse(dr.correctGnss(0.0, 0.0, 0.1, genuineGnss = true))
+        assertEquals(before.eastMetres, dr.estimate()!!.eastMetres, 0.0)
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertEquals(before.secondsSinceGnss, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertTrue(dr.estimate()!!.estimated)
+        // A well-characterised, consistent fix remains eligible.
+        assertTrue(dr.correctGnss(0.1, 0.1, 2.0, genuineGnss = true))
+        assertFalse(dr.estimate()!!.estimated)
+    }
+
     @Test fun invalidHoldIntervalDoesNotAdvanceTimeOrPosition() {
         val dr = DeadReckoningEkf()
         dr.anchor(0.0, 0.0, 0.0, 1.0)
