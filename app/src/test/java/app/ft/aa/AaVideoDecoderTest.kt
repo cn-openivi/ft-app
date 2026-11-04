@@ -47,6 +47,44 @@ class AaVideoDecoderTest {
         }
     }
 
+    @Test fun recycledInputBufferWithNonzeroPositionStillAcceptsFrameWithinCapacity() {
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        val input = java.nio.ByteBuffer.allocate(16)
+        // The frame fits the physical slot but not its inherited remaining().
+        input.position(14)
+        input.limit(15)
+        `when`(codec.dequeueInputBuffer(anyLong())).thenReturn(0)
+        `when`(codec.getInputBuffer(0)).thenReturn(input)
+        `when`(codec.dequeueOutputBuffer(
+            any(MediaCodec.BufferInfo::class.java), anyLong()
+        )).thenAnswer {
+            Thread.sleep(2)
+            MediaCodec.INFO_TRY_AGAIN_LATER
+        }
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(0, 0, 1, 103))
+                    val frame = byteArrayOf(0, 0, 1, 65, 7)
+                    decoder.onFrame(frame, 1234L)
+                    verify(codec).queueInputBuffer(0, 0, frame.size, 1234L, 0)
+                    assertArrayEquals(frame, input.array().copyOfRange(0, frame.size))
+                } finally {
+                    decoder.reset()
+                }
+            }
+        }
+    }
+
     @Test fun lateFormatFromClosedCodecCannotOverwriteNewSessionSizeOrRestartFromOldConfig() {
         val entered = CountDownLatch(1)
         val leave = CountDownLatch(1)
