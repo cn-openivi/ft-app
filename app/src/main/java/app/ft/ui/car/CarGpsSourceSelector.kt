@@ -58,11 +58,14 @@ internal class CarGpsSourceSelector(
         if (candidate != null && candidate.positionAtMs > lastObservedCarPositionMs) {
             // A reordered OEM packet must not lower the high-water mark:
             // otherwise a second stale packet could look newly accepted.
-            lastObservedCarPositionMs = candidate.positionAtMs
             // Newly mounted screens may see an old stored fix. That is not
             // evidence of live telemetry, even though it can be displayed.
             val age = nowMs - candidate.positionAtMs
             if (age >= -1_000L && age <= maxRecoveryGapMs) {
+                // Advance the high-water mark only for an accepted fix.
+                // A rejected future timestamp must not poison subsequent
+                // valid OEM positions or delay the 7s recovery timer.
+                lastObservedCarPositionMs = candidate.positionAtMs
                 val last = lastCarPacketAtMs
                 if (last == null || nowMs < last || nowMs - last > maxRecoveryGapMs) {
                     stableCarSinceMs = nowMs
