@@ -209,6 +209,23 @@ class IccoaDropRecoveryTest {
         assertFalse(gate.isCurrent("C"))
     }
 
+    @Test fun queuedAuthenticationCannotBindSupersededNetwork() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        // networkReady(A) queued authenticate(A), but the worker has not run.
+        gate.onAvailable("B")
+        val bound = mutableListOf<String>()
+        assertFalse(gate.bindIfCurrent("A") { bound.add("A") })
+        assertTrue(bound.isEmpty())
+        // B may bind normally; a late onLost(A) cannot close B.
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.bindIfCurrent("B") { bound.add("B") })
+        assertEquals(listOf("B"), bound)
+        assertTrue(gate.onLost("B"))
+        assertFalse(gate.bindIfCurrent("B") { bound.add("B again") })
+        assertEquals(listOf("B"), bound)
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
