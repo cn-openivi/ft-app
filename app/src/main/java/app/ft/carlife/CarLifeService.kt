@@ -1512,6 +1512,7 @@ class CarLifeService : Service() {
             DiagLog.i(tag, "car touched ${raw.x},${raw.y} of its picture, ${x},${y} on FT's screen")
         }
         if (touchFt) {
+            aaGestureViewport.reset()
             carDisplay.dispatchTouch(t)
             return
         }
@@ -1529,6 +1530,9 @@ class CarLifeService : Service() {
             aa.sendTouch(point.first, point.second, action)
             return
         }
+        // Leaving the AA input route invalidates the DOWN-captured viewport.
+        // A later MOVE/UP must not resurrect a gesture from the old route.
+        aaGestureViewport.reset()
         if (st.mirroring) {
             val svc = FTTouchService.instance
             if (svc != null && mirror.active) {
