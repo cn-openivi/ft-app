@@ -44,6 +44,31 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+    @Test fun zeroReadsAreRateLimitedWithoutPublishingPcm() {
+        val record = mock(AudioRecord::class.java)
+        val released = CountDownLatch(1)
+        val pauses = AtomicInteger()
+        val reads = AtomicInteger()
+        val delivered = AtomicInteger()
+        doAnswer { released.countDown(); null }.`when`(record).release()
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            if (reads.incrementAndGet() <= 3) 0 else AudioRecord.ERROR_DEAD_OBJECT
+        }
+        val capture = AudioCapture(
+            { record },
+            { delivered.incrementAndGet() },
+            { pauses.incrementAndGet() }
+        )
+        assertTrue(capture.start(projection))
+        await(released)
+        assertEquals(4, reads.get())
+        assertEquals(3, pauses.get())
+        assertEquals(0, delivered.get())
+        assertFalse(capture.active)
+        capture.stop()
+        verify(record, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
