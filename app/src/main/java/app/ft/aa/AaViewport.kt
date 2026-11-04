@@ -31,6 +31,10 @@ internal class AaTouchGestureViewport {
         action: Int, x: Int, y: Int,
         viewport: AaViewport?, width: Int, height: Int
     ): Pair<Int, Int>? {
+        if (action !in 0..2) {
+            reset()
+            return null
+        }
         if (action == 0) {
             active = null
             if (viewport == null || !viewport.contains(x, y) || width <= 0 || height <= 0)
