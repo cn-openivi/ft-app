@@ -226,6 +226,25 @@ class IccoaDropRecoveryTest {
         assertEquals(listOf("B"), bound)
     }
 
+    @Test fun networkReplacementAfterTcpConnectCannotSendAuthOnStaleSocket() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        val authRequests = mutableListOf<String>()
+        val closed = mutableListOf<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.bindIfCurrent("A") { /* TCP bind A */ })
+        // Simulate the network switch during blocking socket.connect(A).
+        gate.onAvailable("B")
+        if (!gate.isCurrent("A")) closed.add("A") else authRequests.add("A")
+        assertEquals(listOf("A"), closed)
+        assertTrue(authRequests.isEmpty())
+        assertTrue(gate.bindIfCurrent("B") { /* TCP bind B */ })
+        if (!gate.isCurrent("B")) closed.add("B") else authRequests.add("B")
+        assertEquals(listOf("B"), authRequests)
+        // An old onLost(A) must not close the current B transport.
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.isCurrent("B"))
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
