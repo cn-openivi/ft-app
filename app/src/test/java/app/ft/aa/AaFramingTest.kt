@@ -81,6 +81,55 @@ class AaFramingTest {
         assertNull(assembler.feed(AaFraming.Frame(3, AaProtocol.FRAME_LAST, payload(11))))
     }
 
+    @Test fun firstHeaderDeclaredTotalMatchesExactAssembledPayload() {
+        val bytes = payload(AaProtocol.MAX_FRAME_PAYLOAD + 17)
+        val wires = encode(bytes)
+        val first = parse(wires.first())
+        assertEquals(bytes.size.toLong(), first.declaredMessageBytes)
+        assertNull(parse(wires.last()).declaredMessageBytes)
+        val assembler = AaFraming.Assembler { it }
+        assertNull(assembler.feed(first))
+        assertArrayEquals(bytes, assembler.feed(parse(wires.last()))!!.payload)
+    }
+
+    @Test fun declaredTotalMismatchDropsOnlyCorruptedMessageNotAnotherChannel() {
+        val bytes = payload(AaProtocol.MAX_FRAME_PAYLOAD + 17)
+        val wires = encode(bytes)
+        // An AA FIRST header advertises a uint32 total length at bytes 4..7.
+        // A malicious/truncated peer can report one fewer/greater byte.
+        for (declared in listOf(bytes.size - 1, bytes.size + 1, 0, 0x7fffffff)) {
+            val modified = wires.first().copyOf()
+            modified[4] = (declared ushr 24).toByte()
+            modified[5] = (declared ushr 16).toByte()
+            modified[6] = (declared ushr 8).toByte()
+            modified[7] = declared.toByte()
+            val assembler = AaFraming.Assembler { it }
+            assertNull(assembler.feed(parse(modified)))
+            val safeSensorMessage = byteArrayOf(0, 1, 8, 1)
+            val concurrentSensor = AaFraming.Frame(
+                AaProtocol.CH_SENSOR, AaProtocol.FRAME_BULK, safeSensorMessage
+            )
+            assertArrayEquals(safeSensorMessage, assembler.feed(concurrentSensor)!!.payload)
+            assertNull("mismatched declared AA message length must not dispatch",
+                assembler.feed(parse(wires.last())))
+            // The very next valid complete message is not swallowed.
+            val fresh = byteArrayOf(0, 1, 8, 13)
+            assertArrayEquals(fresh, assembler.feed(
+                AaFraming.Frame(AaProtocol.CH_VIDEO, AaProtocol.FRAME_BULK, fresh))!!.payload)
+        }
+    }
+
+    @Test fun anOversizedUnsignedFirstLengthIsRejectedWithoutAllocatingIt() {
+        val input = encode(payload(AaProtocol.MAX_FRAME_PAYLOAD + 1)).first().copyOf()
+        input[4] = 0xff.toByte()
+        input[5] = 0xff.toByte()
+        input[6] = 0xff.toByte()
+        input[7] = 0xff.toByte()
+        val first = parse(input)
+        assertEquals(4_294_967_295L, first.declaredMessageBytes)
+        assertNull(AaFraming.Assembler { it }.feed(first))
+    }
+
     @Test fun encryptedChunkTransformerIsAppliedOnEverySegment() {
         val plain = payload(32_769)
         val xor: (ByteArray) -> ByteArray =
