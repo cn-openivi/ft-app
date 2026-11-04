@@ -10,7 +10,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 class AudioCapture internal constructor(
     private val createRecord: (MediaProjection) -> AudioRecord,
-    private val onPcm: (ByteArray) -> Unit
+    private val onPcm: (ByteArray) -> Unit,
+    private val pauseAfterEmptyRead: () -> Unit = { Thread.sleep(10) }
 ) {
     constructor(onPcm: (ByteArray) -> Unit) : this(::buildRecord, onPcm)
 
@@ -61,7 +62,13 @@ class AudioCapture internal constructor(
                     DiagLog.w(tag, "audio capture read failed: $n")
                     break
                 }
-                if (n == 0) continue
+                // A zero-byte native read can return immediately. Bound retries
+                // without sending silence or holding the capture/stop monitor.
+                if (n == 0) {
+                    if (capture !== owner) break
+                    pauseAfterEmptyRead()
+                    continue
+                }
                 // Serialize publication with stop: a late native read must not send
                 // PCM or update the new capture's activity timestamps.
                 synchronized(this) {
