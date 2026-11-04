@@ -245,6 +245,23 @@ class IccoaDropRecoveryTest {
         assertTrue(gate.isCurrent("B"))
     }
 
+    @Test fun staleNetworkAuthExceptionCannotTerminateReplacementAttempt() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.isCurrent("A"))
+        // A's TCP connect blocks while Android replaces its Network handle.
+        gate.onAvailable("B")
+        // A then throws SocketException. Its catch must not clear the PIN,
+        // classify a terminal close, or kill the live B authentication.
+        assertFalse(gate.isCurrent("A"))
+        assertTrue(gate.isCurrent("B"))
+        assertTrue(gate.bindIfCurrent("B") { assertTrue(gate.isCurrent("B")) })
+        // A failure on the *current* Network still reaches normal fail-closed handling.
+        assertTrue(gate.isCurrent("B"))
+        assertEquals(IccoaCloseAction.STOP,
+            IccoaCloseEvent.classify("PIN rejected").action)
+    }
+
     @Test fun normalPinSurvivesNetworkReplacementButClearsAfterVerifiedHandshake() {
         val gate = IccoaNetworkCallbackGate<String>()
         gate.onAvailable("A")
