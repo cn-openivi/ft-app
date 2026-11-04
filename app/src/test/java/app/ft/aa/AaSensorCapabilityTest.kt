@@ -28,6 +28,35 @@ class AaSensorCapabilityTest {
         assertTrue(AaProtocol.supportsSensor(AaProtocol.SENSOR_NIGHT_MODE, false))
     }
 
+    @Test fun iccoaGearRemainsSupportedWhenGnssLocationIsDisabled() {
+        // The SDP still lists GEAR=8 when a separate OEM LOCATION gate is
+        // disabled. The earlier runtime predicate incorrectly rejected GEAR
+        // because it used the location policy as the isIccoa argument.
+        val sensorAdvertisement = AaMessages.serviceDiscoveryResponse(
+            1920, 1008, 30, 240, false, "XA60",
+            advertiseCarLocation = false, advertiseCarGear = true
+        )
+        val sensor = ProtoReader(sensorAdvertisement).messages(1)
+            .first { it.int(1) == AaProtocol.CH_SENSOR }.message(2)!!
+        assertEquals(listOf(
+            AaProtocol.SENSOR_GEAR,
+            AaProtocol.SENSOR_DRIVING_STATUS,
+            AaProtocol.SENSOR_NIGHT_MODE
+        ), sensor.messages(1).map { it.int(1) })
+        assertTrue(AaProtocol.supportsSensor(
+            AaProtocol.SENSOR_GEAR, isIccoa = true, carLocationOffered = false
+        ))
+        assertFalse(AaProtocol.supportsSensor(
+            AaProtocol.SENSOR_LOCATION, isIccoa = true, carLocationOffered = false
+        ))
+        assertFalse(AaProtocol.supportsSensor(
+            AaProtocol.SENSOR_GEAR, isIccoa = false, carLocationOffered = false
+        ))
+        assertFalse(AaProtocol.supportsSensor(
+            AaProtocol.SENSOR_LOCATION, isIccoa = false, carLocationOffered = true
+        ))
+    }
+
     @Test fun sensorStartResponseEncodesValidAndInvalidStatus() {
         val ok = ProtoReader(AaMessages.sensorStartResponse()).int(1)
         val rejected = ProtoReader(

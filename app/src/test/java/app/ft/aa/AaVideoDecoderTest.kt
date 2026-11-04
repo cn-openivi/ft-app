@@ -12,6 +12,41 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class AaVideoDecoderTest {
+    @Test fun slowDecoderInputCannotWaitTwentyMillisecondsOnAaDispatchThread() {
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        `when`(codec.dequeueInputBuffer(anyLong())).thenReturn(-1)
+        `when`(codec.dequeueOutputBuffer(
+            any(MediaCodec.BufferInfo::class.java), anyLong()
+        )).thenAnswer {
+            Thread.sleep(2)
+            MediaCodec.INFO_TRY_AGAIN_LATER
+        }
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(0, 0, 1, 103))
+                    decoder.onFrame(byteArrayOf(0, 0, 1, 65, 7), 1_000L)
+                    // Exact MediaCodec API argument: 2000 MICROseconds,
+                    // rather than the prior blocking 20_000us.
+                    verify(codec).dequeueInputBuffer(AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US)
+                    assertEquals(2_000L, AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US)
+                    assertTrue(AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US < 16_667L)
+                } finally {
+                    decoder.reset()
+                }
+            }
+        }
+    }
+
     @Test fun lateFormatFromClosedCodecCannotOverwriteNewSessionSizeOrRestartFromOldConfig() {
         val entered = CountDownLatch(1)
         val leave = CountDownLatch(1)

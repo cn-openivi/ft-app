@@ -133,6 +133,10 @@ class Prefs(context: Context) {
     var carName: String get() = str("carName", "FT"); set(v) = set("carName", v)
     var autoConnect: Boolean get() = bool("autoConnect", false); set(v) = set("autoConnect", v)
     var carProtocol: CarProtocol get() = CarProtocol.fromId(str("carProtocol", "carlife")); set(v) = set("carProtocol", v.id)
+    /** Explicit GPS origin: CAR for ICCOA by default, PHONE for Baidu by default. */
+    var gpsSourceMode: GpsSourceMode
+        get() = GpsSourceMode.fromId(str("gpsSourceMode", GpsSourceMode.defaultFor(carProtocol).id))
+        set(v) = set("gpsSourceMode", v.id)
     var carP2pName: String get() = str("carP2pName", ""); set(v) = set("carP2pName", v)
     var carBtName: String get() = str("carBtName", ""); set(v) = set("carBtName", v)
     var carBtAddress: String get() = str("carBtAddress", ""); set(v) = set("carBtAddress", v)

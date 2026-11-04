@@ -1,0 +1,40 @@
+package app.ft.core
+
+/**
+ * GNSS provenance gate for future TinyEKF corrections and Android Auto SDP.
+ *
+ * This is NOT the FT dashboard GPS selector. The FT dashboard has a separate
+ * owner-approved car-primary automatic 7-second car/phone hysteresis, restored
+ * from the signed FT174 baseline; it never treats GearInfo as a new GPS fix.
+ *
+ * CAR: accept only verified OEM GNSS to correct TinyEKF and advertise car
+ * LOCATION in ICCOA. AA's phone chooses whether to subscribe to LOCATION and
+ * remains responsible for its own GNSS fallback; no unsolicited AA events.
+ * PHONE: accept handset GNSS for future DR reference; do not advertise OEM
+ * LOCATION. Both modes may predict with independently verified vehicle wheel
+ * and yaw data; phone IMU is never silently substituted.
+ *
+ * Baidu defaults to PHONE until its OEM coordinate scale and CRS are verified.
+ * Existing stored values remain compatible; no profile or migration change.
+ */
+enum class GpsSourceMode(val id: String) {
+    CAR("car"),
+    PHONE("phone");
+
+    companion object {
+        fun fromId(id: String): GpsSourceMode =
+            entries.firstOrNull { it.id == id } ?: CAR
+
+        fun defaultFor(protocol: CarProtocol): GpsSourceMode =
+            if (protocol == CarProtocol.ICCOA) CAR else PHONE
+    }
+
+    fun advertisesCarLocation(protocol: CarProtocol): Boolean =
+        this == CAR && protocol == CarProtocol.ICCOA
+
+    /** Neither mode authorizes using GPS fixes from the other source. */
+    fun acceptsGnssFrom(origin: GpsSourceMode): Boolean = this == origin
+
+    /** DR may predict in either mode, using VERIFIED car odometry only. */
+    fun permitsVerifiedCarOdometry(): Boolean = true
+}

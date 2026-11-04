@@ -134,6 +134,35 @@ class IccoaDropRecoveryTest {
             IccoaCloseEvent.classify("bad PIN").action)
     }
 
+    @Test fun controlBackpressureAndSocketWriteTimeoutAreBoundedTransportLosses() {
+        // IccoaSession previously called fail() without transportFailure=true
+        // for these two concrete I/O breakdowns, so the typed event STOPped
+        // a connected car without using the already approved 3-try recovery.
+        for (reason in listOf(
+            "Переполнена очередь управления ICCOA",
+            "Тайм-аут отправки данных ICCOA"
+        )) {
+            val typed = IccoaCloseEvent.classify(reason, transportFailure = true)
+            assertEquals(IccoaCloseAction.RETRY_TRANSPORT, typed.action)
+            val guard = IccoaDropRecovery()
+            assertEquals(1, guard.onFailure(true, true,
+                typed.action == IccoaCloseAction.RETRY_TRANSPORT))
+            assertEquals(2, guard.onFailure(false, true,
+                typed.action == IccoaCloseAction.RETRY_TRANSPORT))
+            assertEquals(3, guard.onFailure(false, true,
+                typed.action == IccoaCloseAction.RETRY_TRANSPORT))
+            assertNull(guard.onFailure(false, true,
+                typed.action == IccoaCloseAction.RETRY_TRANSPORT))
+            assertFalse(guard.active)
+            // User-disabled reconnect or PIN/Quick auth rejection is NOT
+            // an interchangeable socket-fault retry.
+            assertNull(IccoaDropRecovery().onFailure(true, false, true))
+            assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+                IccoaCloseEvent.classify("OEM Quick rejected",
+                    quickNormalFallback = true).action)
+        }
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)

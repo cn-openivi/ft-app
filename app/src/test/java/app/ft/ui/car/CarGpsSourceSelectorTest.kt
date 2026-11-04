@@ -117,6 +117,95 @@ class CarGpsSourceSelectorTest {
         assertEquals(55.55207,next.latitude!!,0.00001)
     }
 
+    @Test fun zeroSatelliteCountDoesNotDiscardNewValidOemPositionPackets() {
+        val selector = CarGpsSourceSelector()
+        for (t in 10_000L..17_000L step 1_000L) {
+            val freshPosition = car(t).copy(satellitesUsed = 0L, satellitesVisible = 0L)
+            val r = selector.select(freshPosition, phone(t, 95f), t)
+            assertEquals(
+                if (t < 17_000L) CarGpsSourceSelector.Source.PHONE
+                else CarGpsSourceSelector.Source.ICCOA,
+                r.source
+            )
+        }
+        val result = selector.select(
+            car(18_000L).copy(satellitesUsed = 0L), phone(18_000L, 95f), 18_000L
+        )
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, result.source)
+        assertEquals(55.55207, result.latitude!!, 0.00001)
+        assertTrue(result.speedKmh!! < 95f)
+    }
+
+    @Test fun fallbackIsBasedOnGpsPositionTimestampNotFreshGearTraffic() {
+        val selector = connectedSelector()
+        for (t in 18_000L..24_000L step 1_000L) {
+            val refresh = car(17_000L).copy(
+                receivedAtMs = t, positionAtMs = 17_000L,
+                gearAtMs = t, gearSpeedRaw = 28L
+            )
+            val result = selector.select(refresh, phone(t, 42f), t)
+            assertEquals(
+                if (t < 24_000L) CarGpsSourceSelector.Source.ICCOA
+                else CarGpsSourceSelector.Source.PHONE,
+                result.source
+            )
+        }
+    }
+
+    @Test fun invalidPhoneCoordinatesDoNotLeakIntoFallbackOrOverrideCar() {
+        val selector = CarGpsSourceSelector()
+        val invalidPhone = phone(10_000L).copy(latitude = 91.0)
+        val cold = selector.select(null, invalidPhone, 10_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, cold.source)
+        assertNull(cold.latitude)
+        assertNull(cold.longitude)
+        assertNull(cold.speedKmh)
+
+        // A valid car stream is preferred even while phone GNSS is corrupt.
+        for (t in 11_000L..18_000L step 1_000L)
+            selector.select(car(t), invalidPhone, t)
+        val carReading = selector.select(car(19_000L), invalidPhone, 19_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, carReading.source)
+        assertEquals(55.55207, carReading.latitude!!, 0.00001)
+
+        // After 7s without an OEM position, do not report invalid phone
+        // coordinates or misleading speed as if they were a valid fallback.
+        val fallback = selector.select(null, invalidPhone, 26_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.longitude)
+        assertNull(fallback.speedKmh)
+    }
+
+    @Test fun stalePhoneCallbackCannotBecomeARealBackupAtSevenSecondHandoff() {
+        val selector = connectedSelector()
+        val staleHandset = phone(10_000L, speed = 83f)
+        val fallback = selector.select(null, staleHandset, 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.longitude)
+        assertNull(fallback.speedKmh)
+        val recoveredPhone = selector.select(null, phone(24_500L, speed = 31f), 24_500L)
+        assertEquals(55.55, recoveredPhone.latitude!!, 0.00001)
+        assertEquals(31f, recoveredPhone.speedKmh!!, 0f)
+    }
+
+    @Test fun recentlyReceivedButOldGpsProviderFixIsNotFreshPhoneFallback() {
+        val selector = connectedSelector()
+        // LocationManager may replay a cached GNSS fix in a fresh callback.
+        val cachedLocation = phone(24_000L, speed = 74f)
+            .copy(fixAgeNanosAtReceipt = 12_000_000_000L)
+        val fallback = selector.select(null, cachedLocation, 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertNull(fallback.latitude)
+        assertNull(fallback.speedKmh)
+        val currentFix = phone(24_100L, speed = 33f)
+            .copy(fixAgeNanosAtReceipt = 1_000_000_000L)
+        val current = selector.select(null, currentFix, 24_100L)
+        assertEquals(55.55, current.latitude!!, 0.00001)
+        assertEquals(33f, current.speedKmh!!, 0f)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {

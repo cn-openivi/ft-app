@@ -160,7 +160,12 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         var slot = -1
         var given = false
         try {
-            slot = c.dequeueInputBuffer(20_000)
+            // Keep Android Auto socket/TLS/ACK dispatch off a 20ms per-frame
+            // codec wait. A slow hardware decoder must not stall control,
+            // pings and sensor messages for most of a 60fps frame period.
+            // Drop this late H.264 input if no slot appears within 2ms;
+            // AA remains free to deliver a fresh picture on the next frame.
+            slot = c.dequeueInputBuffer(INPUT_DEQUEUE_TIMEOUT_US)
             if (slot < 0) return
             val buf = c.getInputBuffer(slot)
             if (buf == null || data.size > buf.remaining()) {
@@ -245,6 +250,10 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
     }
 
     companion object {
+        // MediaCodec.dequeueInputBuffer expects microseconds, NOT milliseconds.
+        // 20_000us blocked the single AA session reader up to 20ms/frame.
+        internal const val INPUT_DEQUEUE_TIMEOUT_US = 2_000L
+
         val mediaTek: Boolean by lazy {
             val hardware = Build.HARDWARE.orEmpty().lowercase()
             val board = Build.BOARD.orEmpty().lowercase()

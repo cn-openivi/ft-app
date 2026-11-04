@@ -2,6 +2,8 @@ package app.ft.aa
 
 import app.ft.core.ProtoWriter
 import app.ft.core.VehicleLocation
+import app.ft.dr.DrNavigationFix
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
@@ -9,7 +11,7 @@ import kotlin.math.roundToInt
  *
  * The source must explicitly declare Android Location API / WGS84 provenance.
  * Baidu integer GPS is NOT forwarded until its scale/CRS is verified.
- * No guessed speed, bearing, accuracy, altitude or Dead Reckoning flags are sent.
+ * Only independently evidenced OEM speed/bearing are optional; no guessed accuracy, altitude or DR.
  */
 internal object AaCarGps {
     const val LOCATION = AaProtocol.SENSOR_LOCATION
@@ -23,18 +25,66 @@ internal object AaCarGps {
         // An uninitialized OEM fix often uses Null Island: never send it to AA Maps.
         if (latitude == 0.0 && longitude == 0.0) return null
         // Android Auto GPSLocationData: repeated field 1; sub-fields 2 & 3 are required
-        // int32 microdegrees, NOT ICCOA's double or Baidu's raw int32.
-        val latMicro = (latitude * 1_000_000.0).roundToInt()
-        val lonMicro = (longitude * 1_000_000.0).roundToInt()
+        // int32 degrees × 1e7 (latitude_e7/longitude_e7), NOT ICCOA doubles or Baidu raw ints.
+        val latE7 = (latitude * 10_000_000.0).roundToInt()
+        val lonE7 = (longitude * 10_000_000.0).roundToInt()
         // Protobuf int32 negative values are sign-extended to a 64-bit
         // two's-complement varint (10 bytes). The shared ProtoWriter.int32()
         // currently truncates to uint32 (5 bytes), which is not the canonical
         // representation for western/southern hemisphere coordinates.
         // Isolate this encoding correction to AA GPS so other OEM protocols
         // retain their existing wire behavior.
+        val gps = ProtoWriter()
+            .varint(2, latE7.toLong())
+            .varint(3, lonE7.toLong())
+        // FAW CarLinkSensorMgr floors Android Location.getSpeed() (metres/s)
+        // and Location.getBearing() (degrees) before ICCOA Gps field 6/7.
+        // AA LocationData uses OPTIONAL signed speed_e3 field 6 (m/s * 1000)
+        // and bearing_e6 field 7 (clockwise degrees * 1e6). Only publish
+        // original OEM GPS metadata with explicitly verified provenance:
+        // GearInfo speed, phone GNSS and guessed heading are never mixed in.
+        val speed = location.speedRaw
+        if (location.speedUnit == "ANDROID_LOCATION_MPS_FLOORED" &&
+            speed != null && speed in 0L..125L) {
+            gps.int32(6, (speed * 1_000L).toInt())
+        }
+        val bearing = location.headingRaw
+        if (location.headingUnit == "ANDROID_LOCATION_DEGREES_FLOORED" &&
+            bearing != null && bearing in 0L..359L) {
+            gps.int32(7, (bearing * 1_000_000L).toInt())
+        }
+        return ProtoWriter().message(1, gps).toByteArray()
+    }
+
+    /**
+     * FUSED WGS84 (not RAW_GNSS). Only for sessions that announced
+     * LocationCharacterization.DEAD_RECKONED and received an explicit
+     * SensorRequest(LOCATION). TinyEKF source and wheel/yaw units must be
+     * independently validated before DrNavigationTelemetry can supply it.
+     *
+     * Android Auto GPSLocation submessage fields 2,3 are signed int32
+     * degrees × 1e7 and optional field 4 is unsigned horizontal accuracy
+     * in millimetres (accuracy_e3). The wire has NO "estimated" flag, so characterization
+     * and conservative accuracy are mandatory.
+     */
+    fun fusedEvent(
+        estimate: DrNavigationFix?,
+        nowMs: Long,
+        sessionCharacterization: Int
+    ): ByteArray? {
+        if (estimate == null || !estimate.eligibleForAa(nowMs) ||
+            !AaLocationCharacterization.permitsEstimatedPosition(
+                sessionCharacterization)) return null
+        val accuracyE3 = ceil(estimate.accuracyMetres * 1_000.0)
+            .coerceAtLeast(1_000.0)
+        if (!accuracyE3.isFinite() || accuracyE3 > Int.MAX_VALUE) return null
+        if (estimate.latitude == 0.0 && estimate.longitude == 0.0) return null
+        val lat = (estimate.latitude * 10_000_000.0).roundToInt()
+        val lon = (estimate.longitude * 10_000_000.0).roundToInt()
         return ProtoWriter().message(1, ProtoWriter()
-            .varint(2, latMicro.toLong())
-            .varint(3, lonMicro.toLong())
+            .varint(2, lat.toLong())
+            .varint(3, lon.toLong())
+            .uint32(4, accuracyE3.toInt())
         ).toByteArray()
     }
 
@@ -42,6 +92,40 @@ internal object AaCarGps {
         ProtoWriter().enum(1, LOCATION).enum(2, status).toByteArray()
 }
 
+
+/**
+ * Owner-approved 7-second AA OEM GNSS loss window.
+ *
+ * This tracks actual accepted location-event delivery, not GearInfo receipt,
+ * satellite counters, polling frequency or an inferred phone subscription.
+ * Its clock is Android elapsedRealtime, independent of wall-clock changes.
+ * AA alone decides whether it resumes phone GPS after a sensor error.
+ */
+internal class AaGpsAvailabilityGate(
+    startedElapsedMs: Long,
+    private val lossAfterMs: Long = 7_000L
+) {
+    init { require(lossAfterMs in 5_000L..10_000L) }
+
+    private var lastDeliveredElapsedMs = startedElapsedMs
+    private var unavailable = false
+
+    /** True exactly when a previously reported source outage has recovered. */
+    fun onDeliveredLocation(elapsedMs: Long): Boolean {
+        val recovered = unavailable
+        unavailable = false
+        lastDeliveredElapsedMs = elapsedMs
+        return recovered
+    }
+
+    /** Report one outage only after a full 7s without accepted OEM GPS. */
+    fun shouldReportUnavailable(elapsedMs: Long): Boolean {
+        if (unavailable || elapsedMs < lastDeliveredElapsedMs ||
+            elapsedMs - lastDeliveredElapsedMs < lossAfterMs) return false
+        unavailable = true
+        return true
+    }
+}
 
 /**
  * Suppress isolated GNSS jumps (including RF interference) before feeding maps.
@@ -70,7 +154,12 @@ internal class AaGpsGate {
             sample.positionFresh(nowMs)) return null
         val encoded = AaCarGps.event(sample, nowMs)
         if (encoded == null || sample == null) {
-            if (previous != null && nowMs - lastObservedAt > 3_000L) reset()
+            if (previous != null && nowMs - lastObservedAt > 3_000L) {
+                // An RF outage is not consent to discard our last *delivered*
+                // trusted location. Otherwise a spoofed post-tunnel cluster
+                // can re-anchor AA merely by sending three consistent fixes.
+                restartCandidateStream()
+            }
             return null
         }
         if (preceding != null && preceding.positionAtMs == sample.positionAtMs) return null
@@ -82,9 +171,9 @@ internal class AaGpsGate {
             val lon2 = sample.displayLongitude
             if (elapsedMs !in 1L..3_000L || lat1 == null || lon1 == null || lat2 == null || lon2 == null ||
                 unreasonableJump(lat1, lon1, lat2, lon2, elapsedMs)) {
-                // Only a genuine positive stream gap allows a fresh position anchor.
-                // A continuous but erroneous location cluster must not reset it.
-                if (elapsedMs > 3_000L) lastDelivered = null
+                // A real gap resets the *candidate stream*, not the
+                // last trusted position. Reacquisition must still satisfy
+                // the plausible displacement bound from lastDelivered.
                 previous = sample
                 consecutive = 1
                 lastObservedAt = nowMs
@@ -114,11 +203,16 @@ internal class AaGpsGate {
         return encoded
     }
 
-    fun reset() {
+    private fun restartCandidateStream() {
         previous = null
-        lastDelivered = null
         consecutive = 0
         lastObservedAt = Long.MIN_VALUE
+        // Deliberately preserve lastDelivered across GNSS outages.
+    }
+
+    fun reset() {
+        restartCandidateStream()
+        lastDelivered = null
     }
 
     private fun unreasonableJump(lat1: Double, lon1: Double, lat2: Double, lon2: Double, ms: Long): Boolean {

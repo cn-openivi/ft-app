@@ -24,6 +24,7 @@ class AaCrypto(context: Context) {
     private var netOut = ByteBuffer.allocate(1 shl 16)
     private var appIn = ByteBuffer.allocate(1 shl 16)
     private var pending = ByteArray(0)
+    private val ciphertextCarry = AaTlsCiphertextCarry()
     @Volatile var handshakeDone = false
         private set
 
@@ -127,7 +128,10 @@ class AaCrypto(context: Context) {
     }
 
     fun decrypt(cipher: ByteArray): ByteArray = synchronized(lock) {
-        val src = ByteBuffer.wrap(cipher)
+        // The Java TLS engine does not own fragmented ciphertext from
+        // previous unwrap() calls. In particular BUFFER_UNDERFLOW must never
+        // discard the unfinished record when the next AA frame arrives.
+        val src = ciphertextCarry.next(cipher)
         val out = ByteArrayOutputStream()
         while (src.hasRemaining()) {
             appIn.clear()
@@ -138,11 +142,15 @@ class AaCrypto(context: Context) {
                     val b = ByteArray(appIn.remaining())
                     appIn.get(b)
                     out.write(b)
+                    if (r.bytesConsumed() == 0 && r.bytesProduced() == 0) break
                 }
-                SSLEngineResult.Status.BUFFER_OVERFLOW -> appIn = ByteBuffer.allocate(appIn.capacity() * 2)
-                else -> break
+                SSLEngineResult.Status.BUFFER_OVERFLOW ->
+                    appIn = ByteBuffer.allocate(appIn.capacity() * 2)
+                SSLEngineResult.Status.BUFFER_UNDERFLOW -> break
+                SSLEngineResult.Status.CLOSED -> error("AA TLS peer closed")
             }
         }
+        ciphertextCarry.retain(src)
         out.toByteArray()
     }
 }

@@ -20,7 +20,8 @@ object AaMessages {
 
     fun authComplete(): ByteArray = ProtoWriter().enum(1, AaProtocol.STATUS_OK).toByteArray()
 
-    fun serviceDiscoveryResponse(width: Int, height: Int, fps: Int, density: Int, advertiseAudio: Boolean, name: String, controlsLeft: Boolean = true, advertiseCarLocation: Boolean = false, advertiseCarGear: Boolean = false): ByteArray {
+    fun serviceDiscoveryResponse(width: Int, height: Int, fps: Int, density: Int, advertiseAudio: Boolean, name: String, controlsLeft: Boolean = true, advertiseCarLocation: Boolean = false, advertiseCarGear: Boolean = false,
+        locationCharacterization: Int = AaLocationCharacterization.RAW_GNSS_ONLY): ByteArray {
         val (fullW, fullH) = AaProtocol.standardSize(width, height)
         val resolution = when (fullW) {
             1920 -> AaProtocol.RES_1920x1080
@@ -67,7 +68,11 @@ object AaMessages {
         // fixes without dead-reckoning or fused wheel/gyro data (AA proxy source).
         // SensorRequest field 2, issued separately by the phone, is the interval.
         // Never advertise a car GPS characterization in Baidu-only mode.
-        if (advertiseCarLocation) sensorTypes.uint32(2, 256)
+        if (advertiseCarLocation) {
+            require(locationCharacterization == AaLocationCharacterization.RAW_GNSS_ONLY ||
+                locationCharacterization == AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)
+            sensorTypes.uint32(2, locationCharacterization)
+        }
         val sensor = ProtoWriter()
             .int32(1, AaProtocol.CH_SENSOR)
             .message(2, sensorTypes)

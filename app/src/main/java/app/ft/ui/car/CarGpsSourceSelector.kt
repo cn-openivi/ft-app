@@ -9,6 +9,8 @@ import app.ft.core.VehicleLocation
  * The car has priority. Do NOT fall back because a GPS coordinate is >3s old,
  * and do NOT allow GearInfo traffic to masquerade as a new GPS fix.
  * Change source only after a sustained 7s GPS gap / 7s recovery.
+ * This is the FT on-screen source selector, independent of Android Auto's
+ * explicit LOCATION subscription and the TinyEKF GNSS-reference gate.
  */
 internal class CarGpsSourceSelector(
     private val switchAfterMs: Long = 7_000L,
@@ -90,14 +92,28 @@ internal class CarGpsSourceSelector(
                     nowMs - stableCarSinceMs!! >= switchAfterMs)
                     source = Source.ICCOA
         }
+        // Preserve the defensive PHONE input validation from the newer
+        // source-only branch when restoring FT174's car-primary hysteresis.
+        // A corrupted/stale Android coordinate must not replace a lost OEM fix.
+        val safePhone = phone?.takeIf {
+            // The fallback is valid only if the handset itself has a recent
+            // GNSS measurement. Receiving a cached Location callback now
+            // does not make its old elapsedRealtime fix physically current.
+            val callbackAge = nowMs - it.receivedAtMs
+            val fixAge = it.fixAgeNanosAtReceipt
+            it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
+                it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
+                callbackAge in 0L..switchAfterMs &&
+                (fixAge == null || fixAge in 0L..(switchAfterMs * 1_000_000L))
+        }
         val carChosen = source == Source.ICCOA && lastCarFix != null
         return if (carChosen) {
             Reading(Source.ICCOA, lastCarFix, phone,
                 (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
         } else {
-            Reading(Source.PHONE, null, phone,
-                (nowMs - (phone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
-                phone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
+            Reading(Source.PHONE, null, safePhone,
+                (nowMs - (safePhone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
+                safePhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
         }
     }
 }

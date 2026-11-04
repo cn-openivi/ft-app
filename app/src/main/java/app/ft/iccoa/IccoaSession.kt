@@ -303,8 +303,12 @@ class IccoaSession(
             return true
         } catch (_: RejectedExecutionException) {
             copy.fill(0)
-            // Audio backpressure drops one packet; control messages must not disappear silently.
-            if (category != 4 && active(attempt)) fail(attempt, "Переполнена очередь управления ICCOA")
+            // Audio backpressure drops one packet; an exhausted CONTROL send
+            // queue is a broken transport, NOT a PIN/Quick authentication
+            // rejection. Route through the existing 3-attempt bounded
+            // transport-recovery path without replaying credentials.
+            if (category != 4 && active(attempt))
+                fail(attempt, "Переполнена очередь управления ICCOA", transportFailure = true)
             return false
         }
     }
@@ -690,8 +694,13 @@ class IccoaSession(
 
     private fun watchWrites(attempt: Attempt): Unit = post(attempt) {
         val now = System.nanoTime()
-        if (listOf(attempt.controlWritingAt, attempt.audioWritingAt).any { it > 0 && now - it > TimeUnit.SECONDS.toNanos(5) }) {
-            fail(attempt, "Тайм-аут отправки данных ICCOA")
+        if (listOf(attempt.controlWritingAt, attempt.audioWritingAt).any {
+                it > 0 && now - it > TimeUnit.SECONDS.toNanos(5)
+            }) {
+            // Socket write timeout is a confirmed transport hang. Without
+            // the typed transport action, the service permanently STOPped
+            // even though its 3-attempt reconnect guard was already present.
+            fail(attempt, "Тайм-аут отправки данных ICCOA", transportFailure = true)
         } else {
             later(attempt, 2_000) { watchWrites(attempt) }
         }

@@ -7,6 +7,7 @@ import app.ft.core.DiagLog
 import app.ft.core.Prefs
 import app.ft.core.CarProtocol
 import app.ft.core.VehicleTelemetry
+import app.ft.dr.DrNavigationTelemetry
 import app.ft.core.ProtoReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class AaSession(
 
     private val tag = "AA"
     private val crypto = AaCrypto(context)
+    private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
     private val outLock = Any()
     private var job: Job? = null
@@ -42,6 +44,8 @@ class AaSession(
     @Volatile private var carGpsSubscribed = false
     @Volatile private var carGearSubscribed = false
     private val sensorSubscriptions = AaSensorSubscriptions()
+    private var locationCharacterizationAtDiscovery =
+        AaLocationCharacterization.RAW_GNSS_ONLY
     private val audioRouteAudit = AaAudioRouteAudit()
     @Volatile private var sensorChannelOpened = false
 
@@ -202,7 +206,7 @@ class AaSession(
             AaProtocol.SSL_HANDSHAKE -> {
                 val out = crypto.handshakeStep(body)
                 if (out.isNotEmpty()) sendPlain(AaProtocol.CH_CONTROL, AaProtocol.SSL_HANDSHAKE, out, false)
-                if (crypto.handshakeDone) {
+                if (authCompletion.shouldSend(crypto.handshakeDone)) {
                     sendPlain(AaProtocol.CH_CONTROL, AaProtocol.AUTH_COMPLETE, AaMessages.authComplete(), false)
                     _phase.value = Phase.AUTHENTICATED
                     DiagLog.i(tag, "TLS handshake complete, auth complete sent")
@@ -214,11 +218,20 @@ class AaSession(
                 DiagLog.i(tag, "video settings ${prefs.aaWidth}x${prefs.aaHeight}@${prefs.aaFps} fps; " +
                     "Android Auto display density requested=${prefs.aaDensity} " +
                     "effective=${AaUiDensity.effective(prefs.aaDensity, prefs.aaWidth, prefs.aaHeight)} dpi")
+                // Session-level declaration; a TinyEKF class in the APK is
+                // not proof of actual verified wheel-speed/yaw telemetry.
+                val drAtDiscovery = DrNavigationTelemetry.current.value
+                val drReadyAtDiscovery = prefs.gpsSourceMode.advertisesCarLocation(
+                    prefs.carProtocol) && drAtDiscovery?.eligibleForAa(
+                    System.currentTimeMillis()) == true
+                locationCharacterizationAtDiscovery =
+                    AaLocationCharacterization.forSession(drReadyAtDiscovery)
                 val discovery = AaMessages.serviceDiscoveryResponse(
                     prefs.aaWidth, prefs.aaHeight, prefs.aaFps, prefs.aaDensity,
                     true, prefs.carName, prefs.aaControlsLeft,
-                    advertiseCarLocation = prefs.carProtocol == CarProtocol.ICCOA,
-                    advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA
+                    advertiseCarLocation = prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol),
+                    advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA,
+                    locationCharacterization = locationCharacterizationAtDiscovery
                 )
                 // Audit actual serialized descriptor, rather than the setting
                 // supplied to the encoder. No coordinates or device identity.
@@ -246,8 +259,8 @@ class AaSession(
                     "oemGpsFreshAtDiscovery=$gpsFreshAtDiscovery")
                 sendEnc(AaProtocol.CH_CONTROL, AaProtocol.SERVICE_DISCOVERY_RESPONSE, discovery)
                 _phase.value = Phase.DISCOVERED
-                if (prefs.carProtocol == CarProtocol.ICCOA) {
-                    DiagLog.i(tag, "ICCOA car LOCATION advertised to AA; waiting for actual phone subscription")
+                if (prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)) {
+                    DiagLog.i(tag, "ICCOA car LOCATION selected for AA; waiting for actual phone subscription")
                     scope.launch(Dispatchers.IO) {
                         delay(12_000L)
                         if (lifecycle.running) {
@@ -399,7 +412,9 @@ class AaSession(
             AaProtocol.SENSOR_START_REQUEST -> {
                 val type = AaMessages.sensorRequestType(body)
                 val supported = AaProtocol.supportsSensor(
-                    type, prefs.carProtocol == CarProtocol.ICCOA
+                    type,
+                    isIccoa = prefs.carProtocol == CarProtocol.ICCOA,
+                    carLocationOffered = prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)
                 )
                 if (!supported) {
                     // Reply with a protocol-level rejection instead of OK with no data.
@@ -422,7 +437,7 @@ class AaSession(
                             AaCarGear.sensorError(3))
                     }
                     AaProtocol.SENSOR_LOCATION -> {
-                        if (prefs.carProtocol == CarProtocol.ICCOA) {
+                        if (prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)) {
                             val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
                             DiagLog.i(tag, "AA phone requested car LOCATION " +
                                 "refreshIntervalMs=$requestedIntervalMs")
@@ -450,29 +465,39 @@ class AaSession(
         carGpsJob = scope.launch(Dispatchers.IO) {
             val gpsGate = AaGpsGate()
             var lastPositionAt = Long.MIN_VALUE
-            var lastSeenAt = System.currentTimeMillis()
-            var unavailable = false
+            val availability = AaGpsAvailabilityGate(android.os.SystemClock.elapsedRealtime())
             var sent = 0L
             while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
                 val now = System.currentTimeMillis()
-                val car = VehicleTelemetry.current.value
-                val packet = gpsGate.accept(car, now)
-                if (packet != null && car != null && car.positionAtMs != lastPositionAt) {
-                    if (unavailable) {
-                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR, AaCarGps.sensorError(1))
-                        DiagLog.i(tag, "car GPS to AA: recovered")
+                // Verified DR stream only after the session negotiated
+                // DEAD_RECKONED; otherwise preserve original raw GPS path.
+                val fused = AaLocationCharacterization.permitsEstimatedPosition(
+                    locationCharacterizationAtDiscovery)
+                val dr = if (fused) DrNavigationTelemetry.current.value else null
+                val car = if (fused) null else VehicleTelemetry.current.value
+                val packet = if (fused)
+                    AaCarGps.fusedEvent(dr, now, locationCharacterizationAtDiscovery)
+                else gpsGate.accept(car, now)
+                val positionAt = if (fused) dr?.producedAtMs else car?.positionAtMs
+                if (packet != null && positionAt != null && positionAt != lastPositionAt) {
+                    if (availability.onDeliveredLocation(android.os.SystemClock.elapsedRealtime())) {
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                            AaCarGps.sensorError(1))
+                        DiagLog.i(tag, "car LOCATION to AA: recovered")
                     }
-                    unavailable = false
-                    lastPositionAt = car.positionAtMs
-                    lastSeenAt = now
+                    lastPositionAt = positionAt
                     sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
                     sent++
-                    if (sent == 1L || sent % 100L == 0L)
-                        DiagLog.i(tag, "car GPS to AA: $sent valid fixes sent; source=ICCOA")
-                } else if (!unavailable && now - lastSeenAt >= 3_500L) {
-                    unavailable = true
-                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR, AaCarGps.sensorError(2))
-                    DiagLog.w(tag, "car GPS to AA: stale/unavailable, phone fallback requested")
+                    if (sent == 1L || sent % 100L == 0L) {
+                        val originLabel = if (fused) "VERIFIED_TINYEKF" else "OEM_RAW_GNSS"
+                        DiagLog.i(tag, "car LOCATION to AA: $sent updates; source=$originLabel")
+                    }
+                } else if (availability.shouldReportUnavailable(
+                        android.os.SystemClock.elapsedRealtime())) {
+                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                        AaCarGps.sensorError(2))
+                    DiagLog.w(tag, "car LOCATION to AA: no new accepted OEM position " +
+                        "for 7s; no unverified estimated coordinates transmitted")
                 }
                 delay(interval)
             }

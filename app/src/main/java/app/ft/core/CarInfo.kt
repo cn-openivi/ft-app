@@ -12,6 +12,7 @@ import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.CalendarContract
 import app.ft.FTApp
 import app.ft.R
@@ -57,7 +58,14 @@ object CarInfo {
         val longitude: Double,
         val speedKmh: Float?,
         val bearingDegrees: Float?,
-        val receivedAtMs: Long
+        val receivedAtMs: Long,
+        // Metadata from the actual Android GPS_PROVIDER Location callback.
+        // Used only by future DR speed calibration, never by OEM GPS or AA.
+        val provider: String? = null,
+        val speedAccuracyMps: Float? = null,
+        val horizontalAccuracyMetres: Float? = null,
+        val fixAgeNanosAtReceipt: Long? = null,
+        val receivedElapsedRealtimeNanos: Long? = null
     )
     private val _phoneGps = MutableStateFlow<PhoneGpsFix?>(null)
     val phoneGps: StateFlow<PhoneGpsFix?> = _phoneGps
@@ -159,6 +167,7 @@ object CarInfo {
             val kmh = if (location.hasSpeed()) location.speed * 3.6f else -1f
             _speed.value = kmh
             val received = System.currentTimeMillis()
+            val monotonicAtReceipt = SystemClock.elapsedRealtimeNanos()
             phoneSpeedFix.value = if (kmh.isFinite() && kmh in 0f..300f)
                 SpeedFix(kmh, received) else null
             if (location.latitude.isFinite() && location.latitude in -90.0..90.0 &&
@@ -169,7 +178,15 @@ object CarInfo {
                     bearingDegrees = location.bearing.takeIf {
                         location.hasBearing() && it.isFinite() && it in 0f..360f
                     },
-                    receivedAtMs = received
+                    receivedAtMs = received,
+                    provider = location.provider,
+                    speedAccuracyMps = if (location.hasSpeedAccuracy())
+                        location.speedAccuracyMetersPerSecond else null,
+                    horizontalAccuracyMetres = if (location.hasAccuracy())
+                        location.accuracy else null,
+                    fixAgeNanosAtReceipt = monotonicAtReceipt -
+                        location.elapsedRealtimeNanos,
+                    receivedElapsedRealtimeNanos = monotonicAtReceipt
                 )
                 remember(location)
             }
