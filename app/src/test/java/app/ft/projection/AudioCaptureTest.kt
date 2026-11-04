@@ -75,7 +75,9 @@ class AudioCaptureTest {
         val resumePause = CountDownLatch(1)
         val reads = AtomicInteger()
         val delivered = AtomicInteger()
+        val readerThread = java.util.concurrent.atomic.AtomicReference<Thread>()
         `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            readerThread.compareAndSet(null, Thread.currentThread())
             reads.incrementAndGet()
             0
         }
@@ -91,6 +93,12 @@ class AudioCaptureTest {
         } finally {
             resumePause.countDown()
         }
+        // Wait for the actual reader to leave its finally block; a read count
+        // asserted immediately after releasing the pause can miss a late retry.
+        val reader = readerThread.get()
+        assertNotNull(reader)
+        reader.join(5000)
+        assertFalse("stopped audio reader must terminate", reader.isAlive)
         assertEquals(1, reads.get())
         assertEquals(0, delivered.get())
         assertFalse(capture.active)
