@@ -130,6 +130,74 @@ class AaFramingTest {
         assertNull(AaFraming.Assembler { it }.feed(first))
     }
 
+    @Test fun splitAAMessageRejectsChangedControlBitWithoutCrossChannelDamage() {
+        // AAP FIRST=0x09/CONT=0x08/LAST=0x0A for encrypted DATA.
+        // Changing the CONTROL bit on the LAST would otherwise make
+        // Assembler report a fabricated CONTROL message.
+        val original = payload(AaProtocol.MAX_FRAME_PAYLOAD + 13)
+        val frames = encode(original, AaProtocol.CH_VIDEO).map(::parse)
+        val sensor = byteArrayOf(0x80.toByte(), 0x01, 0x08, 0x01)
+        val assembler = AaFraming.Assembler { it }
+        assertNull(assembler.feed(frames.first()))
+        val malicious = AaFraming.Frame(
+            AaProtocol.CH_VIDEO,
+            frames.last().flags or AaProtocol.FLAG_CONTROL,
+            frames.last().payload
+        )
+        assertNull(assembler.feed(malicious))
+        assertArrayEquals(sensor, assembler.feed(
+            AaFraming.Frame(AaProtocol.CH_SENSOR, AaProtocol.FRAME_BULK, sensor)
+        )!!.payload)
+        // Even a now correctly flagged LAST is orphaned; never revive it.
+        assertNull(assembler.feed(frames.last()))
+        assertArrayEquals(original, assembler.feed(
+            AaFraming.Frame(AaProtocol.CH_VIDEO, AaProtocol.FRAME_BULK, original)
+        )!!.payload)
+    }
+
+    @Test fun forgedEncryptedContinuationIsRejectedBeforeTlsAndCannotCompleteRun() {
+        val original = payload(AaProtocol.MAX_FRAME_PAYLOAD + 2)
+        val frames = encode(original).map(::parse)
+        var decryptCalls = 0
+        val assembler = AaFraming.Assembler {
+            decryptCalls++
+            throw AssertionError("unexpected TLS unwrap for invalid routing")
+        }
+        assertNull(assembler.feed(frames.first()))
+        assertNull(assembler.feed(AaFraming.Frame(
+            AaProtocol.CH_VIDEO,
+            frames.last().flags or AaProtocol.FLAG_ENCRYPTED,
+            frames.last().payload
+        )))
+        assertEquals(0, decryptCalls)
+        assertNull(assembler.feed(frames.last()))
+        assertArrayEquals(original, assembler.feed(
+            AaFraming.Frame(AaProtocol.CH_VIDEO, AaProtocol.FRAME_BULK, original)
+        )!!.payload)
+    }
+
+    @Test fun validInterleavedEncryptedFragmentsKeepTheirOriginalControlAndTlsFlags() {
+        val sensorPayload = payload(AaProtocol.MAX_FRAME_PAYLOAD + 3)
+        val videoPayload = payload(AaProtocol.MAX_FRAME_PAYLOAD + 5)
+        val sensor = AaFraming.encode(
+            AaProtocol.CH_SENSOR, sensorPayload, encrypted = true, control = true
+        ) { it }.map(::parse)
+        val video = AaFraming.encode(
+            AaProtocol.CH_VIDEO, videoPayload, encrypted = true, control = false
+        ) { it }.map(::parse)
+        val assembler = AaFraming.Assembler { it }
+        assertNull(assembler.feed(sensor.first()))
+        assertNull(assembler.feed(video.first()))
+        val resumedSensor = assembler.feed(sensor.last())!!
+        val resumedVideo = assembler.feed(video.last())!!
+        assertTrue(resumedSensor.control)
+        assertTrue(resumedSensor.encrypted)
+        assertFalse(resumedVideo.control)
+        assertTrue(resumedVideo.encrypted)
+        assertArrayEquals(sensorPayload, resumedSensor.payload)
+        assertArrayEquals(videoPayload, resumedVideo.payload)
+    }
+
     @Test fun encryptedChunkTransformerIsAppliedOnEverySegment() {
         val plain = payload(32_769)
         val xor: (ByteArray) -> ByteArray =
