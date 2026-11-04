@@ -245,6 +245,29 @@ class IccoaDropRecoveryTest {
         assertTrue(gate.isCurrent("B"))
     }
 
+    @Test fun normalPinSurvivesNetworkReplacementButClearsAfterVerifiedHandshake() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        var pendingPin: String? = "123456"
+        pendingPin = IccoaNetworkPinLifecycle.afterAuthQueued(pendingPin)
+        assertEquals("123456", pendingPin)
+        // Network A becomes stale before its queued TCP bind; B must retain
+        // the same attempt's credential, not prompt for a new PIN.
+        gate.onAvailable("B")
+        assertFalse(gate.bindIfCurrent("A") { fail("stale auth") })
+        assertEquals("123456", pendingPin)
+        assertTrue(gate.bindIfCurrent("B") { assertEquals("123456", pendingPin) })
+        pendingPin = IccoaNetworkPinLifecycle.afterVerifiedAuth()
+        assertNull(pendingPin)
+        // Trusted Quick uses its pinned identity, never a Normal PIN.
+        assertNull(IccoaNetworkPinLifecycle.afterAuthQueued(null))
+        assertNull(IccoaNetworkPinLifecycle.afterVerifiedAuth())
+        // A rejected credential is not a transport retry.
+        assertEquals(IccoaCloseAction.STOP, IccoaCloseEvent.classify("PIN rejected").action)
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
