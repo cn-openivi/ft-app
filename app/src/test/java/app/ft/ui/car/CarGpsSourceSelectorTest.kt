@@ -323,6 +323,33 @@ class CarGpsSourceSelectorTest {
         assertEquals(0L, recovered.lastPacketAgeMs)
     }
 
+    @Test fun newCarPositionWithoutSpeedDoesNotReuseOldSpeed() {
+        val selector = connectedSelector()
+        val valid = selector.select(car(18_000L, speed = 54f), phone(18_000L), 18_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, valid.source)
+        assertNotNull(valid.speedKmh)
+
+        // A fresh OEM position with no measured speed is still a valid
+        // CAR position, but an earlier speed is not a current measurement.
+        val absent = selector.select(car(19_000L).copy(speedKmh = null),
+            phone(19_000L, speed = 80f), 19_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, absent.source)
+        assertEquals(55.55207, absent.latitude!!, 0.00001)
+        assertNull(absent.speedKmh)
+
+        // Invalid speed is likewise not evidence of current car speed.
+        val invalid = selector.select(car(20_000L, speed = Float.NaN),
+            phone(20_000L, speed = 90f), 20_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, invalid.source)
+        assertNull(invalid.speedKmh)
+
+        // The next valid speed resumes from the actual new measurement,
+        // not an EMA that includes the stale 54 km/h value.
+        val restored = selector.select(car(21_000L, speed = 20f),
+            phone(21_000L, speed = 90f), 21_000L)
+        assertEquals(20f, restored.speedKmh!!, 0f)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
