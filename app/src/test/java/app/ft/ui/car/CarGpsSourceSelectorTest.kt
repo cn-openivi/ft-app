@@ -241,6 +241,35 @@ class CarGpsSourceSelectorTest {
         assertNull(invalid.speedKmh)
     }
 
+    @Test fun reorderedOemPacketsNeverRefreshSevenSecondCarLossTimer() {
+        val selector = connectedSelector() // Accepted positions 10_000..17_000.
+        // Exact reordering pattern: accepted T, then T-1000, then T-500.
+        // Neither old packet is a new OEM GPS fix, even if the second
+        // packet is newer than the first rejected packet.
+        val firstOld = selector.select(car(16_000L), phone(18_000L), 18_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, firstOld.source)
+        assertEquals(1_000L, firstOld.lastPacketAgeMs)
+
+        val secondOld = selector.select(car(16_500L), phone(19_000L), 19_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, secondOld.source)
+        assertEquals(2_000L, secondOld.lastPacketAgeMs)
+
+        val beforeTimeout = selector.select(null, phone(23_999L), 23_999L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, beforeTimeout.source)
+        assertEquals(6_999L, beforeTimeout.lastPacketAgeMs)
+
+        val fallback = selector.select(null, phone(24_000L), 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertEquals(55.55, fallback.latitude!!, 0.00001)
+
+        // Only genuinely newer positions can start a new 7s recovery.
+        for (t in 25_000L..31_000L step 1_000L)
+            assertEquals(CarGpsSourceSelector.Source.PHONE,
+                selector.select(car(t), phone(t), t).source)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA,
+            selector.select(car(32_000L), phone(32_000L), 32_000L).source)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
