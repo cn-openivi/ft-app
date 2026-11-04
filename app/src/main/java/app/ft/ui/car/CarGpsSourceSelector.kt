@@ -55,14 +55,14 @@ internal class CarGpsSourceSelector(
             it.source == "ICCOA" && it.positionAtMs > 0L &&
                 it.displayLatitude != null && it.displayLongitude != null
         }
-        if (candidate != null && candidate.positionAtMs != lastObservedCarPositionMs) {
-            val previousPosition = lastObservedCarPositionMs
+        if (candidate != null && candidate.positionAtMs > lastObservedCarPositionMs) {
+            // A reordered OEM packet must not lower the high-water mark:
+            // otherwise a second stale packet could look newly accepted.
             lastObservedCarPositionMs = candidate.positionAtMs
             // Newly mounted screens may see an old stored fix. That is not
             // evidence of live telemetry, even though it can be displayed.
             val age = nowMs - candidate.positionAtMs
-            if (candidate.positionAtMs > previousPosition &&
-                age >= -1_000L && age <= maxRecoveryGapMs) {
+            if (age >= -1_000L && age <= maxRecoveryGapMs) {
                 val last = lastCarPacketAtMs
                 if (last == null || nowMs < last || nowMs - last > maxRecoveryGapMs) {
                     stableCarSinceMs = nowMs
