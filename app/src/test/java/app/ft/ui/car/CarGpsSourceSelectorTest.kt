@@ -232,6 +232,13 @@ class CarGpsSourceSelectorTest {
         val expired = selector.select(null, overBoundary, 24_000L)
         assertNull(expired.latitude)
         assertNull(expired.speedKmh)
+
+        // A future-dated Android elapsedRealtime fix is invalid, not fresh.
+        val impossibleFutureFix = phone(24_000L, speed = 99f)
+            .copy(fixAgeNanosAtReceipt = -1L)
+        val invalid = selector.select(null, impossibleFutureFix, 24_000L)
+        assertNull(invalid.latitude)
+        assertNull(invalid.speedKmh)
     }
 
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
