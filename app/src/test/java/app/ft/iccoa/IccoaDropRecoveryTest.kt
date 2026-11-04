@@ -192,6 +192,23 @@ class IccoaDropRecoveryTest {
             IccoaCloseEvent.classify("QUICK rejected", quickNormalFallback = true).action)
     }
 
+    @Test fun replacedNetworkCannotStartAuthOrTearDownLiveConnection() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.isCurrent("A"))
+        gate.onAvailable("B")
+        // onLinkPropertiesChanged(A), delayed gateway retry(A), onLost(A)
+        // must neither start authentication on A nor close the B session.
+        assertFalse(gate.isCurrent("A"))
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.isCurrent("B"))
+        assertTrue(gate.onLost("B"))
+        assertFalse(gate.isCurrent("B"))
+        gate.onAvailable("C")
+        gate.clear()
+        assertFalse(gate.isCurrent("C"))
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
