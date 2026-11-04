@@ -295,6 +295,34 @@ class CarGpsSourceSelectorTest {
         assertEquals(55.55, fallback.latitude!!, 0.00001)
     }
 
+
+    @Test fun firstOemFixAtSevenSecondBoundaryDoesNotHideCompletedGpsOutage() {
+        val selector = connectedSelector() // ICCOA active; last OEM fix at 17_000.
+        // Exactly 7s elapsed with no new OEM position. A fresh position
+        // arrives in the same select() call that detects the expired gap.
+        // It must start a NEW 7s reacquisition, not conceal the outage.
+        val boundary = selector.select(car(24_000L), phone(24_000L), 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, boundary.source)
+        assertEquals(55.55, boundary.latitude!!, 0.00001)
+        assertEquals(0L, boundary.lastPacketAgeMs)
+
+        // Reacquisition must be continuous and last a full seven seconds.
+        for (t in 25_000L..30_000L step 1_000L) {
+            val pending = selector.select(car(t), phone(t), t)
+            assertEquals(CarGpsSourceSelector.Source.PHONE, pending.source)
+        }
+        val reacquired = selector.select(car(31_000L), phone(31_000L), 31_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, reacquired.source)
+        assertEquals(55.55207, reacquired.latitude!!, 0.00001)
+    }
+
+    @Test fun sixSecondOemGapWithFreshFixRetainsCarSource() {
+        val selector = connectedSelector()
+        val recovered = selector.select(car(23_000L), phone(23_000L), 23_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, recovered.source)
+        assertEquals(0L, recovered.lastPacketAgeMs)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
