@@ -169,14 +169,18 @@ class IccoaDropRecoveryTest {
         val timeout = IccoaCloseEvent.classify(
             "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
         assertEquals(IccoaCloseAction.RETRY_TRANSPORT, timeout.action)
+        // Post-auth, pre-CONTROL is not yet connected. A remembered-car
+        // auto-select already owns attempt #1; it may retry only #2 and #3.
         val guard = IccoaDropRecovery()
-        assertEquals(1, guard.onFailure(
-            wasConnected = true, autoConnectEnabled = true,
+        assertEquals(1, guard.onInitialRememberedCarAutoSelect())
+        assertEquals(2, guard.onFailure(
+            wasConnected = false, autoConnectEnabled = true,
             retryableTransportFailure = timeout.action == IccoaCloseAction.RETRY_TRANSPORT))
-        assertEquals(2, guard.onFailure(false, true, true))
         assertEquals(3, guard.onFailure(false, true, true))
         assertNull(guard.onFailure(false, true, true))
         assertFalse(guard.active)
+        // An owner-initiated first connection has no recovery episode.
+        assertNull(IccoaDropRecovery().onFailure(false, true, true))
 
         // Auth rejection must never be reclassified as transport timeout.
         val authRejected = IccoaCloseEvent.classify("PIN rejected")
