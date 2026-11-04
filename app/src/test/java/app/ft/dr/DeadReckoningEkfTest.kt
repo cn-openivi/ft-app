@@ -224,4 +224,35 @@ class DeadReckoningEkfTest {
         assertEquals(old.eastMetres, dr.estimate()!!.eastMetres, 0.0)
         assertTrue(abs(dr.estimate()!!.headingDegrees - 30.0) < 1e-6)
     }
+    @Test fun missingVerifiedMotionFreezesPositionAndGrowsUncertainty() {
+        val dr = DeadReckoningEkf()
+        assertNull(dr.holdUnverifiedMotion(1.0))
+        assertTrue(dr.anchor(100.0, -20.0, 45.0, 2.0))
+        val anchored = dr.estimate()!!
+        repeat(30) {
+            val held = dr.holdUnverifiedMotion(1.0)!!
+            assertEquals(anchored.eastMetres, held.eastMetres, 0.0)
+            assertEquals(anchored.northMetres, held.northMetres, 0.0)
+            assertEquals(anchored.headingDegrees, held.headingDegrees, 0.0)
+        }
+        val after = dr.estimate()!!
+        assertEquals(30.0, after.secondsSinceGnss, 0.0)
+        assertTrue(after.estimated)
+        assertTrue(after.horizontalUncertaintyMetres >
+            anchored.horizontalUncertaintyMetres)
+        // No synthetic wheel path is accumulated during unverified motion.
+        assertFalse(dr.correctGnss(200.0, 80.0, 2.0, true))
+        assertEquals(100.0, dr.estimate()!!.eastMetres, 0.0)
+    }
+
+    @Test fun invalidHoldIntervalDoesNotAdvanceTimeOrPosition() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 1.0)
+        for (bad in listOf(Double.NaN, -1.0, 0.0, 2.0)) {
+            assertNull(dr.holdUnverifiedMotion(bad))
+        }
+        assertEquals(0.0, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertEquals(0.0, dr.estimate()!!.northMetres, 0.0)
+    }
+
 }
