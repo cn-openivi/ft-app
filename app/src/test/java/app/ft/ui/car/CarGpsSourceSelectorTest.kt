@@ -270,6 +270,31 @@ class CarGpsSourceSelectorTest {
             selector.select(car(32_000L), phone(32_000L), 32_000L).source)
     }
 
+    @Test fun rejectedFutureOemPacketDoesNotPoisonCarPositionHighWaterMark() {
+        val selector = connectedSelector() // Accepted OEM T=17_000.
+        // This packet is 1001 ms in the future, beyond the tolerated
+        // clock skew. It must NOT advance the accepted position watermark.
+        val future = selector.select(car(21_001L), phone(20_000L), 20_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, future.source)
+        assertEquals(3_000L, future.lastPacketAgeMs)
+
+        // A real, fresh fix at 20_000 must still be accepted even though
+        // its timestamp is below the previously rejected 21_001.
+        val recovered = selector.select(car(20_000L), phone(20_000L), 20_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, recovered.source)
+        assertEquals(0L, recovered.lastPacketAgeMs)
+
+        // No further OEM position: seven seconds after the last accepted
+        // fix the selector must return to PHONE, never prolonging a gap
+        // because of a rejected future timestamp.
+        val before = selector.select(null, phone(26_999L), 26_999L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, before.source)
+        assertEquals(6_999L, before.lastPacketAgeMs)
+        val fallback = selector.select(null, phone(27_000L), 27_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertEquals(55.55, fallback.latitude!!, 0.00001)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
