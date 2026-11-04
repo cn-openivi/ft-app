@@ -42,14 +42,20 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 internal class IccoaNetworkCallbackGate<T : Any> {
     private var selected: T? = null
-    fun onAvailable(network: T) { selected = network }
-    fun isCurrent(network: T): Boolean = selected == network
-    fun onLost(network: T): Boolean {
+    @Synchronized fun onAvailable(network: T) { selected = network }
+    @Synchronized fun isCurrent(network: T): Boolean = selected == network
+    /** Atomically reject queued work for a superseded Network before socket binding. */
+    @Synchronized fun bindIfCurrent(network: T, bind: () -> Unit): Boolean {
+        if (selected != network) return false
+        bind()
+        return true
+    }
+    @Synchronized fun onLost(network: T): Boolean {
         if (!isCurrent(network)) return false
         selected = null
         return true
     }
-    fun clear() { selected = null }
+    @Synchronized fun clear() { selected = null }
 }
 
 /** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
@@ -454,6 +460,9 @@ class IccoaSession(
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
+                // A queued auth worker for the previous Network must not monopolize
+                // authStarted when Android replaces the Wi-Fi handle before TCP bind.
+                if (attempt.network != network) attempt.authStarted = false
                 attempt.network = network
                 attempt.networkGate.onAvailable(network)
                 // Link properties may not yet exist in onAvailable; onLinkPropertiesChanged retries.
@@ -540,7 +549,10 @@ class IccoaSession(
         try {
             val socket = Socket()
             if (!track(attempt, socket)) return
-            network.bindSocket(socket)
+            if (!attempt.networkGate.bindIfCurrent(network) { network.bindSocket(socket) }) {
+                socket.close()
+                return // Superseded before TCP; the current Network owns authentication.
+            }
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
             socket.tcpNoDelay = true
