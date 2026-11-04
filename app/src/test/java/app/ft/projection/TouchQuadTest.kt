@@ -5,6 +5,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 class TouchQuadTest {
     private val width = 2400
@@ -42,29 +44,52 @@ class TouchQuadTest {
         assertEquals(quad.map(400, 400, width, height), persisted!!.map(400, 400, width, height))
     }
 
-    @Test fun xiaomiLikeThirtySixPixelYShiftIsRemovedBySavedFourPointCalibration() {
-        // Field observation: tester had NOT performed the four-point HU
-        // calibration. This fixture validates the existing calibration-first
-        // path; it does not claim the field offset is a geometry code defect.
-        val shifted = listOf(
-            TouchPoint(360.0, 216.0), TouchPoint(2040.0, 216.0),
-            TouchPoint(360.0, 1056.0), TouchPoint(2040.0, 1056.0)
+    @Test fun proportionalVerticalShiftAndBottomRowsSurviveChangingHuResolution() {
+        // Real Xiaomi reporter had NOT yet performed four-point calibration.
+        // Represent the earlier 36/1200 vertical offset as a measured ratio,
+        // NOT a universal 36px constant or a hardware-specific screen size.
+        val correctionRatio = 0.03
+        val sourceWidth = width
+        val sourceHeight = height
+        fun px(ratio: Double, dimension: Int) = (ratio * dimension).roundToInt()
+        val points = listOf(
+            TouchPoint(px(0.15, sourceWidth).toDouble(), px(0.15 + correctionRatio, sourceHeight).toDouble()),
+            TouchPoint(px(0.85, sourceWidth).toDouble(), px(0.15 + correctionRatio, sourceHeight).toDouble()),
+            TouchPoint(px(0.15, sourceWidth).toDouble(), px(0.85 + correctionRatio, sourceHeight).toDouble()),
+            TouchPoint(px(0.85, sourceWidth).toDouble(), px(0.85 + correctionRatio, sourceHeight).toDouble())
         )
-        val saved = TouchQuad.fromSamples(shifted, width, height)!!
-        val restored = TouchQuad.deserialize(saved.serialize(), width, height)!!
-        for ((wantedX, wantedY) in listOf(
-            360 to 180, 2040 to 180,
-            360 to 1020, 2040 to 1020,
-            1200 to 600
+        val trained = TouchQuad.fromSamples(points, sourceWidth, sourceHeight)!!
+        val fractions = trained.serializeNormalized(sourceWidth, sourceHeight)
+
+        // Small, medium, large, and non-16:9 HU viewports. A calibration
+        // persists as x/width, y/height and is rebuilt for each resolution.
+        for ((w, h) in listOf(
+            800 to 480, 1280 to 720, 1920 to 1008,
+            2400 to 1200, 2560 to 1440
         )) {
-            val actual = restored.map(wantedX, wantedY + 36, width, height)
-            assertEquals(wantedX, actual.first)
-            assertEquals(wantedY, actual.second)
+            val restored = TouchQuad.deserializeNormalized(fractions, w, h)!!
+            for ((rx, ry) in listOf(
+                0.15 to 0.15, 0.85 to 0.15,
+                0.15 to 0.85, 0.85 to 0.85,
+                0.50 to 0.50, 0.50 to 0.93
+            )) {
+                val expectedX = px(rx, w)
+                val expectedY = px(ry, h)
+                val rawY = px(ry + correctionRatio, h)
+                val mapped = restored.map(expectedX, rawY, w, h)
+                assertTrue("x at ${w}x${h} ($rx,$ry): ${mapped.first}",
+                    abs(mapped.first - expectedX) <= 2)
+                assertTrue("y at ${w}x${h} ($rx,$ry): ${mapped.second}",
+                    abs(mapped.second - expectedY) <= 2)
+            }
         }
-        // A low keyboard row should still land inside the lower AA content.
-        val bottom = restored.map(1200, 1136, width, height)
-        assertEquals(1200, bottom.first)
-        assertEquals(1100, bottom.second)
+    }
+
+    @Test fun malformedProportionalCalibrationsAreRejectedWithoutAFalseScale() {
+        assertNull(TouchQuad.deserializeNormalized("bad", 1280, 720))
+        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,1.2,0.85", 1280, 720))
+        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,0.85,NaN", 1280, 720))
+        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,0.85,0.85", 0, 720))
     }
 
     @Test fun cannotSaveOverlappingReversedOrCorruptedPoints() {
