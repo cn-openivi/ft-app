@@ -29,6 +29,7 @@ import app.ft.ShareActivity
 import app.ft.aa.AaKeep
 import app.ft.aa.AaInstaller
 import app.ft.aa.AaTouchViewport
+import app.ft.aa.AaTouchGestureViewport
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
@@ -1499,6 +1500,8 @@ class CarLifeService : Service() {
         }
     }
 
+    private val aaGestureViewport = AaTouchGestureViewport()
+
     private fun routeTouch(raw: CarTouch) {
         val st = _state.value
         val (x, y) = carDisplay.toContent(raw.x, raw.y)
@@ -1520,10 +1523,9 @@ class CarLifeService : Service() {
         if (st.aaOverlay && aa != null && aa.phase.value >= AaSession.Phase.DISCOVERED) {
             if (action < 0) return
             val p = app.prefs
-            val viewport = AaTouchViewport.bounds ?: return
-            if (action == CarTouch.DOWN) touchBeside = !viewport.contains(x, y)
-            if (touchBeside) return
-            val point = viewport.map(x, y, p.aaWidth, p.aaHeight)
+            val point = aaGestureViewport.map(
+                action, x, y, AaTouchViewport.bounds, p.aaWidth, p.aaHeight
+            ) ?: return
             aa.sendTouch(point.first, point.second, action)
             return
         }
