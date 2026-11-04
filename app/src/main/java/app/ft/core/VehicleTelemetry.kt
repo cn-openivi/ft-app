@@ -75,6 +75,12 @@ object VehicleTelemetry {
         // Late OEM GPS frames must not replace a newer accepted position.
         // GearInfo is updated independently by updateIccoaSpeed(), so an
         // older GPS frame must not roll back the shared telemetry snapshot.
+        // Reject implausibly future-dated GPS positions before they can poison
+        // the shared high-water mark. Match the selector's 1s clock tolerance.
+        // GearInfo is delivered through updateIccoaSpeed(), not publish().
+        if (location.positionAtMs > 0L &&
+            location.positionAtMs > location.receivedAtMs &&
+            location.positionAtMs - location.receivedAtMs > 1_000L) return
         val latestPosition = _current.value?.takeIf { it.source == location.source }
         if (location.positionAtMs > 0L && latestPosition != null &&
             latestPosition.positionAtMs > location.positionAtMs) return
