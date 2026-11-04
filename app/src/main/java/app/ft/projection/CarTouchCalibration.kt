@@ -53,18 +53,6 @@ internal class TouchQuad private constructor(
     fun serialize(): String = listOf(topLeft, topRight, bottomLeft, bottomRight)
         .joinToString(",") { "${it.x},${it.y}" }
 
-    /**
-     * Resolution-independent HU calibration. Each measured coordinate is
-     * stored as a fraction of the viewport dimension, not an absolute pixel.
-     * Keep serialize()/deserialize() for existing per-resolution and mirror
-     * profiles, whose historical on-disk representation must not change.
-     */
-    fun serializeNormalized(width: Int, height: Int): String {
-        require(width > 0 && height > 0)
-        return listOf(topLeft, topRight, bottomLeft, bottomRight)
-            .joinToString(",") { "${it.x / width},${it.y / height}" }
-    }
-
     companion object {
         fun fromSamples(points: List<TouchPoint>, width: Int, height: Int): TouchQuad? {
             if (points.size != 4 || width < 200 || height < 150) return null
@@ -96,18 +84,6 @@ internal class TouchQuad private constructor(
             val values = items.map { it.toDoubleOrNull() ?: return null }
             return fromSamples(values.chunked(2).map { TouchPoint(it[0], it[1]) }, width, height)
         }
-
-        fun deserializeNormalized(text: String, width: Int, height: Int): TouchQuad? {
-            if (width < 200 || height < 150) return null
-            val items = text.split(",")
-            if (items.size != 8) return null
-            val ratios = items.map { it.toDoubleOrNull() ?: return null }
-            if (ratios.any { !it.isFinite() || it !in 0.0..1.0 }) return null
-            val scaled = ratios.chunked(2).map { (x, y) ->
-                TouchPoint(x * width, y * height)
-            }
-            return fromSamples(scaled, width, height)
-        }
     }
 }
 
@@ -134,9 +110,6 @@ internal data class TouchCalibrationState(val step: Int = 0, val width: Int = 0,
 
 /** FT/phone-mirror HU calibration, independent of Android Auto's touch protocol. */
 internal object CarTouchCalibration {
-    // One normalized profile per HU, valid after the virtual display is
-    // resized. Old "WIDTHxHEIGHT_quad4" profiles remain readable as fallback.
-    private const val NORMALIZED_KEY = "ft_quad4_normalized_v1"
     private val _state = MutableStateFlow(TouchCalibrationState())
     val state: StateFlow<TouchCalibrationState> = _state
     private val points = mutableListOf<TouchPoint>()
@@ -158,7 +131,6 @@ internal object CarTouchCalibration {
         cancel()
         val key = "${width}x${height}"
         context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE).edit()
-            .remove(NORMALIZED_KEY)
             .remove("${key}_quad4").remove("${key}_gain").remove("${key}_offset").apply()
         DiagLog.i("ICCOA", "FT touch calibration reset for $key")
     }
@@ -189,9 +161,7 @@ internal object CarTouchCalibration {
         } else {
             val key = "${c.width}x${c.height}"
             context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE).edit()
-                .putString(NORMALIZED_KEY, model.serializeNormalized(c.width, c.height))
-                .putString("${key}_quad4", model.serialize()) // backwards compatible
-                .apply()
+                .putString("${key}_quad4", model.serialize()).apply()
             DiagLog.i("ICCOA", "FT four-point X/Y touch calibration saved for $key")
             cancel()
         }
@@ -201,13 +171,6 @@ internal object CarTouchCalibration {
     fun correct(context: Context, x: Int, y: Int, width: Int, height: Int): Pair<Int, Int> {
         val prefs = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE)
         val key = "${width}x${height}"
-        // Prefer the proportional profile, including after resolution
-        // changes. An older exact-resolution calibration remains supported.
-        prefs.getString(NORMALIZED_KEY, null)?.let { saved ->
-            TouchQuad.deserializeNormalized(saved, width, height)?.let {
-                return it.map(x, y, width, height)
-            }
-        }
         val saved = prefs.getString("${key}_quad4", null)
         if (saved != null) {
             TouchQuad.deserialize(saved, width, height)?.let { return it.map(x, y, width, height) }
