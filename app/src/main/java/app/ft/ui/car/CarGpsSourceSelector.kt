@@ -88,6 +88,10 @@ internal class CarGpsSourceSelector(
                     carSpeedFilteredKmh = carSpeedFilteredKmh?.let {
                         it * 0.55f + speed * 0.45f
                     } ?: speed
+                } else {
+                    // A new valid position without a valid speed must not
+                    // reuse a speed measured at an older GPS position.
+                    carSpeedFilteredKmh = null
                 }
             }
         }
