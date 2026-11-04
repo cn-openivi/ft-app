@@ -124,3 +124,23 @@ new permissions or user-facing settings were changed.
 - The regression test now calibrates one viewport with vertical offset **0.03 of screen height**, reloads the normalized points and checks upper/lower corners, center and bottom row at 800x480, 1280x720, 1920x1008, 2400x1200 and 2560x1440. Tolerance is <=2px only to account for integer rounding of normalized input and output; the production correction is in ratios, not pixel rules.
 - `AaVideoLayout.forFrame(activeWidth,activeHeight,decodedFrameWidth,decodedFrameHeight)` and `AaViewport.map` already compute per-session dynamic geometry. Existing AA touch mapper was not changed. Replaced the single 1920/1008 viewport fixture with cases covering input ratios 640x360/800x480, 800x448/800x480, 1280x672/1280x720, 1920x1008/1920x1080, 1920x720/1920x1080 and uncropped 720p/1080p; also 640,1024,2560 physical HU display sizes mapped to their valid negotiated Android Auto content. The frame/content ratio MUST come from the negotiated/decoded source, not a guessed universal value.
 - No claim of Samsung or Xiaomi actual on-car acceptance. Source-only CI and the single owner combined vehicle field campaign remain mandatory; release APK not built.
+
+## 10. Three concurrent critical source fixes (2026-11-04)
+
+**P0-A fragmented Android Auto transport: verify original FIRST uint32 declared total**
+
+- Current `AaFraming.readFrame()` formerly read the AA FIRST header's extra 4 bytes and discarded them; `Assembler` bounded total bytes globally but would dispatch a LAST message even when its size contradicted the explicit original `FIRST` length. This is a demonstrable parser/state integrity mismatch, independent of Samsung physical Error2 claims.
+- Fixed `Frame.declaredMessageBytes` (unsigned big-endian uint32), `Assembler` checks exact assembled decrypted plaintext length per channel, detects forged zero/oversized/short/long values and discards ONLY the affected fragmented message; unrelated channel and next BULK recover. The existing AA encoder already writes this exact total in the FIRST extension. No message IDs or service discovery fields altered.
+- Exact wire tests in `AaFramingTest`: `MAX_FRAME_PAYLOAD+17` correct FIRST size, modified 4-byte FIRST totals +1/-1/0/0x7fffffff/0xffffffff, sensor multiplex unaffected, valid subsequent BULK. This is source-level parser hardening; physical peer framing remains field-unverified.
+
+**P0-B seven-second real OEM GPS availability for subscribed Android Auto LOCATION**
+
+- Existing AA sensor job reported `SensorError(LOCATION,UNAVAILABLE=2)` after **3.5 seconds** with no accepted position. Owner's agreed car-primary transfer hysteresis is **7 seconds**; different UI selector and AA sensor timing could disagree. New `AaGpsAvailabilityGate` enforces seven elapsedRealtime seconds since the **last actually delivered** car GPS message, not GearInfo/phone/diagnostics, and sends the existing sensor error ONCE; on a valid recovered OEM message sends the existing one-time recovery error `SensorError(LOCATION,1)`.
+- Exact input-output tests cover t=6999/7000ms, no false GearInfo reset, recovery once, repeated outage, monotonic backwards protection. Existing exact AA 0x8004 sensor-error body `[08 01 10 02]` and recovery `[08 01 10 01]` remain unchanged. **This does not make Samsung subscribe to LOCATION** or force Android Auto's independent phone GPS policy.
+
+**P0-C weak phone H.264 reader head-of-line blocking**
+
+- `AaSession` processes AA frames in a single reader/dispatch path and calls `AaVideoDecoder.onFrame` synchronously; `AaVideoDecoder.feedLocked` formerly used `MediaCodec.dequeueInputBuffer(20_000)` i.e. **up to 20ms per incoming frame**, long enough to cause frame backlog and delay control/ping/sensor processing on a slow decoder. Bounded to 2,000 microseconds without changing MediaCodec codec profile, FPS or stream protocol; unavailable slot means current late frame is dropped instead of blocking control for 20ms.
+- Mockito-based test verifies exact `MediaCodec.dequeueInputBuffer(2_000L)` call under codec mock and bounded 60fps frame budget. Whether slow Xiaomi actual throughput improves and whether drop rate requires a different strategy are **field-unverified**; preserve logs for later combined owner acceptance. No invented AA protocol changes or extra release APK.
+
+All changed source requires terminal source-only :app:testUnsignedTransitUnitTest and independent signed-FT174-base PR readback; one final owner combined car validation remains mandatory. Do not mark any physical P0 fixed yet.
