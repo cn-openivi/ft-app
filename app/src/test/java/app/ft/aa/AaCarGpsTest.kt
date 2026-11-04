@@ -54,6 +54,23 @@ class AaCarGpsTest {
         assertEquals(setOf(2, 3, 6, 7), gps.fields.keys)
     }
 
+    @Test fun validStationaryOemGpsDoesNotOmitZeroSpeedOrNorthHeading() {
+        // Zero is a measured value, not a missing field; the phone must be
+        // able to distinguish a stationary car from absent speed metadata.
+        val stopped = car(1.0, 2.0).copy(
+            speedRaw = 0L, headingRaw = 0L,
+            speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
+            headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED"
+        )
+        val body = ProtoReader(AaCarGps.event(stopped, 1_500L)!!).message(1)!!
+        assertTrue(body.has(6))
+        assertEquals(0, body.int(6))
+        assertTrue(body.has(7))
+        assertEquals(0, body.int(7))
+        assertFalse(body.has(4)) // Unknown accuracy was not fabricated.
+        assertFalse(body.has(5)) // Unknown altitude was not fabricated.
+    }
+
     @Test fun unknownOrUnrelatedSpeedAndBearingMustNotEnterAaLocation() {
         val baseline = AaCarGps.event(car(55.755826, 37.617299), 1_500L)!!
         val unrelatedGearInfo = car(55.755826, 37.617299).copy(
