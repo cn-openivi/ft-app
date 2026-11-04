@@ -29,6 +29,50 @@ class AaCarGpsTest {
         ), packet)
     }
 
+    @Test fun authenticatedOemLocationIncludesExactSpeedE3AndBearingE6() {
+        // FAW OEM: floor(Location.getSpeed() m/s) = 5 and
+        // floor(Location.getBearing() degrees) = 90.
+        // AA independent proto: GPS LocationData.speed_e3=6,
+        // bearing_e6=7; both are optional signed int32 varints.
+        val oem = car(1.0, 2.0).copy(
+            speedRaw = 5L, headingRaw = 90L,
+            speedKmh = 18f, headingDegrees = 90f,
+            speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
+            headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED"
+        )
+        val wire = AaCarGps.event(oem, 1_500L)!!
+        assertArrayEquals(byteArrayOf(
+            0x0a, 0x12, 0x10,
+            0x80.toByte(), 0xad.toByte(), 0xe2.toByte(), 0x04,
+            0x18, 0x80.toByte(), 0xda.toByte(), 0xc4.toByte(), 0x09,
+            0x30, 0x88.toByte(), 0x27,
+            0x38, 0x80.toByte(), 0x95.toByte(), 0xf5.toByte(), 0x2a
+        ), wire)
+        val gps = ProtoReader(wire).message(1)!!
+        assertEquals(5_000, gps.int(6))
+        assertEquals(90_000_000, gps.int(7))
+        assertEquals(setOf(2, 3, 6, 7), gps.fields.keys)
+    }
+
+    @Test fun unknownOrUnrelatedSpeedAndBearingMustNotEnterAaLocation() {
+        val baseline = AaCarGps.event(car(55.755826, 37.617299), 1_500L)!!
+        val unrelatedGearInfo = car(55.755826, 37.617299).copy(
+            gearSpeedRaw = 76L, speedRaw = 76L, headingRaw = 270L,
+            speedKmh = 273.6f, headingDegrees = 270f
+        )
+        assertArrayEquals(baseline, AaCarGps.event(unrelatedGearInfo, 1_500L))
+        val invalidVerified = unrelatedGearInfo.copy(
+            speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
+            headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED",
+            speedRaw = 126L, headingRaw = 360L
+        )
+        assertArrayEquals(baseline, AaCarGps.event(invalidVerified, 1_500L))
+        val gpsOnlySpeed = invalidVerified.copy(speedRaw = 0L)
+        val packet = ProtoReader(AaCarGps.event(gpsOnlySpeed, 1_500L)!!).message(1)!!
+        assertEquals(0, packet.int(6))
+        assertFalse(packet.has(7))
+    }
+
     @Test fun zeroSatelliteOemLocationStillUsesVerifiedAaLocationWire() {
         // A fresh OEM WGS84 location with zero satellite counters has the
         // same exact AA payload as any other fresh coordinate. The counters
