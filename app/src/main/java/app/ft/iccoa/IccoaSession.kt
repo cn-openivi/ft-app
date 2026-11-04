@@ -565,7 +565,7 @@ class IccoaSession(
             if (attempt.trustedCommitGate.onConfirmSent()) confirmTrustedCarAfterControl(attempt)
             status(attempt, "ICCOA: аутентификация завершена, ожидание каналов автомобиля…")
             later(attempt, 25_000) {
-                if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA")
+                if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
             }
             watchWrites(attempt)
             // Auth is a bootstrap lane: receivers may close it after confirmation.
