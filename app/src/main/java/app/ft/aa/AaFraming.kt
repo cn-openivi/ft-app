@@ -97,7 +97,7 @@ object AaFraming {
                 declaredSizes.remove(f.channel)
                 val declared = f.declaredMessageBytes
                 if (declared != null) {
-                    if (declared !in 1L..MAX_ASSEMBLED_BYTES.toLong() ||
+                    if (declared !in 2L..MAX_ASSEMBLED_BYTES.toLong() ||
                         chunk.size.toLong() > declared) {
                         buffers.remove(f.channel)
                         return null
