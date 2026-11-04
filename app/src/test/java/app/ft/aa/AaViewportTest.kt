@@ -106,4 +106,35 @@ class AaViewportTest {
             assertEquals((w - 1) to (h - 1), viewport.map(w * 2, h * 2, w, h))
         }
     }
+    @Test fun gestureFreezesViewportAcrossRotationAndResolutionChange() {
+        val gesture = AaTouchGestureViewport()
+        val landscape = AaViewport(100, 40, 800, 450)
+        val portrait = AaViewport(40, 100, 450, 800)
+        assertEquals(640 to 360, gesture.map(0, 500, 265, landscape, 1280, 720))
+        // The UI rotates mid-gesture. MOVE/UP still use DOWN's original
+        // physical rectangle and negotiated input size.
+        assertEquals(800 to 400, gesture.map(2, 600, 290, portrait, 720, 1280))
+        assertEquals(960 to 480, gesture.map(1, 700, 340, portrait, 720, 1280))
+        assertEquals(null, gesture.map(2, 700, 340, portrait, 720, 1280))
+        // A fresh DOWN adopts the new portrait viewport and AA dimensions.
+        assertEquals(360 to 640, gesture.map(0, 265, 500, portrait, 720, 1280))
+        assertEquals(360 to 640, gesture.map(1, 265, 500, portrait, 720, 1280))
+    }
+
+    @Test fun gestureRejectsOutsideDownButClampsBottomRowDragRelease() {
+        for ((w, h) in listOf(800 to 480, 1280 to 720, 1920 to 1008, 2560 to 1440)) {
+            val gesture = AaTouchGestureViewport()
+            val bounds = AaViewport(30, 20, w, h)
+            assertEquals(null, gesture.map(0, 29, 21, bounds, w, h))
+            assertEquals(null, gesture.map(1, 30, 21, bounds, w, h))
+            assertEquals((w - 1) to (h - 1),
+                gesture.map(0, 30 + w - 1, 20 + h - 1, bounds, w, h))
+            assertEquals((w - 1) to (h - 1),
+                gesture.map(2, 30 + w + 200, 20 + h + 200, null, 1, 1))
+            assertEquals((w - 1) to (h - 1),
+                gesture.map(1, 30 + w + 200, 20 + h + 200, null, 1, 1))
+            assertEquals(null, gesture.map(1, 30, 20, bounds, w, h))
+        }
+    }
+
 }
