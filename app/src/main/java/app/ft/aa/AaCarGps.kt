@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
  *
  * The source must explicitly declare Android Location API / WGS84 provenance.
  * Baidu integer GPS is NOT forwarded until its scale/CRS is verified.
- * No guessed speed, bearing, accuracy, altitude or Dead Reckoning flags are sent.
+ * Only independently evidenced OEM speed/bearing are optional; no guessed accuracy, altitude or DR.
  */
 internal object AaCarGps {
     const val LOCATION = AaProtocol.SENSOR_LOCATION
@@ -34,10 +34,26 @@ internal object AaCarGps {
         // representation for western/southern hemisphere coordinates.
         // Isolate this encoding correction to AA GPS so other OEM protocols
         // retain their existing wire behavior.
-        return ProtoWriter().message(1, ProtoWriter()
+        val gps = ProtoWriter()
             .varint(2, latE7.toLong())
             .varint(3, lonE7.toLong())
-        ).toByteArray()
+        // FAW CarLinkSensorMgr floors Android Location.getSpeed() (metres/s)
+        // and Location.getBearing() (degrees) before ICCOA Gps field 6/7.
+        // AA LocationData uses OPTIONAL signed speed_e3 field 6 (m/s * 1000)
+        // and bearing_e6 field 7 (clockwise degrees * 1e6). Only publish
+        // original OEM GPS metadata with explicitly verified provenance:
+        // GearInfo speed, phone GNSS and guessed heading are never mixed in.
+        val speed = location.speedRaw
+        if (location.speedUnit == "ANDROID_LOCATION_MPS_FLOORED" &&
+            speed != null && speed in 0L..125L) {
+            gps.int32(6, (speed * 1_000L).toInt())
+        }
+        val bearing = location.headingRaw
+        if (location.headingUnit == "ANDROID_LOCATION_DEGREES_FLOORED" &&
+            bearing != null && bearing in 0L..359L) {
+            gps.int32(7, (bearing * 1_000_000L).toInt())
+        }
+        return ProtoWriter().message(1, gps).toByteArray()
     }
 
     /**
