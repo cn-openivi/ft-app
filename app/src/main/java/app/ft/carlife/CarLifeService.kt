@@ -1522,7 +1522,12 @@ class CarLifeService : Service() {
         }
         val aa = AaHeadUnitService.current
         if (st.aaOverlay && aa != null && aa.phase.value >= AaSession.Phase.DISCOVERED) {
-            if (action < 0) return
+            if (action < 0) {
+                // Unknown/cancelled input terminates the previous AA gesture.
+                // Otherwise a later MOVE could resurrect a stale DOWN.
+                aaGestureViewport.reset()
+                return
+            }
             val p = app.prefs
             val point = aaGestureViewport.map(
                 action, x, y, AaTouchViewport.bounds, p.aaWidth, p.aaHeight
