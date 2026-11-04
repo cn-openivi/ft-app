@@ -4,6 +4,31 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VehicleTelemetryTest {
+    @Test fun rejectedFuturePositionCannotBlockLaterValidCarFix() {
+        val now = System.currentTimeMillis()
+        fun fix(position: Long, received: Long, latitude: Double) = VehicleLocation(
+            source = "ICCOA", receivedAtMs = received, positionAtMs = position,
+            latitude = latitude, longitude = 37.6,
+            coordinatesUnit = "ANDROID_LOCATION_WGS84"
+        )
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            VehicleTelemetry.publish(fix(now - 1_000L, now, 55.1))
+            // This would previously poison the high-water mark even though
+            // CarGpsSourceSelector rejects fixes more than 1s in the future.
+            VehicleTelemetry.publish(fix(now + 1_001L, now, 55.9))
+            assertEquals(now - 1_000L, VehicleTelemetry.current.value!!.positionAtMs)
+            VehicleTelemetry.publish(fix(now, now, 55.2))
+            assertEquals(now, VehicleTelemetry.current.value!!.positionAtMs)
+            assertEquals(55.2, VehicleTelemetry.current.value!!.latitude!!, 0.000001)
+            // The same 1s tolerance as the selector remains accepted.
+            VehicleTelemetry.publish(fix(now + 1_000L, now, 55.3))
+            assertEquals(now + 1_000L, VehicleTelemetry.current.value!!.positionAtMs)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun reorderedGpsCannotOverwriteNewerSharedPositionOrGear() {
         val now = System.currentTimeMillis()
         val first = now - 2_000L
