@@ -185,7 +185,7 @@ internal class DeadReckoningEkf {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres < 0.0) return false
+            horizontalAccuracyMetres !in 0.5..30.0) return false
 
         val x = filter.state()
         val p = filter.covariance()
