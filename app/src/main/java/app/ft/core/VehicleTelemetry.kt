@@ -72,6 +72,12 @@ object VehicleTelemetry {
         val previous = _current.value?.takeIf {
             it.source == location.source && it.fresh(location.receivedAtMs)
         }
+        // Late OEM GPS frames must not replace a newer accepted position.
+        // GearInfo is updated independently by updateIccoaSpeed(), so an
+        // older GPS frame must not roll back the shared telemetry snapshot.
+        val latestPosition = _current.value?.takeIf { it.source == location.source }
+        if (location.positionAtMs > 0L && latestPosition != null &&
+            latestPosition.positionAtMs > location.positionAtMs) return
         // A new GPS frame must not erase a recent, separately sourced GearInfo frame.
         val preserved = if (location.source == "ICCOA" && previous != null)
             location.copy(gearSpeedRaw = previous.gearSpeedRaw,
