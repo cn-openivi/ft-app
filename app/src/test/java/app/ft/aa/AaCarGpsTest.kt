@@ -260,8 +260,10 @@ class AaCarGpsTest {
         assertTrue(gate.onDeliveredLocation(11_500L))
         assertArrayEquals(byteArrayOf(8, 1, 16, 1), AaCarGps.sensorError(1))
         assertFalse(gate.onDeliveredLocation(12_000L))
-        assertFalse(gate.shouldReportUnavailable(18_999L))
-        assertTrue(gate.shouldReportUnavailable(19_000L))
+        // Recovery was at 11_500ms; the second outage starts exactly
+        // seven seconds later, at 18_500ms.
+        assertFalse(gate.shouldReportUnavailable(18_499L))
+        assertTrue(gate.shouldReportUnavailable(18_500L))
     }
 
     @Test fun backwardWallClockChangeCannotFakeAaGpsLoss() {
