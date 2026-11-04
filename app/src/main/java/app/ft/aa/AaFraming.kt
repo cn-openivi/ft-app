@@ -5,7 +5,13 @@ import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
 object AaFraming {
-    class Frame(val channel: Int, val flags: Int, val payload: ByteArray) {
+    class Frame(
+        val channel: Int,
+        val flags: Int,
+        val payload: ByteArray,
+        /** Unsigned 32-bit complete plaintext message size from FIRST header. */
+        val declaredMessageBytes: Long? = null
+    ) {
         val frameType get() = flags and 3
         val encrypted get() = flags and AaProtocol.FLAG_ENCRYPTED != 0
         val control get() = flags and AaProtocol.FLAG_CONTROL != 0
@@ -60,37 +66,59 @@ object AaFraming {
         val sz = ByteArray(2)
         Bytes.readFully(input, sz)
         val size = Bytes.u16(sz, 0)
-        if (flags and 3 == AaProtocol.FRAME_FIRST) {
+        val declared = if (flags and 3 == AaProtocol.FRAME_FIRST) {
             val t = ByteArray(4)
             Bytes.readFully(input, t)
-        }
+            Bytes.u32(t, 0).toLong() and 0xffff_ffffL
+        } else null
         val payload = ByteArray(size)
         Bytes.readFully(input, payload)
-        return Frame(channel, flags, payload)
+        return Frame(channel, flags, payload, declared)
     }
 
     class Assembler(private val decrypt: (ByteArray) -> ByteArray) {
         // Bounds a broken peer's incomplete reassembly on all supported AA channels.
         private val MAX_ASSEMBLED_BYTES = 16 * 1024 * 1024
         private val buffers = HashMap<Int, ByteArrayOutputStream>()
+        private val declaredSizes = HashMap<Int, Long>()
 
         fun feed(f: Frame): Message? {
             val chunk = if (f.encrypted) decrypt(f.payload) else f.payload
             val type = f.frameType
             if (type == AaProtocol.FRAME_BULK) {
                 buffers.remove(f.channel)
+                declaredSizes.remove(f.channel)
                 return Message(f.channel, f.control, f.encrypted, chunk)
             }
-            val buf = if (type == AaProtocol.FRAME_FIRST)
+            val buf = if (type == AaProtocol.FRAME_FIRST) {
+                // FIRST abandons any previously incomplete message on this
+                // channel. Never confuse its 32-bit declared total with the
+                // 16-bit payload length of the individual AA frame.
+                declaredSizes.remove(f.channel)
+                val declared = f.declaredMessageBytes
+                if (declared != null) {
+                    if (declared !in 1L..MAX_ASSEMBLED_BYTES.toLong() ||
+                        chunk.size.toLong() > declared) {
+                        buffers.remove(f.channel)
+                        return null
+                    }
+                    declaredSizes[f.channel] = declared
+                }
                 ByteArrayOutputStream().also { buffers[f.channel] = it }
-            else buffers[f.channel] ?: return null // Middle/last without first is not a valid message.
-            if (buf.size().toLong() + chunk.size > MAX_ASSEMBLED_BYTES) {
+            } else buffers[f.channel] ?: return null // Middle/last without first is not a valid message.
+            val assembledSize = buf.size().toLong() + chunk.size
+            val declared = declaredSizes[f.channel]
+            if (assembledSize > MAX_ASSEMBLED_BYTES ||
+                (declared != null && assembledSize > declared)) {
                 buffers.remove(f.channel)
-                return null // Discard this corrupt/oversized message, not the session.
+                declaredSizes.remove(f.channel)
+                return null // Corrupt/oversized fragment: abandon only this channel.
             }
             buf.write(chunk)
             if (type == AaProtocol.FRAME_LAST) {
                 buffers.remove(f.channel)
+                declaredSizes.remove(f.channel)
+                if (declared != null && assembledSize != declared) return null
                 return Message(f.channel, f.control, f.encrypted, buf.toByteArray())
             }
             return null
