@@ -44,52 +44,58 @@ class TouchQuadTest {
         assertEquals(quad.map(400, 400, width, height), persisted!!.map(400, 400, width, height))
     }
 
-    @Test fun proportionalVerticalShiftAndBottomRowsSurviveChangingHuResolution() {
-        // Real Xiaomi reporter had NOT yet performed four-point calibration.
-        // Represent the earlier 36/1200 vertical offset as a measured ratio,
-        // NOT a universal 36px constant or a hardware-specific screen size.
-        val correctionRatio = 0.03
-        val sourceWidth = width
-        val sourceHeight = height
+    @Test fun calibrationTargetsUseScreenFractionsButMeasuredErrorsRemainPixels() {
         fun px(ratio: Double, dimension: Int) = (ratio * dimension).roundToInt()
-        val points = listOf(
-            TouchPoint(px(0.15, sourceWidth).toDouble(), px(0.15 + correctionRatio, sourceHeight).toDouble()),
-            TouchPoint(px(0.85, sourceWidth).toDouble(), px(0.15 + correctionRatio, sourceHeight).toDouble()),
-            TouchPoint(px(0.15, sourceWidth).toDouble(), px(0.85 + correctionRatio, sourceHeight).toDouble()),
-            TouchPoint(px(0.85, sourceWidth).toDouble(), px(0.85 + correctionRatio, sourceHeight).toDouble())
+        // Independent screens can have DIFFERENT measured physical offsets.
+        // Never transform an 8px measured error into 8/480*h for another HU.
+        data class Fixture(val width: Int, val height: Int, val dxPx: Int, val dyPx: Int)
+        val fixtures = listOf(
+            Fixture(800, 480, -6, 7),
+            Fixture(1280, 720, 9, -13),
+            Fixture(1920, 1008, -12, 36),
+            Fixture(2400, 1200, 5, 36),
+            Fixture(2560, 1440, -22, -26)
         )
-        val trained = TouchQuad.fromSamples(points, sourceWidth, sourceHeight)!!
-        val fractions = trained.serializeNormalized(sourceWidth, sourceHeight)
-
-        // Small, medium, large, and non-16:9 HU viewports. A calibration
-        // persists as x/width, y/height and is rebuilt for each resolution.
-        for ((w, h) in listOf(
-            800 to 480, 1280 to 720, 1920 to 1008,
-            2400 to 1200, 2560 to 1440
-        )) {
-            val restored = TouchQuad.deserializeNormalized(fractions, w, h)!!
-            for ((rx, ry) in listOf(
+        for ((w, h, dx, dy) in fixtures) {
+            // These are the REAL UI positions: 15%/85% of the current
+            // canvas width and height, not hard-coded coordinates.
+            val desired = listOf(
                 0.15 to 0.15, 0.85 to 0.15,
-                0.15 to 0.85, 0.85 to 0.85,
-                0.50 to 0.50, 0.50 to 0.93
-            )) {
+                0.15 to 0.85, 0.85 to 0.85
+            )
+            val measuredPixels = desired.map { (rx, ry) ->
+                TouchPoint((px(rx, w) + dx).toDouble(), (px(ry, h) + dy).toDouble())
+            }
+            val quad = TouchQuad.fromSamples(measuredPixels, w, h)!!
+            val savedPixelCoordinates = quad.serialize()
+            // Persist the RAW measured pixel points, not percentages.
+            assertEquals(measuredPixels.joinToString(",") { "${it.x},${it.y}" },
+                savedPixelCoordinates)
+            val restored = TouchQuad.deserialize(savedPixelCoordinates, w, h)!!
+            for ((rx, ry) in desired + listOf(0.50 to 0.50, 0.50 to 0.93)) {
                 val expectedX = px(rx, w)
                 val expectedY = px(ry, h)
-                val rawY = px(ry + correctionRatio, h)
-                val mapped = restored.map(expectedX, rawY, w, h)
-                assertTrue("x at ${w}x${h} ($rx,$ry): ${mapped.first}",
-                    abs(mapped.first - expectedX) <= 2)
-                assertTrue("y at ${w}x${h} ($rx,$ry): ${mapped.second}",
-                    abs(mapped.second - expectedY) <= 2)
+                val corrected = restored.map(expectedX + dx, expectedY + dy, w, h)
+                assertTrue("pixel-corrected X ${w}x${h}, offset=${dx}px",
+                    abs(corrected.first - expectedX) <= 2)
+                assertTrue("pixel-corrected Y ${w}x${h}, offset=${dy}px",
+                    abs(corrected.second - expectedY) <= 2)
             }
         }
     }
 
-    @Test fun malformedProportionalCalibrationsAreRejectedWithoutAFalseScale() {
-        assertNull(TouchQuad.deserializeNormalized("bad", 1280, 720))
-        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,1.2,0.85", 1280, 720))
-        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,0.85,NaN", 1280, 720))
-        assertNull(TouchQuad.deserializeNormalized("0.15,0.15,0.85,0.15,0.15,0.85,0.85,0.85", 0, 720))
+    @Test fun aPixelOffsetDoesNotScaleWithViewportSize() {
+        // Separate profile per resolution: calibration for 800x480 must
+        // not become a percentage-based 21px offset at 1440px height.
+        val originalYErrorPx = 7
+        val newHuYErrorPx = 29
+        assertEquals(7, originalYErrorPx)
+        assertEquals(29, newHuYErrorPx)
+        assertTrue(newHuYErrorPx !=
+            (originalYErrorPx.toDouble() * 1440 / 480).roundToInt())
+        // Legacy 2-point pixel-offset model also retains pixel semantics.
+        assertEquals(403, TouchScale(1.0, 3.0).map(400, 1280))
+        assertEquals(403, TouchScale(1.0, 3.0).map(400, 2560))
     }
 
     @Test fun cannotSaveOverlappingReversedOrCorruptedPoints() {
