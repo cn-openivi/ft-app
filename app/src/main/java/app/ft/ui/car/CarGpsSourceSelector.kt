@@ -101,10 +101,16 @@ internal class CarGpsSourceSelector(
             // does not make its old elapsedRealtime fix physically current.
             val callbackAge = nowMs - it.receivedAtMs
             val fixAge = it.fixAgeNanosAtReceipt
+            val callbackFresh = callbackAge in 0L..switchAfterMs
+            // Age at receipt and age since receipt are cumulative. Checking
+            // each against 7s separately could admit a 12s-old GNSS fix.
+            // Use a remaining nanosecond budget to avoid rounding at the edge.
+            val originalFixFresh = fixAge == null || (callbackFresh &&
+                fixAge >= 0L &&
+                fixAge <= (switchAfterMs - callbackAge) * 1_000_000L)
             it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
                 it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
-                callbackAge in 0L..switchAfterMs &&
-                (fixAge == null || fixAge in 0L..(switchAfterMs * 1_000_000L))
+                callbackFresh && originalFixFresh
         }
         val carChosen = source == Source.ICCOA && lastCarFix != null
         return if (carChosen) {
