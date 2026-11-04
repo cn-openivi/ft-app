@@ -11,6 +11,17 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class AudioCaptureTest {
+    @Test fun mirrorCaptureOnlyRequestsAndroidPermittedPlaybackUsages() {
+        // AOSP Android 12: only UNKNOWN=0, MEDIA=1 and GAME=14 can be
+        // captured from another app; NAVIGATION_GUIDANCE=12 cannot.
+        assertEquals(listOf(1, 14, 0), AudioCapture.capturableUsages)
+        assertFalse(AudioCapture.capturableUsages.contains(12))
+        // Never confuse Android Auto's independent SPEECH audio channel
+        // with third-party MediaProjection playback capture.
+        assertFalse(AudioCapture.capturableUsages.contains(2)) // VOICE_COMMUNICATION
+        assertEquals(3, AudioCapture.capturableUsages.distinct().size)
+    }
+
     private val projection = mock(MediaProjection::class.java)
 
     private fun await(latch: CountDownLatch) {
