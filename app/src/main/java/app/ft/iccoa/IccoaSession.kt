@@ -40,6 +40,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * Guards asynchronous Android Network callbacks against a replaced Wi-Fi handle.
  * Network equality, not callback arrival order, defines the current transport.
  */
+/** PIN lifecycle for one ICCOA attempt, never a credential cache. */
+internal object IccoaNetworkPinLifecycle {
+    /** Network replacement is not an authentication rejection. */
+    fun afterAuthQueued(pin: String?): String? = pin
+    /** A verified handshake no longer needs the submitted PIN. */
+    fun afterVerifiedAuth(): String? = null
+}
+
 internal class IccoaNetworkCallbackGate<T : Any> {
     private var selected: T? = null
     @Synchronized fun onAvailable(network: T) { selected = network }
@@ -534,8 +542,8 @@ class IccoaSession(
             return fail(attempt, "Нет подтверждённого способа авторизации ICCOA")
         attempt.authStarted = true
         attempt.network = network
-        // Keep the submitted PIN only across Network-handle replacement in this
-        // same attempt; failure/explicit PIN prompt still clears it.
+        // Keep the PIN across Network replacement within this attempt only.
+        attempt.pin = IccoaNetworkPinLifecycle.afterAuthQueued(pin)
         status(attempt, "Проверка подлинности ICCOA…")
         worker(attempt) { authenticate(attempt, network, local, peer, pin, pinned) }
     }
@@ -589,7 +597,7 @@ class IccoaSession(
                 attempt.cipher = key
                 // Verified auth no longer needs the PIN; never carry it into
                 // later reconnects or a new authentication episode.
-                attempt.pin = null
+                attempt.pin = IccoaNetworkPinLifecycle.afterVerifiedAuth()
             }
             progress("open-control-listeners")
             for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, local, peer, port)
