@@ -465,8 +465,7 @@ class AaSession(
         carGpsJob = scope.launch(Dispatchers.IO) {
             val gpsGate = AaGpsGate()
             var lastPositionAt = Long.MIN_VALUE
-            var lastSeenAt = System.currentTimeMillis()
-            var unavailable = false
+            val availability = AaGpsAvailabilityGate(android.os.SystemClock.elapsedRealtime())
             var sent = 0L
             while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
                 val now = System.currentTimeMillis()
@@ -481,26 +480,24 @@ class AaSession(
                 else gpsGate.accept(car, now)
                 val positionAt = if (fused) dr?.producedAtMs else car?.positionAtMs
                 if (packet != null && positionAt != null && positionAt != lastPositionAt) {
-                    if (unavailable) {
+                    if (availability.onDeliveredLocation(android.os.SystemClock.elapsedRealtime())) {
                         sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGps.sensorError(1))
                         DiagLog.i(tag, "car LOCATION to AA: recovered")
                     }
-                    unavailable = false
                     lastPositionAt = positionAt
-                    lastSeenAt = now
                     sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
                     sent++
                     if (sent == 1L || sent % 100L == 0L) {
                         val originLabel = if (fused) "VERIFIED_TINYEKF" else "OEM_RAW_GNSS"
                         DiagLog.i(tag, "car LOCATION to AA: $sent updates; source=$originLabel")
                     }
-                } else if (!unavailable && now - lastSeenAt >= 3_500L) {
-                    unavailable = true
+                } else if (availability.shouldReportUnavailable(
+                        android.os.SystemClock.elapsedRealtime())) {
                     sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                         AaCarGps.sensorError(2))
-                    DiagLog.w(tag, "car LOCATION to AA: source stale/unavailable; " +
-                        "no unverified estimated coordinates transmitted")
+                    DiagLog.w(tag, "car LOCATION to AA: no new accepted OEM position " +
+                        "for 7s; no unverified estimated coordinates transmitted")
                 }
                 delay(interval)
             }
