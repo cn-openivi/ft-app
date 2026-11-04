@@ -137,4 +137,27 @@ class AaViewportTest {
         }
     }
 
+    @Test fun routeSwitchInvalidatesCapturedAaGestureUntilNewDown() {
+        val gesture = AaTouchGestureViewport()
+        val viewport = AaViewport(100, 40, 800, 450)
+        val changed = AaViewport(40, 100, 450, 800)
+
+        // DOWN was routed to AA before the user switched to FT/mirroring.
+        assertEquals(640 to 360, gesture.map(0, 500, 265, viewport, 1280, 720))
+        gesture.reset() // CarLifeService.routeTouch: FT zone or non-AA route.
+        assertEquals(null, gesture.map(2, 600, 290, changed, 720, 1280))
+        assertEquals(null, gesture.map(1, 700, 340, changed, 720, 1280))
+
+        // A new AA DOWN starts a new gesture in the current geometry.
+        assertEquals(360 to 640, gesture.map(0, 265, 500, changed, 720, 1280))
+        assertEquals(360 to 640, gesture.map(2, 265, 500, changed, 720, 1280))
+        assertEquals(360 to 640, gesture.map(1, 265, 500, changed, 720, 1280))
+        assertEquals(null, gesture.map(2, 265, 500, changed, 720, 1280))
+
+        // FT-zone selection is a separate early-return path and must reset too.
+        assertEquals(640 to 360, gesture.map(0, 500, 265, viewport, 1280, 720))
+        gesture.reset()
+        assertEquals(null, gesture.map(1, 500, 265, viewport, 1280, 720))
+    }
+
 }
