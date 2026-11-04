@@ -534,7 +534,8 @@ class IccoaSession(
             return fail(attempt, "Нет подтверждённого способа авторизации ICCOA")
         attempt.authStarted = true
         attempt.network = network
-        attempt.pin = null
+        // Keep the submitted PIN only across Network-handle replacement in this
+        // same attempt; failure/explicit PIN prompt still clears it.
         status(attempt, "Проверка подлинности ICCOA…")
         worker(attempt) { authenticate(attempt, network, local, peer, pin, pinned) }
     }
@@ -586,6 +587,9 @@ class IccoaSession(
             synchronized(attempt) {
                 if (!active(attempt)) return
                 attempt.cipher = key
+                // Verified auth no longer needs the PIN; never carry it into
+                // later reconnects or a new authentication episode.
+                attempt.pin = null
             }
             progress("open-control-listeners")
             for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, local, peer, port)
