@@ -163,6 +163,31 @@ class IccoaDropRecoveryTest {
         }
     }
 
+    @Test fun postAuthControlLaneTimeoutRetriesOnlyThreeTransportAttempts() {
+        // A completed signed AuthConfirm followed by no CONTROL lane within
+        // 25 seconds is a missing TCP transport lane, not a bad PIN.
+        val timeout = IccoaCloseEvent.classify(
+            "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
+        assertEquals(IccoaCloseAction.RETRY_TRANSPORT, timeout.action)
+        val guard = IccoaDropRecovery()
+        assertEquals(1, guard.onFailure(
+            connected = true, autoConnectEnabled = true,
+            retryableTransportFailure = timeout.action == IccoaCloseAction.RETRY_TRANSPORT))
+        assertEquals(2, guard.onFailure(false, true, true))
+        assertEquals(3, guard.onFailure(false, true, true))
+        assertNull(guard.onFailure(false, true, true))
+        assertFalse(guard.active)
+
+        // Auth rejection must never be reclassified as transport timeout.
+        val authRejected = IccoaCloseEvent.classify("PIN rejected")
+        assertEquals(IccoaCloseAction.STOP, authRejected.action)
+        assertNull(IccoaDropRecovery().onFailure(
+            connected = true, autoConnectEnabled = true,
+            retryableTransportFailure = authRejected.action == IccoaCloseAction.RETRY_TRANSPORT))
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("QUICK rejected", quickNormalFallback = true).action)
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
