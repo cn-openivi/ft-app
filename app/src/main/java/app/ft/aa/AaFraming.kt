@@ -81,43 +81,60 @@ object AaFraming {
         private val MAX_ASSEMBLED_BYTES = 16 * 1024 * 1024
         private val buffers = HashMap<Int, ByteArrayOutputStream>()
         private val declaredSizes = HashMap<Int, Long>()
+        private val routingFlags = HashMap<Int, Int>()
+        private val ROUTING_MASK = AaProtocol.FLAG_CONTROL or AaProtocol.FLAG_ENCRYPTED
+
+        private fun abandon(channel: Int) {
+            buffers.remove(channel)
+            declaredSizes.remove(channel)
+            routingFlags.remove(channel)
+        }
 
         fun feed(f: Frame): Message? {
-            val chunk = if (f.encrypted) decrypt(f.payload) else f.payload
             val type = f.frameType
+            // AAP FIRST/CONT/LAST form ONE logical service message. Its
+            // CONTROL/ENCRYPTED bits must remain constant across fragments.
+            // Validate routing BEFORE decrypting an orphan or wrongly flagged
+            // continuation: malformed packets must not consume TLS state or
+            // silently dispatch video bytes as a control message.
+            if (type == AaProtocol.FRAME_MIDDLE || type == AaProtocol.FRAME_LAST) {
+                val initial = routingFlags[f.channel] ?: return null
+                if (initial != (f.flags and ROUTING_MASK)) {
+                    abandon(f.channel)
+                    return null
+                }
+            }
+            val chunk = if (f.encrypted) decrypt(f.payload) else f.payload
             if (type == AaProtocol.FRAME_BULK) {
-                buffers.remove(f.channel)
-                declaredSizes.remove(f.channel)
+                abandon(f.channel)
                 return Message(f.channel, f.control, f.encrypted, chunk)
             }
             val buf = if (type == AaProtocol.FRAME_FIRST) {
                 // FIRST abandons any previously incomplete message on this
                 // channel. Never confuse its 32-bit declared total with the
                 // 16-bit payload length of the individual AA frame.
-                declaredSizes.remove(f.channel)
+                abandon(f.channel)
                 val declared = f.declaredMessageBytes
                 if (declared != null) {
                     if (declared !in 2L..MAX_ASSEMBLED_BYTES.toLong() ||
                         chunk.size.toLong() > declared) {
-                        buffers.remove(f.channel)
                         return null
                     }
                     declaredSizes[f.channel] = declared
                 }
+                routingFlags[f.channel] = f.flags and ROUTING_MASK
                 ByteArrayOutputStream().also { buffers[f.channel] = it }
             } else buffers[f.channel] ?: return null // Middle/last without first is not a valid message.
             val assembledSize = buf.size().toLong() + chunk.size
             val declared = declaredSizes[f.channel]
             if (assembledSize > MAX_ASSEMBLED_BYTES ||
                 (declared != null && assembledSize > declared)) {
-                buffers.remove(f.channel)
-                declaredSizes.remove(f.channel)
+                abandon(f.channel)
                 return null // Corrupt/oversized fragment: abandon only this channel.
             }
             buf.write(chunk)
             if (type == AaProtocol.FRAME_LAST) {
-                buffers.remove(f.channel)
-                declaredSizes.remove(f.channel)
+                abandon(f.channel)
                 if (declared != null && assembledSize != declared) return null
                 return Message(f.channel, f.control, f.encrypted, buf.toByteArray())
             }
