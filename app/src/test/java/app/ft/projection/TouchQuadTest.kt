@@ -84,16 +84,22 @@ class TouchQuadTest {
         }
     }
 
-    @Test fun aPixelOffsetDoesNotScaleWithViewportSize() {
-        // Separate profile per resolution: calibration for 800x480 must
-        // not become a percentage-based 21px offset at 1440px height.
-        val originalYErrorPx = 7
-        val newHuYErrorPx = 29
-        assertEquals(7, originalYErrorPx)
-        assertEquals(29, newHuYErrorPx)
-        assertTrue(newHuYErrorPx !=
-            (originalYErrorPx.toDouble() * 1440 / 480).roundToInt())
-        // Legacy 2-point pixel-offset model also retains pixel semantics.
+    @Test fun savedPixelCalibrationIsSpecificToItsMeasuredResolution() {
+        // The sample contains measured pixel positions for an 800x480
+        // screen; treating them as reusable normalized values on 2K
+        // must fail validation, not silently rescale the correction.
+        val w = 800
+        val h = 480
+        val original = TouchQuad.fromSamples(listOf(
+            TouchPoint(w * 0.15 + 6.0, h * 0.15 + 7.0),
+            TouchPoint(w * 0.85 + 6.0, h * 0.15 + 7.0),
+            TouchPoint(w * 0.15 + 6.0, h * 0.85 + 7.0),
+            TouchPoint(w * 0.85 + 6.0, h * 0.85 + 7.0)
+        ), w, h)!!
+        assertNotNull(TouchQuad.deserialize(original.serialize(), w, h))
+        assertNull(TouchQuad.deserialize(original.serialize(), 2560, 1440))
+        assertNull(TouchQuad.deserialize(original.serialize(), 640, 360))
+        // The legacy two-point correction is also a real pixel offset.
         assertEquals(403, TouchScale(1.0, 3.0).map(400, 1280))
         assertEquals(403, TouchScale(1.0, 3.0).map(400, 2560))
     }
