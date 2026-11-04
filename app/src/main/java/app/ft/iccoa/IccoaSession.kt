@@ -36,6 +36,22 @@ import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Guards asynchronous Android Network callbacks against a replaced Wi-Fi handle.
+ * Network equality, not callback arrival order, defines the current transport.
+ */
+internal class IccoaNetworkCallbackGate<T : Any> {
+    private var selected: T? = null
+    fun onAvailable(network: T) { selected = network }
+    fun isCurrent(network: T): Boolean = selected == network
+    fun onLost(network: T): Boolean {
+        if (!isCurrent(network)) return false
+        selected = null
+        return true
+    }
+    fun clear() { selected = null }
+}
+
 /** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
 enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
 
@@ -106,6 +122,7 @@ class IccoaSession(
         var gatt: BluetoothGatt? = null
         var networkCallback: ConnectivityManager.NetworkCallback? = null
         var network: Network? = null
+        val networkGate = IccoaNetworkCallbackGate<Network>()
         var servicesRequested = false
         var servicesHandled = false
         var pinReady = false
@@ -438,17 +455,18 @@ class IccoaSession(
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
                 attempt.network = network
+                attempt.networkGate.onAvailable(network)
                 // Link properties may not yet exist in onAvailable; onLinkPropertiesChanged retries.
                 connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
-                if (attempt.network == network) networkReady(attempt, network, properties)
+                if (attempt.networkGate.isCurrent(network)) networkReady(attempt, network, properties)
             }
             // May mean the owner declined Android's Wi-Fi consent prompt.
             // Do not repeat permission prompts automatically.
             override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут") }
             override fun onLost(network: Network) = post(attempt) {
-                if (attempt.network == network)
+                if (attempt.networkGate.onLost(network))
                     fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", transportFailure = true)
             }
         }
@@ -472,7 +490,7 @@ class IccoaSession(
     }
 
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
-        if (attempt.network != network || attempt.authStarted) return
+        if (!attempt.networkGate.isCurrent(network) || attempt.authStarted) return
         val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
         val address = link.address as Inet4Address
         val local = address.hostAddress ?: return
@@ -767,6 +785,7 @@ class IccoaSession(
             attempt.networkCallback?.let { runCatching { connectivity.unregisterNetworkCallback(it) } }
             attempt.networkCallback = null
             attempt.network = null
+            attempt.networkGate.clear()
             attempt.serverInfo.reset()
             DiagLog.i("ICCOA", "Session resources released: Bluetooth, Wi-Fi request and sockets")
         }
