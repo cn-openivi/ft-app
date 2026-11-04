@@ -625,6 +625,9 @@ class IccoaSession(
             socket.close()
         } catch (e: Exception) {
             if (!active(attempt)) return
+            // An old Network worker must not fail the replacement connection or
+            // clear its remembered PIN after Android switches Wi-Fi handles.
+            if (!attempt.networkGate.isCurrent(network)) return
             if (attempt.reusingPin) {
                 if (IccoaPinCachePolicy.shouldClearAfterAuthFailure(e)) {
                     trustedPin.clear()
