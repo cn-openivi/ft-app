@@ -93,9 +93,17 @@ class AaViewportTest {
         }
     }
 
-    @Test fun draggingOutsideThePictureStaysWithinTheInputRange() {
-        val viewport = AaViewport(104, 50, 800, 450)
-        assertEquals(0 to 0, viewport.map(-50, -50, 1280, 720))
-        assertEquals(1279 to 719, viewport.map(1000, 600, 1280, 720))
+    @Test fun draggingBeyondAnyViewportIsClampedToItsNegotiatedInputSize() {
+        // Keep a released pointer in the AA input bounds at EVERY
+        // negotiated resolution, not only a single 1280x720 example.
+        for ((w, h) in listOf(640 to 360, 800 to 448, 1280 to 672,
+            1920 to 720, 1920 to 1008, 1920 to 1080)) {
+            val viewport = AaViewport(
+                (w * 0.10).roundToInt(), (h * 0.10).roundToInt(),
+                (w * 0.80).roundToInt(), (h * 0.80).roundToInt()
+            )
+            assertEquals(0 to 0, viewport.map(-w, -h, w, h))
+            assertEquals((w - 1) to (h - 1), viewport.map(w * 2, h * 2, w, h))
+        }
     }
 }
