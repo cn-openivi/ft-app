@@ -168,13 +168,16 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             slot = c.dequeueInputBuffer(INPUT_DEQUEUE_TIMEOUT_US)
             if (slot < 0) return
             val buf = c.getInputBuffer(slot)
+            // A recycled codec ByteBuffer may retain a nonzero position/limit.
+            // Capacity, not pre-clear remaining(), determines whether the
+            // complete H.264 access unit fits after resetting its window.
+            buf?.clear()
             if (buf == null || data.size > buf.remaining()) {
                 if (buf != null) DiagLog.w(tag, "a ${data.size} byte picture did not fit the decoder, skipping it")
                 c.queueInputBuffer(slot, 0, 0, ptsUs, 0)
                 given = true
                 return
             }
-            buf.clear()
             buf.put(data)
             c.queueInputBuffer(slot, 0, data.size, ptsUs, if (isConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0)
             given = true
