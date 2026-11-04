@@ -273,4 +273,19 @@ class DeadReckoningEkfTest {
         assertEquals(0.0, dr.estimate()!!.northMetres, 0.0)
     }
 
+    @Test fun staleTimestampCannotReanchorOrRewindGnssAfterCorrection() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        assertNotNull(dr.predict(1.0, 2.0, 0.0, true))
+        val before = dr.estimate()!!
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 9_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 0L))
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertEquals(before.secondsSinceGnss, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertTrue(dr.correctGnss(0.0, 2.1, 2.0, true, measurementTimestampMs = 11_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_500L))
+        assertTrue(dr.anchor(0.0, 2.2, 0.0, 2.0, measurementTimestampMs = 12_000L))
+    }
+
 }
