@@ -442,12 +442,15 @@ class IccoaSession(
                 connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
-                networkReady(attempt, network, properties)
+                if (attempt.network == network) networkReady(attempt, network, properties)
             }
             // May mean the owner declined Android's Wi-Fi consent prompt.
             // Do not repeat permission prompts automatically.
             override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут") }
-            override fun onLost(network: Network) { fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", transportFailure = true) }
+            override fun onLost(network: Network) = post(attempt) {
+                if (attempt.network == network)
+                    fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", transportFailure = true)
+            }
         }
         attempt.wifiRequested = true
         attempt.networkCallback = callback
@@ -469,7 +472,7 @@ class IccoaSession(
     }
 
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
-        if (attempt.authStarted) return
+        if (attempt.network != network || attempt.authStarted) return
         val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
         val address = link.address as Inet4Address
         val local = address.hostAddress ?: return
