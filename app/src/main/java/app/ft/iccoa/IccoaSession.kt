@@ -555,6 +555,12 @@ class IccoaSession(
             }
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
+            // A replacement Network can arrive while TCP connect is blocked.
+            // Never send the signed ICCOA auth request over that stale socket.
+            if (!attempt.networkGate.isCurrent(network)) {
+                socket.close()
+                return
+            }
             socket.tcpNoDelay = true
             socket.soTimeout = 15_000
             progress("build-request")
