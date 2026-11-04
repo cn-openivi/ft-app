@@ -171,7 +171,7 @@ class IccoaDropRecoveryTest {
         assertEquals(IccoaCloseAction.RETRY_TRANSPORT, timeout.action)
         val guard = IccoaDropRecovery()
         assertEquals(1, guard.onFailure(
-            connected = true, autoConnectEnabled = true,
+            wasConnected = true, autoConnectEnabled = true,
             retryableTransportFailure = timeout.action == IccoaCloseAction.RETRY_TRANSPORT))
         assertEquals(2, guard.onFailure(false, true, true))
         assertEquals(3, guard.onFailure(false, true, true))
@@ -182,7 +182,7 @@ class IccoaDropRecoveryTest {
         val authRejected = IccoaCloseEvent.classify("PIN rejected")
         assertEquals(IccoaCloseAction.STOP, authRejected.action)
         assertNull(IccoaDropRecovery().onFailure(
-            connected = true, autoConnectEnabled = true,
+            wasConnected = true, autoConnectEnabled = true,
             retryableTransportFailure = authRejected.action == IccoaCloseAction.RETRY_TRANSPORT))
         assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
             IccoaCloseEvent.classify("QUICK rejected", quickNormalFallback = true).action)
