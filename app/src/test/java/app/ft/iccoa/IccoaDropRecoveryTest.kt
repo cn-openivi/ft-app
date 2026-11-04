@@ -163,6 +163,128 @@ class IccoaDropRecoveryTest {
         }
     }
 
+    @Test fun postAuthControlLaneTimeoutRetriesOnlyThreeTransportAttempts() {
+        // A completed signed AuthConfirm followed by no CONTROL lane within
+        // 25 seconds is a missing TCP transport lane, not a bad PIN.
+        val timeout = IccoaCloseEvent.classify(
+            "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
+        assertEquals(IccoaCloseAction.RETRY_TRANSPORT, timeout.action)
+        // Post-auth, pre-CONTROL is not yet connected. A remembered-car
+        // auto-select already owns attempt #1; it may retry only #2 and #3.
+        val guard = IccoaDropRecovery()
+        assertEquals(1, guard.onInitialRememberedCarAutoSelect())
+        assertEquals(2, guard.onFailure(
+            wasConnected = false, autoConnectEnabled = true,
+            retryableTransportFailure = timeout.action == IccoaCloseAction.RETRY_TRANSPORT))
+        assertEquals(3, guard.onFailure(false, true, true))
+        assertNull(guard.onFailure(false, true, true))
+        assertFalse(guard.active)
+        // An owner-initiated first connection has no recovery episode.
+        assertNull(IccoaDropRecovery().onFailure(false, true, true))
+
+        // Auth rejection must never be reclassified as transport timeout.
+        val authRejected = IccoaCloseEvent.classify("PIN rejected")
+        assertEquals(IccoaCloseAction.STOP, authRejected.action)
+        assertNull(IccoaDropRecovery().onFailure(
+            wasConnected = true, autoConnectEnabled = true,
+            retryableTransportFailure = authRejected.action == IccoaCloseAction.RETRY_TRANSPORT))
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("QUICK rejected", quickNormalFallback = true).action)
+    }
+
+    @Test fun replacedNetworkCannotStartAuthOrTearDownLiveConnection() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.isCurrent("A"))
+        gate.onAvailable("B")
+        // onLinkPropertiesChanged(A), delayed gateway retry(A), onLost(A)
+        // must neither start authentication on A nor close the B session.
+        assertFalse(gate.isCurrent("A"))
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.isCurrent("B"))
+        assertTrue(gate.onLost("B"))
+        assertFalse(gate.isCurrent("B"))
+        gate.onAvailable("C")
+        gate.clear()
+        assertFalse(gate.isCurrent("C"))
+    }
+
+    @Test fun queuedAuthenticationCannotBindSupersededNetwork() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        // networkReady(A) queued authenticate(A), but the worker has not run.
+        gate.onAvailable("B")
+        val bound = mutableListOf<String>()
+        assertFalse(gate.bindIfCurrent("A") { bound.add("A") })
+        assertTrue(bound.isEmpty())
+        // B may bind normally; a late onLost(A) cannot close B.
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.bindIfCurrent("B") { bound.add("B") })
+        assertEquals(listOf("B"), bound)
+        assertTrue(gate.onLost("B"))
+        assertFalse(gate.bindIfCurrent("B") { bound.add("B again") })
+        assertEquals(listOf("B"), bound)
+    }
+
+    @Test fun networkReplacementAfterTcpConnectCannotSendAuthOnStaleSocket() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        val authRequests = mutableListOf<String>()
+        val closed = mutableListOf<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.bindIfCurrent("A") { /* TCP bind A */ })
+        // Simulate the network switch during blocking socket.connect(A).
+        gate.onAvailable("B")
+        if (!gate.isCurrent("A")) closed.add("A") else authRequests.add("A")
+        assertEquals(listOf("A"), closed)
+        assertTrue(authRequests.isEmpty())
+        assertTrue(gate.bindIfCurrent("B") { /* TCP bind B */ })
+        if (!gate.isCurrent("B")) closed.add("B") else authRequests.add("B")
+        assertEquals(listOf("B"), authRequests)
+        // An old onLost(A) must not close the current B transport.
+        assertFalse(gate.onLost("A"))
+        assertTrue(gate.isCurrent("B"))
+    }
+
+    @Test fun staleNetworkAuthExceptionCannotTerminateReplacementAttempt() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        assertTrue(gate.isCurrent("A"))
+        // A's TCP connect blocks while Android replaces its Network handle.
+        gate.onAvailable("B")
+        // A then throws SocketException. Its catch must not clear the PIN,
+        // classify a terminal close, or kill the live B authentication.
+        assertFalse(gate.isCurrent("A"))
+        assertTrue(gate.isCurrent("B"))
+        assertTrue(gate.bindIfCurrent("B") { assertTrue(gate.isCurrent("B")) })
+        // A failure on the *current* Network still reaches normal fail-closed handling.
+        assertTrue(gate.isCurrent("B"))
+        assertEquals(IccoaCloseAction.STOP,
+            IccoaCloseEvent.classify("PIN rejected").action)
+    }
+
+    @Test fun normalPinSurvivesNetworkReplacementButClearsAfterVerifiedHandshake() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("A")
+        var pendingPin: String? = "123456"
+        pendingPin = IccoaNetworkPinLifecycle.afterAuthQueued(pendingPin)
+        assertEquals("123456", pendingPin)
+        // Network A becomes stale before its queued TCP bind; B must retain
+        // the same attempt's credential, not prompt for a new PIN.
+        gate.onAvailable("B")
+        assertFalse(gate.bindIfCurrent("A") { fail("stale auth") })
+        assertEquals("123456", pendingPin)
+        assertTrue(gate.bindIfCurrent("B") { assertEquals("123456", pendingPin) })
+        pendingPin = IccoaNetworkPinLifecycle.afterVerifiedAuth()
+        assertNull(pendingPin)
+        // Trusted Quick uses its pinned identity, never a Normal PIN.
+        assertNull(IccoaNetworkPinLifecycle.afterAuthQueued(null))
+        assertNull(IccoaNetworkPinLifecycle.afterVerifiedAuth())
+        // A rejected credential is not a transport retry.
+        assertEquals(IccoaCloseAction.STOP, IccoaCloseEvent.classify("PIN rejected").action)
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
+    }
+
     @Test fun typedCloseContractRejectsConflictingActions() {
         try {
             IccoaCloseEvent.classify("invalid", transportFailure = true, quickNormalFallback = true)
