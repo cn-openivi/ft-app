@@ -25,6 +25,8 @@ internal class DeadReckoningEkf {
     private var initialized = false
     private var secondsWithoutGnss = 0.0
     private var previousWheelSpeedMetresPerSecond: Double? = null
+    // An explicit GNSS timestamp must never rewind a live trust anchor.
+    private var lastAcceptedGnssTimestampMs: Long? = null
 
     data class Estimate(
         val eastMetres: Double,
@@ -39,6 +41,7 @@ internal class DeadReckoningEkf {
         initialized = false
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
+        lastAcceptedGnssTimestampMs = null
         gnssContinuity.reset()
         // Resetting the model invalidates the preceding trust anchor.
     }
@@ -53,7 +56,11 @@ internal class DeadReckoningEkf {
     ): Boolean {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0) return false
+            horizontalAccuracyMetres !in 0.5..30.0 ||
+            (measurementTimestampMs != null &&
+                (measurementTimestampMs <= 0L ||
+                    (lastAcceptedGnssTimestampMs != null &&
+                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
@@ -68,7 +75,8 @@ internal class DeadReckoningEkf {
         previousWheelSpeedMetresPerSecond = null
         gnssContinuity.reset()
         odometryPlausibility.reset(eastMetres, northMetres)
-        if (measurementTimestampMs != null && measurementTimestampMs > 0L) {
+        if (measurementTimestampMs != null) {
+            lastAcceptedGnssTimestampMs = measurementTimestampMs
             gnssContinuity.confirmed(measurementTimestampMs, eastMetres, northMetres,
                 eastMetres, northMetres)
         }
@@ -233,6 +241,9 @@ internal class DeadReckoningEkf {
             doubleArrayOf(x[EAST], x[NORTH]), h, r
         )) return false
         secondsWithoutGnss = 0.0
+        if (measurementTimestampMs != null) {
+            lastAcceptedGnssTimestampMs = measurementTimestampMs
+        }
         val updated = filter.state()
         if (measurementTimestampMs != null) {
             gnssContinuity.confirmed(measurementTimestampMs,
