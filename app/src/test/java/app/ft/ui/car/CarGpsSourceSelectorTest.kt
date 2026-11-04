@@ -206,6 +206,34 @@ class CarGpsSourceSelectorTest {
         assertEquals(33f, current.speedKmh!!, 0f)
     }
 
+
+    @Test fun phoneFallbackChecksTotalGnssMeasurementAgeAcrossCallbackDelay() {
+        val selector = connectedSelector() // Last accepted OEM position at 17_000 ms.
+        val twelveSecondOld = phone(18_000L, speed = 80f)
+            .copy(fixAgeNanosAtReceipt = 6_000_000_000L)
+        // At 24_000 ms the callback is 6s old. Each age separately is <7s,
+        // but the actual GPS measurement is now 12s old.
+        val rejected = selector.select(null, twelveSecondOld, 24_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, rejected.source)
+        assertNull(rejected.latitude)
+        assertNull(rejected.longitude)
+        assertNull(rejected.speedKmh)
+
+        // An exactly 7s-old measurement is still permitted by the owner
+        // 7s fallback budget; an extra nanosecond must be rejected.
+        val sevenSecondOld = phone(18_000L, speed = 33f)
+            .copy(fixAgeNanosAtReceipt = 1_000_000_000L)
+        val boundary = selector.select(null, sevenSecondOld, 24_000L)
+        assertEquals(55.55, boundary.latitude!!, 0.00001)
+        assertEquals(33f, boundary.speedKmh!!, 0f)
+
+        val overBoundary = phone(18_000L, speed = 77f)
+            .copy(fixAgeNanosAtReceipt = 1_000_000_001L)
+        val expired = selector.select(null, overBoundary, 24_000L)
+        assertNull(expired.latitude)
+        assertNull(expired.speedKmh)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
