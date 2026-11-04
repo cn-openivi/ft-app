@@ -143,6 +143,35 @@ internal class DeadReckoningEkf {
     }
 
     /**
+     * Explicit coasting step when either wheel speed or mapped yaw is NOT
+     * independently verified. Freeze position and heading, never integrate
+     * guessed motion, but increase covariance and GNSS-outage age.
+     *
+     * This is deliberately not called implicitly by predict(): a rejected
+     * malformed sample must not invent elapsed time. The future validated
+     * sensor adapter must supply measured monotonic elapsed seconds.
+     */
+    fun holdUnverifiedMotion(dtSeconds: Double): Estimate? {
+        if (!initialized || !dtSeconds.isFinite() ||
+            dtSeconds !in 0.001..1.0) return null
+        val frozen = filter.state()
+        val identity = DoubleArray(STATE_SIZE * STATE_SIZE) { i ->
+            if (i / STATE_SIZE == i % STATE_SIZE) 1.0 else 0.0
+        }
+        val q = DoubleArray(STATE_SIZE * STATE_SIZE)
+        // Conservative uncertainty growth with no assumed displacement.
+        val positionVariancePerSecond = sq(3.0)
+        q[EAST * STATE_SIZE + EAST] = positionVariancePerSecond * dtSeconds
+        q[NORTH * STATE_SIZE + NORTH] = positionVariancePerSecond * dtSeconds
+        q[HEADING * STATE_SIZE + HEADING] = sq(0.03) * dtSeconds
+        q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
+        filter.predict(frozen, identity, q)
+        previousWheelSpeedMetresPerSecond = null
+        secondsWithoutGnss += dtSeconds
+        return estimate()
+    }
+
+    /**
      * A verified independent GNSS position corrects the state through EKF
      * innovation gating. Bogus fixes cannot instantly teleport the estimate.
      */
