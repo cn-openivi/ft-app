@@ -78,6 +78,40 @@ internal object AaCarGps {
 
 
 /**
+ * Owner-approved 7-second AA OEM GNSS loss window.
+ *
+ * This tracks actual accepted location-event delivery, not GearInfo receipt,
+ * satellite counters, polling frequency or an inferred phone subscription.
+ * Its clock is Android elapsedRealtime, independent of wall-clock changes.
+ * AA alone decides whether it resumes phone GPS after a sensor error.
+ */
+internal class AaGpsAvailabilityGate(
+    startedElapsedMs: Long,
+    private val lossAfterMs: Long = 7_000L
+) {
+    init { require(lossAfterMs in 5_000L..10_000L) }
+
+    private var lastDeliveredElapsedMs = startedElapsedMs
+    private var unavailable = false
+
+    /** True exactly when a previously reported source outage has recovered. */
+    fun onDeliveredLocation(elapsedMs: Long): Boolean {
+        val recovered = unavailable
+        unavailable = false
+        lastDeliveredElapsedMs = elapsedMs
+        return recovered
+    }
+
+    /** Report one outage only after a full 7s without accepted OEM GPS. */
+    fun shouldReportUnavailable(elapsedMs: Long): Boolean {
+        if (unavailable || elapsedMs < lastDeliveredElapsedMs ||
+            elapsedMs - lastDeliveredElapsedMs < lossAfterMs) return false
+        unavailable = true
+        return true
+    }
+}
+
+/**
  * Suppress isolated GNSS jumps (including RF interference) before feeding maps.
  * Require three consecutive consistent distinct car fixes to acquire/reacquire.
  * Output and source selection remain independent of diagnostic 10-second sampling.
