@@ -181,4 +181,53 @@ class AaVideoDecoderTest {
             }
         }
     }
+    @Test fun onFrameMustNotWaitForSlowOutputRendering() {
+        val rendering = CountDownLatch(1)
+        val finishRender = CountDownLatch(1)
+        val inputFinished = CountDownLatch(1)
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        `when`(codec.dequeueInputBuffer(anyLong())).thenReturn(-1)
+        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong()))
+            .thenReturn(0, MediaCodec.INFO_TRY_AGAIN_LATER)
+        doAnswer {
+            rendering.countDown()
+            check(finishRender.await(5, TimeUnit.SECONDS))
+            null
+        }.`when`(codec).releaseOutputBuffer(0, true)
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                val input = Thread {
+                    try {
+                        decoder.onFrame(byteArrayOf(0, 0, 1, 65), 42L)
+                    } finally {
+                        inputFinished.countDown()
+                    }
+                }
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(1, 2, 3))
+                    assertTrue("output render never started", rendering.await(5, TimeUnit.SECONDS))
+                    input.start()
+                    // Render remains blocked by the fixture; onFrame must finish
+                    // independently, without waiting for releaseOutputBuffer.
+                    assertTrue("AA input dispatch blocked behind output render",
+                        inputFinished.await(1, TimeUnit.SECONDS))
+                    verify(codec).dequeueInputBuffer(AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US)
+                } finally {
+                    finishRender.countDown()
+                    input.join(5000)
+                    decoder.reset()
+                }
+            }
+        }
+    }
+
 }
