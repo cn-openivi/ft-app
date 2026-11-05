@@ -193,7 +193,11 @@ internal class DeadReckoningEkf {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0) return false
+            horizontalAccuracyMetres !in 0.5..30.0 ||
+            (measurementTimestampMs != null &&
+                (measurementTimestampMs <= 0L ||
+                    (lastAcceptedGnssTimestampMs != null &&
+                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
 
         val x = filter.state()
         val p = filter.covariance()
