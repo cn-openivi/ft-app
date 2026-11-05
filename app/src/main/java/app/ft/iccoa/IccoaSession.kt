@@ -52,6 +52,12 @@ internal class IccoaNetworkCallbackGate<T : Any> {
     private var selected: T? = null
     @Synchronized fun onAvailable(network: T) { selected = network }
     @Synchronized fun isCurrent(network: T): Boolean = selected == network
+    /** Commit authentication state only while the originating Network still owns the lane. */
+    @Synchronized fun commitIfCurrent(network: T, commit: () -> Unit): Boolean {
+        if (selected != network) return false
+        commit()
+        return true
+    }
     /** Atomically reject queued work for a superseded Network before socket binding. */
     @Synchronized fun bindIfCurrent(network: T, bind: () -> Unit): Boolean {
         if (selected != network) return false
@@ -594,18 +600,18 @@ class IccoaSession(
             }
             synchronized(attempt) {
                 if (!active(attempt)) return
-                attempt.cipher = key
+                if (!attempt.networkGate.commitIfCurrent(network) { attempt.cipher = key }) return
                 // Verified auth no longer needs the PIN; never carry it into
                 // later reconnects or a new authentication episode.
                 attempt.pin = IccoaNetworkPinLifecycle.afterVerifiedAuth()
             }
             progress("open-control-listeners")
             for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, local, peer, port)
-            if (!active(attempt)) return
+            if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             // External callbacks may acquire their owner's lifecycle lock. Never hold ours here.
             progress("open-media-listeners")
             onReady(network, peer)
-            if (!active(attempt)) return
+            if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             progress("send-confirm")
             socket.getOutputStream().run { write(IccoaControl.frame(3, 3, 0, auth.confirm(key, local), 2)); flush() }
             // Do NOT save just because AuthConfirm was written. Wait for the
