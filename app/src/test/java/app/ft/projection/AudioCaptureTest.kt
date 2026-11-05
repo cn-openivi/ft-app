@@ -153,6 +153,63 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+    @Test fun blockedOldCallbackCannotDisableNewCaptureAfterReset() {
+        val oldRecord = mock(AudioRecord::class.java)
+        val newRecord = mock(AudioRecord::class.java)
+        val callbackEntered = CountDownLatch(1)
+        val finishCallback = CountDownLatch(1)
+        val newReadEntered = CountDownLatch(1)
+        val finishNewRead = CountDownLatch(1)
+        val resetFinished = CountDownLatch(1)
+        val oldReader = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val delivered = AtomicInteger()
+        `when`(oldRecord.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            oldReader.set(Thread.currentThread())
+            val bytes = it.arguments[0] as ByteArray
+            bytes[0] = 1
+            bytes[1] = 0
+            2
+        }
+        `when`(newRecord.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            newReadEntered.countDown()
+            await(finishNewRead)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        val records = ArrayDeque(listOf(oldRecord, newRecord))
+        val capture = AudioCapture({ records.removeFirst() }, {
+            delivered.incrementAndGet()
+            callbackEntered.countDown()
+            await(finishCallback)
+        })
+        val reset = Thread {
+            try {
+                assertTrue(capture.start(projection))
+            } finally {
+                resetFinished.countDown()
+            }
+        }
+        try {
+            assertTrue(capture.start(projection))
+            await(callbackEntered)
+            reset.start()
+            assertFalse("reset must wait for in-flight PCM callback", resetFinished.await(100, TimeUnit.MILLISECONDS))
+            finishCallback.countDown()
+            await(resetFinished)
+            await(newReadEntered)
+            oldReader.get().join(5000)
+            assertFalse("old reader must exit", oldReader.get().isAlive)
+            assertTrue("old reader must not clear replacement capture", capture.active)
+            assertEquals("old PCM must not be duplicated after reset", 1, delivered.get())
+            verify(oldRecord, times(1)).release()
+        } finally {
+            finishCallback.countDown()
+            finishNewRead.countDown()
+            capture.stop()
+            reset.join(5000)
+        }
+        verify(newRecord, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
