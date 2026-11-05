@@ -1,9 +1,9 @@
-name: FT W1-W5 exact-SHA source-only regression
+name: FT contribution 3 PR exact-SHA source-only regression
 
 on:
   push:
     branches:
-      - openivi/ft-ci-source-only-matrix-20261105
+      - openivi/ft-contrib-three-ci-source-only-20261105
     paths:
       - '.github/workflows/ft-ci-w1-w5-source-only.yml'
 
@@ -11,12 +11,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ft-w1-w5-source-only-20261105
+  group: ft-contrib-three-source-only-20261105
   cancel-in-progress: false
 
 jobs:
   source-only:
-    name: Five fixed worker SHAs - unit tests only
+    name: Three isolated upstream-based SHA unit tests only
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -54,11 +54,9 @@ jobs:
           EOF
 
           checks=(
-            'W1:dd1a5493e0b740f033e3f10d58e95e79ba990237'
-            'W2:aab91a2b0c4d55d4578e046ae999f4e94d529bc4'
-            'W3:8d8d1f899bdee0884b143d0c6cc65607aaab5587'
-            'W4:45037b02d49fc2c2ef20bb484e92d5136e16a595'
-            'W5:f92f54059e81a771de43136cea6ecd873afce7c0'
+            'AA_TOUCH:1927bf218a3143aab3e1db856c5a30ecb9853ee1'
+            'AA_H264:e9b2df5a0a88866a516e89fedd106d99d4d87b4b'
+            'MIRROR_AUDIO:62dc30fa8d977ef0a3ab22331eabf08f56f364f6'
           )
           echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
           echo '| Worker | SHA | Gradle compile + unit | APK guard |' >> "$GITHUB_STEP_SUMMARY"
