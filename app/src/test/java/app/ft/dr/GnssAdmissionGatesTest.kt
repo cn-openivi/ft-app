@@ -104,4 +104,20 @@ class GnssAdmissionGatesTest {
         assertFalse(gate.permits(5_500L, 0.0, 0.0, 0.0, 0.0))
     }
 
+    @Test fun outOfOrderRejectedReflectionCannotManufactureGnssGap() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        // Continuous reflected samples remain rejected and advance only
+        // the observation clock, not the confirmed GNSS position.
+        for (t in listOf(6_000L, 7_000L, 8_000L, 9_000L)) {
+            assertFalse(gate.permits(t, 10.0, 0.0, 0.0, 0.0))
+        }
+        // A delayed rejected packet must not rewind the observation clock.
+        assertFalse(gate.permits(6_000L, 10.0, 0.0, 0.0, 0.0))
+        // Without the monotonic guard, 9500-6000 > 3000 falsely
+        // declares a blackout and admits the same 10m reflection.
+        assertFalse(gate.permits(9_500L, 10.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(9_600L, 0.0, 0.0, 0.0, 0.0))
+    }
+
 }
