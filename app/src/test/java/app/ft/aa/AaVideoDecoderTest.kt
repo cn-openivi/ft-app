@@ -130,6 +130,7 @@ class AaVideoDecoderTest {
 
     @Test fun stopMustNotReleaseCodecWhileOutputBufferIsBeingRendered() {
         val releaseEntered = CountDownLatch(1)
+        val resetEntered = CountDownLatch(1)
         val allowRelease = CountDownLatch(1)
         val codec = mock(MediaCodec::class.java)
         val format = mock(MediaFormat::class.java)
@@ -155,8 +156,13 @@ class AaVideoDecoderTest {
                     decoder.setSurface(mock(Surface::class.java))
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue("drain did not reach releaseOutputBuffer", releaseEntered.await(5, TimeUnit.SECONDS))
-                    stopper = Thread { decoder.reset() }
+                    stopper = Thread {
+                        resetEntered.countDown()
+                        decoder.reset()
+                    }
                     stopper.start()
+                    assertTrue("reset thread did not start", resetEntered.await(5, TimeUnit.SECONDS))
+                    assertTrue("reset finished before rendering completed", stopper.isAlive)
                     // The codec must not be stopped/released while a render operation owns its buffer.
                     verify(codec, never()).stop()
                     verify(codec, never()).release()
