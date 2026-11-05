@@ -127,4 +127,49 @@ class AaVideoDecoderTest {
             }
         }
     }
+
+    @Test fun stopMustNotReleaseCodecWhileOutputBufferIsBeingRendered() {
+        val releaseEntered = CountDownLatch(1)
+        val allowRelease = CountDownLatch(1)
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        val releaseCount = java.util.concurrent.atomic.AtomicInteger(0)
+        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong())).thenReturn(0)
+        doAnswer {
+            releaseEntered.countDown()
+            check(allowRelease.await(5, TimeUnit.SECONDS))
+            releaseCount.incrementAndGet()
+            null
+        }.`when`(codec).releaseOutputBuffer(0, true)
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                var stopper: Thread? = null
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(1, 2, 3))
+                    assertTrue("drain did not reach releaseOutputBuffer", releaseEntered.await(5, TimeUnit.SECONDS))
+                    stopper = Thread { decoder.reset() }
+                    stopper.start()
+                    // The codec must not be stopped/released while a render operation owns its buffer.
+                    verify(codec, never()).stop()
+                    verify(codec, never()).release()
+                } finally {
+                    allowRelease.countDown()
+                    stopper?.join(5000)
+                    decoder.reset()
+                }
+                assertFalse("reset remained blocked", stopper?.isAlive ?: true)
+                assertEquals(1, releaseCount.get())
+                verify(codec, times(1)).stop()
+                verify(codec, times(1)).release()
+            }
+        }
+    }
 }
