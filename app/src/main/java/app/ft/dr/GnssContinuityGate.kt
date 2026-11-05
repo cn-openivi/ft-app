@@ -71,7 +71,9 @@ internal class GnssContinuityGate {
         val allowed = continuityResidual.isFinite() && continuityResidual <= tolerance
         // Contiguous rejected reflections still count as observations, but
         // speculative far-future candidates cannot poison the time anchor.
-        if (!allowed && !actualGap) lastObservedTimestampMs = timestampMs
+        if (!allowed && !actualGap && timestampMs > lastObservedTimestampMs) {
+            lastObservedTimestampMs = timestampMs
+        }
         return allowed
     }
 
