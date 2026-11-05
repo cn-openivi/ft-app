@@ -105,6 +105,54 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+
+    @Test fun stopDuringBlockedPcmCallbackCompletesAfterCallbackReturns() {
+        val record = mock(AudioRecord::class.java)
+        val entered = CountDownLatch(1)
+        val allowCallbackReturn = CountDownLatch(1)
+        val stopReturned = CountDownLatch(1)
+        val released = CountDownLatch(1)
+        val delivered = AtomicInteger()
+        val readerRef = java.util.concurrent.atomic.AtomicReference<Thread>()
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            readerRef.set(Thread.currentThread())
+            val bytes = it.arguments[0] as ByteArray
+            bytes[0] = 1
+            bytes[1] = 0
+            2
+        }
+        doAnswer { released.countDown(); null }.`when`(record).release()
+        val capture = AudioCapture({ record }, {
+            delivered.incrementAndGet()
+            entered.countDown()
+            await(allowCallbackReturn)
+        })
+        val stopper = Thread {
+            capture.stop()
+            stopReturned.countDown()
+        }
+        try {
+            assertTrue(capture.start(projection))
+            await(entered)
+            stopper.start()
+            // Current synchronous callback contract: stop cannot finish while
+            // onPcm owns the monitor. This guards lifecycle ordering, not latency.
+            assertFalse(stopReturned.await(100, TimeUnit.MILLISECONDS))
+        } finally {
+            allowCallbackReturn.countDown()
+        }
+        await(stopReturned)
+        await(released)
+        stopper.join(5000)
+        val reader = readerRef.get()
+        assertNotNull(reader)
+        reader.join(5000)
+        assertFalse("reader must terminate after stop", reader.isAlive)
+        assertFalse(capture.active)
+        assertEquals(1, delivered.get())
+        verify(record, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
