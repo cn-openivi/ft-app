@@ -72,6 +72,27 @@ internal class IccoaNetworkCallbackGate<T : Any> {
     @Synchronized fun clear() { selected = null }
 }
 
+/**
+ * Tracks the Network that owns the one queued gateway recheck.
+ * Android may replace A with B before A's delayed task runs; the old task
+ * must neither consume nor cancel B's scheduled retry.
+ * All calls run on IccoaSession's main-handler lane.
+ */
+internal class IccoaGatewayRetryGate<T : Any> {
+    private var pending: T? = null
+    fun schedule(network: T): Boolean {
+        if (pending == network) return false
+        pending = network
+        return true
+    }
+    fun consume(network: T): Boolean {
+        if (pending != network) return false
+        pending = null
+        return true
+    }
+    fun clear() { pending = null }
+}
+
 /** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
 enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
 
@@ -156,7 +177,8 @@ class IccoaSession(
         var wifiRequested = false
         var authStarted = false
         var hasWifiAddress = false
-        var gatewayRetryScheduled = false
+        val gatewayRetry = IccoaGatewayRetryGate<Network>()
+        var gatewayWaitStatusNetwork: Network? = null
 
         companion object {
             private fun sender(name: String, capacity: Int) = ThreadPoolExecutor(
@@ -512,6 +534,22 @@ class IccoaSession(
         }
     }
 
+    private fun scheduleGatewayRetry(attempt: Attempt, network: Network) {
+        if (!attempt.networkGate.isCurrent(network) || attempt.authStarted ||
+            !attempt.gatewayRetry.schedule(network)) return
+        if (attempt.gatewayWaitStatusNetwork != network) {
+            attempt.gatewayWaitStatusNetwork = network
+            status(attempt, "Wi-Fi подключён. Ожидание адреса шлюза автомобиля…")
+        }
+        later(attempt, 1_000) {
+            // A's old timer must NOT steal B's pending retry.
+            if (!attempt.gatewayRetry.consume(network) ||
+                !attempt.networkGate.isCurrent(network) || attempt.authStarted) return@later
+            connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
+                ?: scheduleGatewayRetry(attempt, network)
+        }
+    }
+
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
         if (!attempt.networkGate.isCurrent(network) || attempt.authStarted) return
         val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
@@ -529,18 +567,10 @@ class IccoaSession(
         }.getOrNull() else null
         val peer = (routed ?: fallback)?.hostAddress
         if (peer == null) {
-            if (!attempt.gatewayRetryScheduled) {
-                attempt.gatewayRetryScheduled = true
-                status(attempt, "Wi-Fi подключён. Ожидание адреса шлюза автомобиля…")
-                later(attempt, 1_000) {
-                    attempt.gatewayRetryScheduled = false
-                    post(attempt) {
-                        connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
-                    }
-                }
-            }
+            scheduleGatewayRetry(attempt, network)
             return
         }
+        attempt.gatewayRetry.clear()
         DiagLog.i("ICCOA", "Wi-Fi gateway source=${if (routed != null) "routes" else "validated-dhcp"}")
         val pin = attempt.pin
         val pinned = attempt.pinnedCarIdentity?.copyOf()
@@ -825,6 +855,7 @@ class IccoaSession(
             attempt.networkCallback = null
             attempt.network = null
             attempt.networkGate.clear()
+            attempt.gatewayRetry.clear()
             attempt.serverInfo.reset()
             DiagLog.i("ICCOA", "Session resources released: Bluetooth, Wi-Fi request and sockets")
         }
