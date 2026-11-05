@@ -207,6 +207,18 @@ class CarGpsSourceSelectorTest {
     }
 
 
+    @Test fun phoneReadingAgeIncludesOriginalGnssFixAge() {
+        val selector = CarGpsSourceSelector()
+        val fix = phone(18_000L).copy(fixAgeNanosAtReceipt = 1_000_000_001L)
+        val result = selector.select(null, fix, 19_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, result.source)
+        assertEquals(2_001L, result.lastPacketAgeMs)
+        assertEquals(55.55, result.latitude!!, 0.00001)
+        // No elapsedRealtime metadata: preserve callback-age compatibility.
+        val legacy = selector.select(null, phone(18_000L), 19_000L)
+        assertEquals(1_000L, legacy.lastPacketAgeMs)
+    }
+
     @Test fun phoneFallbackChecksTotalGnssMeasurementAgeAcrossCallbackDelay() {
         val selector = connectedSelector() // Last accepted OEM position at 17_000 ms.
         val twelveSecondOld = phone(18_000L, speed = 80f)
