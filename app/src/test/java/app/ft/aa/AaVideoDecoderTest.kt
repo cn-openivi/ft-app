@@ -162,6 +162,13 @@ class AaVideoDecoderTest {
                     }
                     stopper.start()
                     assertTrue("reset thread did not start", resetEntered.await(5, TimeUnit.SECONDS))
+                    // The reset thread must actually be contending for the decoder lock,
+                    // not merely scheduled after countDown() but before decoder.reset().
+                    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+                    while (stopper.state != Thread.State.BLOCKED && System.nanoTime() < deadline) {
+                        Thread.yield()
+                    }
+                    assertEquals("reset never reached the held decoder monitor", Thread.State.BLOCKED, stopper.state)
                     assertTrue("reset finished before rendering completed", stopper.isAlive)
                     // The codec must not be stopped/released while a render operation owns its buffer.
                     verify(codec, never()).stop()
