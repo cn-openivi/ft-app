@@ -214,6 +214,47 @@ class AudioCaptureTest {
         verify(newRecord, times(1)).release()
     }
 
+    @Test fun nativeStopFailureStillReleasesRecorderAndAllowsRestart() {
+        val first = mock(AudioRecord::class.java)
+        val second = mock(AudioRecord::class.java)
+        val firstReading = CountDownLatch(1)
+        val finishFirstRead = CountDownLatch(1)
+        val secondReading = CountDownLatch(1)
+        val finishSecondRead = CountDownLatch(1)
+        val delivered = AtomicInteger()
+        `when`(first.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            firstReading.countDown()
+            await(finishFirstRead)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        `when`(second.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            secondReading.countDown()
+            await(finishSecondRead)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        doThrow(IllegalStateException("native recorder already stopped")).`when`(first).stop()
+        val records = ArrayDeque(listOf(first, second))
+        val capture = AudioCapture({ records.removeFirst() }, { delivered.incrementAndGet() })
+        try {
+            assertTrue(capture.start(projection))
+            await(firstReading)
+            // A native stop exception must not prevent release or poison restart.
+            capture.stop()
+            verify(first, times(1)).release()
+            assertFalse(capture.active)
+            assertTrue(capture.start(projection))
+            await(secondReading)
+            assertTrue(capture.active)
+            assertEquals(0, delivered.get())
+        } finally {
+            capture.stop()
+            finishFirstRead.countDown()
+            finishSecondRead.countDown()
+        }
+        verify(first, times(1)).release()
+        verify(second, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
