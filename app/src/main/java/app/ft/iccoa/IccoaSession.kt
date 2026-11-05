@@ -72,27 +72,6 @@ internal class IccoaNetworkCallbackGate<T : Any> {
     @Synchronized fun clear() { selected = null }
 }
 
-/**
- * Tracks the Network that owns the one queued gateway recheck.
- * Android may replace A with B before A's delayed task runs; the old task
- * must neither consume nor cancel B's scheduled retry.
- * All calls run on IccoaSession's main-handler lane.
- */
-internal class IccoaGatewayRetryGate<T : Any> {
-    private var pending: T? = null
-    fun schedule(network: T): Boolean {
-        if (pending == network) return false
-        pending = network
-        return true
-    }
-    fun consume(network: T): Boolean {
-        if (pending != network) return false
-        pending = null
-        return true
-    }
-    fun clear() { pending = null }
-}
-
 /** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
 enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
 
