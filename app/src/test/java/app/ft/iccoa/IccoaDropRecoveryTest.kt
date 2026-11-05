@@ -192,6 +192,43 @@ class IccoaDropRecoveryTest {
             IccoaCloseEvent.classify("QUICK rejected", quickNormalFallback = true).action)
     }
 
+    @Test fun replacementNetworkWithoutGatewayOwnsItsRetryAfterStaleTimerFires() {
+        val selected = IccoaNetworkCallbackGate<String>()
+        val retry = IccoaGatewayRetryGate<String>()
+        val checked = mutableListOf<String>()
+
+        // First Network A is connected but has no usable IPv4 gateway.
+        selected.onAvailable("A")
+        assertTrue(retry.schedule("A"))
+        assertFalse(retry.schedule("A")) // no duplicate timer for A
+
+        // Android replaces A with B, whose gateway is also initially absent.
+        selected.onAvailable("B")
+        assertTrue(retry.schedule("B"))
+        assertFalse(retry.schedule("B")) // only one B timer
+        // A's 1-second timer runs after B was selected: it must not clear B.
+        assertFalse(retry.consume("A"))
+        assertTrue(selected.isCurrent("B"))
+
+        // B's own callback is still scheduled and can check LinkProperties.
+        assertTrue(retry.consume("B"))
+        checked.add("B")
+        assertEquals(listOf("B"), checked)
+
+        // Gateway still absent at first B poll: allow a bounded repeated poll.
+        assertTrue(retry.schedule("B"))
+        assertFalse(retry.consume("A"))
+        assertTrue(retry.consume("B"))
+        checked.add("B")
+        assertEquals(listOf("B", "B"), checked)
+
+        // If B now exposes a gateway, pending work must be cancellable.
+        assertTrue(retry.schedule("B"))
+        retry.clear()
+        assertFalse(retry.consume("B"))
+        assertTrue(selected.isCurrent("B"))
+    }
+
     @Test fun replacedNetworkCannotStartAuthOrTearDownLiveConnection() {
         val gate = IccoaNetworkCallbackGate<String>()
         gate.onAvailable("A")
