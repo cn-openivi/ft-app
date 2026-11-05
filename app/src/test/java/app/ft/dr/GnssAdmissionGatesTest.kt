@@ -78,6 +78,19 @@ class GnssAdmissionGatesTest {
         assertFalse(gate.permits(100.0, 0.0, 0.0, 0.0))
         assertTrue(gate.permits(0.5, 0.0, 0.0, 0.0))
     }
+    @Test fun rejectedReflectionCannotRewindOrderingFloorForValidFix() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        // 10m reflected fix at 6500 is rejected, but its timestamp must
+        // not reject the valid 6200 fix, which is newer than confirmed 5000.
+        assertFalse(gate.permits(6_500L, 10.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(6_200L, 0.0, 0.0, 0.0, 0.0))
+        gate.confirmed(6_200L, 0.0, 0.0, 0.0, 0.0)
+        assertFalse(gate.permits(6_100L, 0.0, 0.0, 0.0, 0.0))
+        // A later rejected reflection must still be denied.
+        assertFalse(gate.permits(6_700L, 10.0, 0.0, 0.0, 0.0))
+    }
+
     @Test fun unconfirmedFutureTimestampDoesNotPoisonLaterRealGnss() {
         val gate = GnssContinuityGate()
         for (i in 1..5) {
