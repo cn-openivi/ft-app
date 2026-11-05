@@ -78,4 +78,17 @@ class GnssAdmissionGatesTest {
         assertFalse(gate.permits(100.0, 0.0, 0.0, 0.0))
         assertTrue(gate.permits(0.5, 0.0, 0.0, 0.0))
     }
+    @Test fun unconfirmedFutureTimestampDoesNotPoisonLaterRealGnss() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) {
+            gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        }
+        // The candidate passes continuity precheck, but the caller's
+        // subsequent EKF/odometry check rejects it: no confirmed() call.
+        assertTrue(gate.permits(1_000_000L, 0.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(6_000L, 0.0, 0.0, 0.0, 0.0))
+        gate.confirmed(6_000L, 0.0, 0.0, 0.0, 0.0)
+        assertFalse(gate.permits(5_500L, 0.0, 0.0, 0.0, 0.0))
+    }
+
 }
