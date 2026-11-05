@@ -196,25 +196,25 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         while (running.get() && generation == mine) {
             try {
                 val idx = c.dequeueOutputBuffer(info, 20_000)
-                // Lock order: lock -> outputLock. Keep slow MediaCodec rendering outside
-                // the shared input monitor so AA socket dispatch can feed the next frame.
-                synchronized(lock) {
-                    if (!running.get() || generation != mine || codec !== c) return
-                    outputLock.lock()
-                }
-                try {
-                    if (idx >= 0) {
+                if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    // Format publication remains atomic with reset/generation changes.
+                    synchronized(lock) {
+                        if (!running.get() || generation != mine || codec !== c) return
+                        shown(c.outputFormat)
+                    }
+                } else if (idx >= 0) {
+                    // Lock order: lock -> outputLock. Do not reacquire lock while
+                    // outputLock is held: stopLocked takes lock before outputLock.
+                    synchronized(lock) {
+                        if (!running.get() || generation != mine || codec !== c) return
+                        outputLock.lock()
+                    }
+                    try {
                         c.releaseOutputBuffer(idx, true)
                         _frames.value = _frames.value + 1
-                    } else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        // Avoid publishing a late format from a retired decoder.
-                        val format = c.outputFormat
-                        synchronized(lock) {
-                            if (running.get() && generation == mine && codec === c) shown(format)
-                        }
+                    } finally {
+                        outputLock.unlock()
                     }
-                } finally {
-                    outputLock.unlock()
                 }
             } catch (t: Throwable) {
                 if (!running.get() || generation != mine) return
