@@ -288,4 +288,17 @@ class DeadReckoningEkfTest {
         assertTrue(dr.anchor(0.0, 2.2, 0.0, 2.0, measurementTimestampMs = 12_000L))
     }
 
+    @Test fun staleGnssCorrectionCannotRewindAcceptedMeasurementTimestamp() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        // A new correction, unlike anchor(), must enforce the same monotonic clock.
+        assertTrue(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = 11_000L))
+        val accepted = dr.estimate()!!
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 10_500L))
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 11_000L))
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 0L))
+        assertEquals(accepted.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertTrue(dr.correctGnss(0.0, 0.3, 2.0, true, measurementTimestampMs = 12_000L))
+    }
+
 }
