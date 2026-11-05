@@ -90,6 +90,36 @@ class VehicleTelemetryTest {
         }
     }
 
+    @Test fun duplicateOemPositionTimestampCannotReplaceCoordinatesOrGear() {
+        val now = System.currentTimeMillis()
+        fun fix(position: Long, latitude: Double) = VehicleLocation(
+            source = "ICCOA", receivedAtMs = now, positionAtMs = position,
+            latitude = latitude, longitude = 37.6,
+            coordinatesUnit = "ANDROID_LOCATION_WGS84"
+        )
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            VehicleTelemetry.publish(fix(now - 1_000L, 55.1))
+            VehicleTelemetry.updateIccoaSpeed(12L, gearRaw = 2L)
+            // Equal measurement timestamp is not a new OEM fix, even when
+            // its coordinates disagree with the previously accepted sample.
+            VehicleTelemetry.publish(fix(now - 1_000L, 55.9))
+            val retained = VehicleTelemetry.current.value!!
+            assertEquals(now - 1_000L, retained.positionAtMs)
+            assertEquals(55.1, retained.latitude!!, 0.000001)
+            assertEquals(12L, retained.gearSpeedRaw)
+            assertEquals(2L, retained.gearRaw)
+            VehicleTelemetry.publish(fix(now, 55.2))
+            val accepted = VehicleTelemetry.current.value!!
+            assertEquals(now, accepted.positionAtMs)
+            assertEquals(55.2, accepted.latitude!!, 0.000001)
+            assertEquals(12L, accepted.gearSpeedRaw)
+            assertEquals(2L, accepted.gearRaw)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun gearFramesRetainLastKnownGpsButDoNotMakeItFresh() {
         val now = System.currentTimeMillis()
         val stalePosition = now - 10_000L
