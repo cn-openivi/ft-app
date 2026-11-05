@@ -355,4 +355,24 @@ class IccoaDropRecoveryTest {
         }
     }
 
+    @Test fun gatewayRetryBelongsToReplacementNetworkNotStaleTimer() {
+        val network = IccoaNetworkCallbackGate<String>()
+        val retry = IccoaGatewayRetryGate<String>()
+        network.onAvailable("A")
+        assertTrue(retry.schedule("A"))
+        assertFalse(retry.schedule("A")) // no duplicate timer for A
+        network.onAvailable("B") // B has no gateway either
+        assertTrue(retry.schedule("B")) // B must receive its own retry
+        assertFalse(retry.consume("A")) // late timer A cannot consume B
+        assertTrue(network.isCurrent("B"))
+        assertFalse(network.onLost("A"))
+        assertTrue(retry.consume("B")) // B may re-read LinkProperties
+        assertFalse(retry.consume("B"))
+        assertTrue(retry.schedule("B")) // still missing: bounded next retry
+        retry.clear() // teardown cancels logical ownership
+        assertFalse(retry.consume("B"))
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
+    }
+
 }
