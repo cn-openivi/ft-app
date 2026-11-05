@@ -134,7 +134,7 @@ class AaVideoDecoderTest {
         val codec = mock(MediaCodec::class.java)
         val format = mock(MediaFormat::class.java)
         val releaseCount = java.util.concurrent.atomic.AtomicInteger(0)
-        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong())).thenReturn(0)
+        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong())).thenReturn(0, MediaCodec.INFO_TRY_AGAIN_LATER)
         doAnswer {
             releaseEntered.countDown()
             check(allowRelease.await(5, TimeUnit.SECONDS))
