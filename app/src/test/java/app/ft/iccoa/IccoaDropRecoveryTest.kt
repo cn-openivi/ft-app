@@ -355,6 +355,41 @@ class IccoaDropRecoveryTest {
         }
     }
 
+    @Test fun lostSelectedNetworkTearsDownAttemptAndNewNetworkUsesOnlyThreeTransportSlots() {
+        val recovery = IccoaDropRecovery()
+        assertEquals(1, recovery.onInitialRememberedCarAutoSelect())
+        val attemptA = IccoaNetworkCallbackGate<String>()
+        attemptA.onAvailable("A")
+        assertTrue(attemptA.onLost("A"))
+        val closeA = IccoaCloseEvent.classify("Wi-Fi lost", transportFailure = true)
+        assertEquals(IccoaCloseAction.RETRY_TRANSPORT, closeA.action)
+        attemptA.clear() // IccoaSession.close() releases old callback ownership
+        assertFalse(attemptA.isCurrent("A"))
+
+        assertEquals(2, recovery.onFailure(false, true,
+            closeA.action == IccoaCloseAction.RETRY_TRANSPORT))
+        val attemptB = IccoaNetworkCallbackGate<String>()
+        attemptB.onAvailable("B")
+        var cipher: String? = null
+        val ready = mutableListOf<String>()
+        // Callbacks from the torn-down attempt A cannot mutate attempt B.
+        assertFalse(attemptA.commitIfCurrent("A") { cipher = "stale-A" })
+        assertFalse(attemptA.onLost("A"))
+        assertTrue(attemptB.commitIfCurrent("B") { cipher = "verified-B" })
+        ready.add("B")
+        assertEquals("verified-B", cipher)
+        assertEquals(listOf("B"), ready)
+
+        // A new transport failure may consume attempt #3, never attempt #4.
+        assertTrue(attemptB.onLost("B"))
+        assertEquals(3, recovery.onFailure(false, true, true))
+        assertNull(recovery.onFailure(false, true, true))
+        assertFalse(recovery.active)
+        assertEquals(IccoaCloseAction.STOP, IccoaCloseEvent.classify("PIN rejected").action)
+        assertEquals(IccoaCloseAction.REQUIRE_NORMAL_PIN,
+            IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
+    }
+
     @Test fun gatewayRetryBelongsToReplacementNetworkNotStaleTimer() {
         val network = IccoaNetworkCallbackGate<String>()
         val retry = IccoaGatewayRetryGate<String>()
