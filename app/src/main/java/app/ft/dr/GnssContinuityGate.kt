@@ -47,7 +47,9 @@ internal class GnssContinuityGate {
         // Use the stream of ALL GNSS candidates, including rejected ones,
         // for gap detection and out-of-order protection. A stable reflection
         // series cannot re-anchor simply because none was accepted recently.
-        if (timestampMs <= lastObservedTimestampMs) return false
+        // Rejected observations can inform gap detection, but cannot set
+        // the ordering floor for a later genuinely accepted GNSS fix.
+        // Only the last confirmed fix defines that floor (checked below).
         val actualGap = lastObservedTimestampMs != Long.MIN_VALUE &&
             timestampMs - lastObservedTimestampMs > GPS_GAP_MS
         // Do not commit a candidate clock before EKF acceptance.
