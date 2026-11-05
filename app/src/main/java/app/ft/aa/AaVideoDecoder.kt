@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
 object AaVideoSink {
     private val _surface = MutableStateFlow<Surface?>(null)
@@ -36,6 +37,9 @@ object AaVideoSink {
 class AaVideoDecoder(private val width: Int, private val height: Int) {
     private val tag = "AaDecoder"
     private val lock = Any()
+    // Acquired under lock when beginning output work; held without lock while rendering.
+    // stopLocked acquires it before destroying the codec, preventing use-after-release.
+    private val outputLock = ReentrantLock()
     private val running = AtomicBoolean(false)
     private val _frames = MutableStateFlow(0L)
     val frames: StateFlow<Long> = _frames
@@ -192,14 +196,25 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         while (running.get() && generation == mine) {
             try {
                 val idx = c.dequeueOutputBuffer(info, 20_000)
+                // Lock order: lock -> outputLock. Keep slow MediaCodec rendering outside
+                // the shared input monitor so AA socket dispatch can feed the next frame.
                 synchronized(lock) {
                     if (!running.get() || generation != mine || codec !== c) return
+                    outputLock.lock()
+                }
+                try {
                     if (idx >= 0) {
                         c.releaseOutputBuffer(idx, true)
                         _frames.value = _frames.value + 1
                     } else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        shown(c.outputFormat)
+                        // Avoid publishing a late format from a retired decoder.
+                        val format = c.outputFormat
+                        synchronized(lock) {
+                            if (running.get() && generation == mine && codec === c) shown(format)
+                        }
                     }
+                } finally {
+                    outputLock.unlock()
                 }
             } catch (t: Throwable) {
                 if (!running.get() || generation != mine) return
@@ -236,8 +251,13 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         if (!running.getAndSet(false) && old == null) return
         codec = null
         drain = null
-        runCatching { old?.stop() }
-        runCatching { old?.release() }
+        outputLock.lock()
+        try {
+            runCatching { old?.stop() }
+            runCatching { old?.release() }
+        } finally {
+            outputLock.unlock()
+        }
     }
 
     fun stop() {
