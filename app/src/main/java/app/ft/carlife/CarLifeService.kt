@@ -1945,6 +1945,9 @@ class CarLifeService : Service() {
     }
 
     private fun aaOverlay(on: Boolean) {
+        // Route changes can occur without an intervening touch event.
+        // Invalidate the DOWN-captured AA geometry at the transition itself.
+        if (_state.value.aaOverlay != on) aaGestureViewport.reset()
         if (on) mirrorStop()
         _state.update { it.copy(aaOverlay = on) }
         DiagLog.i(tag, "android auto overlay ${if (on) "on" else "off"}")
@@ -2033,6 +2036,7 @@ class CarLifeService : Service() {
             return
         }
         if (ticket != launchTicket.get()) return
+        aaGestureViewport.reset() // AA -> mirror can happen between DOWN and MOVE.
         _state.update { it.copy(aaOverlay = false, mirroring = true, mirrorPackage = pkg) }
         watchTurning()
         mirrorJob?.cancel()
