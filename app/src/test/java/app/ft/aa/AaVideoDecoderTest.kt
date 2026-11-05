@@ -185,6 +185,7 @@ class AaVideoDecoderTest {
         val rendering = CountDownLatch(1)
         val finishRender = CountDownLatch(1)
         val inputFinished = CountDownLatch(1)
+        val inputFailure = AtomicReference<Throwable?>()
         val codec = mock(MediaCodec::class.java)
         val format = mock(MediaFormat::class.java)
         `when`(codec.dequeueInputBuffer(anyLong())).thenReturn(-1)
@@ -207,6 +208,8 @@ class AaVideoDecoderTest {
                 val input = Thread {
                     try {
                         decoder.onFrame(byteArrayOf(0, 0, 1, 65), 42L)
+                    } catch (failure: Throwable) {
+                        inputFailure.set(failure)
                     } finally {
                         inputFinished.countDown()
                     }
@@ -220,6 +223,7 @@ class AaVideoDecoderTest {
                     // independently, without waiting for releaseOutputBuffer.
                     assertTrue("AA input dispatch blocked behind output render",
                         inputFinished.await(1, TimeUnit.SECONDS))
+                    assertNull("AA input thread failed while render was pending", inputFailure.get())
                     verify(codec).dequeueInputBuffer(AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US)
                 } finally {
                     finishRender.countDown()
