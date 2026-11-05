@@ -286,6 +286,46 @@ class AudioCaptureTest {
         verify(working, times(1)).release()
     }
 
+    @Test fun callbackFailureReleasesRecorderAndAllowsNextSession() {
+        val broken = mock(AudioRecord::class.java)
+        val working = mock(AudioRecord::class.java)
+        val brokenReleased = CountDownLatch(1)
+        val workingReading = CountDownLatch(1)
+        val finishWorkingRead = CountDownLatch(1)
+        val deliveries = AtomicInteger()
+        doAnswer { brokenReleased.countDown(); null }.`when`(broken).release()
+        `when`(broken.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            val bytes = it.arguments[0] as ByteArray
+            bytes[0] = 1
+            bytes[1] = 0
+            2
+        }
+        `when`(working.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            workingReading.countDown()
+            await(finishWorkingRead)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        val records = ArrayDeque(listOf(broken, working))
+        val capture = AudioCapture({ records.removeFirst() }, {
+            if (deliveries.incrementAndGet() == 1) throw IllegalStateException("PCM consumer failed")
+        })
+        try {
+            assertTrue(capture.start(projection))
+            await(brokenReleased)
+            assertFalse("failed PCM consumer must clear active capture", capture.active)
+            verify(broken, times(1)).release()
+            assertTrue("consumer failure must not poison the next session", capture.start(projection))
+            await(workingReading)
+            assertTrue(capture.active)
+            assertEquals(1, deliveries.get())
+        } finally {
+            capture.stop()
+            finishWorkingRead.countDown()
+        }
+        verify(broken, times(1)).release()
+        verify(working, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
