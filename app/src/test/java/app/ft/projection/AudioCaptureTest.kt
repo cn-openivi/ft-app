@@ -255,6 +255,37 @@ class AudioCaptureTest {
         verify(second, times(1)).release()
     }
 
+    @Test fun startRecordingFailureReleasesRecorderAndAllowsRetry() {
+        val broken = mock(AudioRecord::class.java)
+        val working = mock(AudioRecord::class.java)
+        val reading = CountDownLatch(1)
+        val finishRead = CountDownLatch(1)
+        doThrow(IllegalStateException("native start failed")).`when`(broken).startRecording()
+        `when`(working.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            reading.countDown()
+            await(finishRead)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        val records = ArrayDeque(listOf(broken, working))
+        val delivered = AtomicInteger()
+        val capture = AudioCapture({ records.removeFirst() }, { delivered.incrementAndGet() })
+        try {
+            assertFalse("native start failure must be reported", capture.start(projection))
+            assertFalse("failed recorder must not remain active", capture.active)
+            verify(broken, times(1)).release()
+            verify(broken, never()).read(any(ByteArray::class.java), anyInt(), anyInt())
+            assertTrue("a failed start must not poison the next session", capture.start(projection))
+            await(reading)
+            assertTrue(capture.active)
+            assertEquals(0, delivered.get())
+        } finally {
+            capture.stop()
+            finishRead.countDown()
+        }
+        verify(broken, times(1)).release()
+        verify(working, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
