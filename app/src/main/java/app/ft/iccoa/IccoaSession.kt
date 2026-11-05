@@ -85,6 +85,7 @@ class IccoaSession(
         var gatt: BluetoothGatt? = null
         var networkCallback: ConnectivityManager.NetworkCallback? = null
         var network: Network? = null
+        val networkGate = IccoaNetworkCallbackGate<Network>()
         var servicesRequested = false
         var servicesHandled = false
         var pinReady = false
@@ -382,15 +383,21 @@ class IccoaSession(
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
+                // A replacement Android Network must not be blocked by stale authStarted.
+                if (attempt.networkGate.onAvailable(network)) attempt.authStarted = false
                 attempt.network = network
-                // Link properties may not yet exist in onAvailable; onLinkPropertiesChanged retries.
                 connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
-                networkReady(attempt, network, properties)
+                if (attempt.networkGate.isCurrent(network)) networkReady(attempt, network, properties)
             }
             override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут") }
-            override fun onLost(network: Network) { fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", closeReason = IccoaCloseReason.TRANSPORT_FAILURE) }
+            override fun onLost(network: Network) = post(attempt) {
+                if (attempt.networkGate.onLost(network))
+                    fail(attempt, "Соединение с Wi-Fi автомобиля потеряно",
+                        closeReason = IccoaCloseReason.TRANSPORT_FAILURE,
+                        shouldFail = { attempt.networkGate.isUnreplacedLoss(network) })
+            }
         }
         attempt.wifiRequested = true
         attempt.networkCallback = callback
@@ -412,7 +419,7 @@ class IccoaSession(
     }
 
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
-        if (attempt.authStarted) return
+        if (!attempt.networkGate.isCurrent(network) || attempt.authStarted) return
         val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
         val address = link.address as Inet4Address
         val local = address.hostAddress ?: return
@@ -447,7 +454,8 @@ class IccoaSession(
             return fail(attempt, "Нет подтверждённого способа авторизации ICCOA")
         attempt.authStarted = true
         attempt.network = network
-        attempt.pin = null
+        // Retain the fresh PIN only within this attempt until signed auth succeeds;
+        // a replacement Network may need to repeat the same in-flight handshake.
         status(attempt, "Проверка подлинности ICCOA…")
         worker(attempt) { authenticate(attempt, network, local, peer, pin, pinned) }
     }
@@ -462,9 +470,16 @@ class IccoaSession(
         try {
             val socket = Socket()
             if (!track(attempt, socket)) return
-            network.bindSocket(socket)
+            if (!attempt.networkGate.bindIfCurrent(network) { network.bindSocket(socket) }) {
+                socket.close()
+                return
+            }
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
+            if (!attempt.networkGate.isCurrent(network)) {
+                socket.close()
+                return // Never send auth bytes over a superseded Wi-Fi Network.
+            }
             socket.tcpNoDelay = true
             socket.soTimeout = 15_000
             progress("build-request")
@@ -487,17 +502,22 @@ class IccoaSession(
                 if (oldKey != null && !MessageDigest.isEqual(oldKey, verifiedCarIdentity))
                     throw IccoaHandshakeException(IccoaHandshakeException.Reason.TRUSTED_IDENTITY_MISMATCH)
             }
-            synchronized(attempt) {
-                if (!active(attempt)) return
-                attempt.cipher = key
+            val committed = attempt.networkGate.commitIfCurrent(network) {
+                synchronized(attempt) {
+                    if (active(attempt)) {
+                        attempt.cipher = key
+                        attempt.pin = null // No PIN retention after signed authentication.
+                    }
+                }
             }
+            if (!committed || !active(attempt)) return
             progress("open-control-listeners")
             for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, local, peer, port)
             if (!active(attempt)) return
             // External callbacks may acquire their owner's lifecycle lock. Never hold ours here.
             progress("open-media-listeners")
             onReady(network, peer)
-            if (!active(attempt)) return
+            if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             progress("send-confirm")
             socket.getOutputStream().run { write(IccoaControl.frame(3, 3, 0, auth.confirm(key, local), 2)); flush() }
             if (pinned == null) synchronized(attempt) {
@@ -514,7 +534,8 @@ class IccoaSession(
             try { while (active(attempt)) IccoaControl.read(socket.getInputStream()) } catch (_: Exception) { }
             socket.close()
         } catch (e: Exception) {
-            if (!active(attempt)) return
+            // A stale worker must not terminate the replacement Network's auth.
+            if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             // Exception messages may contain peer data. Log only our fixed codes and stack locations.
             val reason = (e as? IccoaHandshakeException)?.diagnostic ?: e.javaClass.simpleName
             val location = e.stackTrace.firstOrNull { it.className.startsWith("app.ft.iccoa.") }
@@ -646,7 +667,10 @@ class IccoaSession(
         else { attempt.resources += resource; true }
     }
 
-    private fun fail(attempt: Attempt, message: String, closeReason: IccoaCloseReason = IccoaCloseReason.FAILED) = post(attempt) {
+    private fun fail(attempt: Attempt, message: String, closeReason: IccoaCloseReason = IccoaCloseReason.FAILED,
+                     shouldFail: () -> Boolean = { true }) = post(attempt) {
+        // Recheck a queued Network loss immediately before closing the session.
+        if (!shouldFail()) return@post
         synchronized(this) {
             if (!active(attempt)) return@post
             current = null
@@ -669,6 +693,8 @@ class IccoaSession(
             attempt.control = null
             attempt.audio = null
         }
+        // Auth commits lock gate then attempt; never reverse that lock order.
+        attempt.networkGate.clear()
         main.removeCallbacksAndMessages(attempt)
         attempt.workers.shutdownNow()
         attempt.controlSender.shutdownNow()
