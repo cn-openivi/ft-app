@@ -1,0 +1,94 @@
+name: FT W1-W5 exact-SHA source-only regression
+
+on:
+  push:
+    branches:
+      - openivi/ft-ci-source-only-matrix-20261105
+    paths:
+      - '.github/workflows/ft-ci-w1-w5-source-only.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft-w1-w5-source-only-20261105
+  cancel-in-progress: false
+
+jobs:
+  source-only:
+    name: Five fixed worker SHAs - unit tests only
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-ft-worker-unit
+    steps:
+      - name: Checkout full source history without saved credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Compile and run the unit suite for each exact worker SHA (NO APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+
+          checks=(
+            'W1:dd1a5493e0b740f033e3f10d58e95e79ba990237'
+            'W2:aab91a2b0c4d55d4578e046ae999f4e94d529bc4'
+            'W3:8d8d1f899bdee0884b143d0c6cc65607aaab5587'
+            'W4:45037b02d49fc2c2ef20bb484e92d5136e16a595'
+            'W5:f92f54059e81a771de43136cea6ecd873afce7c0'
+          )
+          echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Worker | SHA | Gradle compile + unit | APK guard |' >> "$GITHUB_STEP_SUMMARY"
+          echo '|---|---|---|---|' >> "$GITHUB_STEP_SUMMARY"
+          overall=0
+          for item in "${checks[@]}"; do
+            worker="${item%%:*}"
+            sha="${item#*:}"
+            echo "::group::${worker} ${sha}"
+            git checkout --force --detach "$sha"
+            git clean -ffdx
+            actual="$(git rev-parse HEAD)"
+            if [[ "$actual" != "$sha" ]]; then
+              echo "::error::Checkout SHA mismatch for ${worker}: ${actual}"
+              exit 1
+            fi
+            chmod +x gradlew
+            gradle_result=FAIL
+            if ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest --stacktrace; then
+              gradle_result=PASS
+            else
+              overall=1
+            fi
+            apk_result=PASS
+            if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+              echo "::error::Unexpected APK output under ${worker} ${sha}"
+              apk_result=FAIL
+              overall=1
+            fi
+            echo "| ${worker} | \`${sha}\` | ${gradle_result} | ${apk_result} |" >> "$GITHUB_STEP_SUMMARY"
+            echo "::endgroup::"
+          done
+          exit "$overall"
