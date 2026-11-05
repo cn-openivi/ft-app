@@ -34,8 +34,9 @@ internal class CarGpsSourceSelector(
             car?.displayLatitude else phone?.latitude
         val longitude: Double? get() = if (source == Source.ICCOA)
             car?.displayLongitude else phone?.longitude
-        val headingDegrees: Float? get() = if (source == Source.ICCOA)
-            car?.headingDegrees else phone?.bearingDegrees
+        val headingDegrees: Float? get() = (if (source == Source.ICCOA)
+            car?.headingDegrees else phone?.bearingDegrees)
+            ?.takeIf { it.isFinite() && it >= 0f && it <= 360f }
         val label: String get() = source.name
     }
 
