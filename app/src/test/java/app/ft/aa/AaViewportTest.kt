@@ -174,4 +174,21 @@ class AaViewportTest {
             assertEquals(800 to 400, gesture.map(1, 600, 290, viewport, 1280, 720))
         }
     }
+
+    @Test fun routeSwitchWithoutIntermediateTouchMustDiscardStaleDown() {
+        val gesture = AaTouchGestureViewport()
+        val original = AaViewport(100, 40, 800, 450)
+        val afterReturn = AaViewport(40, 100, 450, 800)
+        assertEquals(640 to 360, gesture.map(0, 500, 265, original, 1280, 720))
+        // CarLifeService.aaOverlay(false) is called even when FT receives no
+        // touch event; mirrorStart() also invalidates the captured AA gesture.
+        gesture.reset()
+        // AA becomes active again without any intermediate FT/mirror touch.
+        assertEquals(null, gesture.map(2, 265, 500, afterReturn, 720, 1280))
+        assertEquals(null, gesture.map(1, 265, 500, afterReturn, 720, 1280))
+        // A genuine new AA DOWN still captures the current geometry.
+        assertEquals(360 to 640, gesture.map(0, 265, 500, afterReturn, 720, 1280))
+        assertEquals(360 to 640, gesture.map(2, 265, 500, afterReturn, 720, 1280))
+        assertEquals(360 to 640, gesture.map(1, 265, 500, afterReturn, 720, 1280))
+    }
 }
