@@ -54,11 +54,11 @@ jobs:
           EOF
 
           checks=(
-            'W1:dd1a5493e0b740f033e3f10d58e95e79ba990237'
-            'W2:aab91a2b0c4d55d4578e046ae999f4e94d529bc4'
-            'W3:8d8d1f899bdee0884b143d0c6cc65607aaab5587'
-            'W4:45037b02d49fc2c2ef20bb484e92d5136e16a595'
-            'W5:f92f54059e81a771de43136cea6ecd873afce7c0'
+            'W1:90aec228ad0a7a99e71f43961c093c21af323fda'
+            'W2:8d3da8c5ff2ba8bfcb3703ce6494367b76458ce7'
+            'W3:1f45946fe47590e94a4284feb9b47e1b50b60e1f'
+            'W4:f93f1a47de931c5c64c5c1bce7154c8fcdad8ab3'
+            'W5:6dc8c1d88fcb7506b4ac8687ba6bfc7c57e874e2'
           )
           echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
           echo '| Worker | SHA | Gradle compile + unit | APK guard |' >> "$GITHUB_STEP_SUMMARY"
