@@ -133,7 +133,14 @@ internal class CarGpsSourceSelector(
                 (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
         } else {
             Reading(Source.PHONE, null, safePhone,
-                (nowMs - (safePhone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
+                safePhone?.let { fix ->
+                    val callbackAgeMs = (nowMs - fix.receivedAtMs).coerceAtLeast(0L)
+                    val fixAgeMs = fix.fixAgeNanosAtReceipt?.let { nanos ->
+                        // Round up: never display a sub-millisecond stale fix as newer.
+                        nanos / 1_000_000L + if (nanos % 1_000_000L == 0L) 0L else 1L
+                    } ?: 0L
+                    callbackAgeMs + fixAgeMs
+                } ?: 0L,
                 safePhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
         }
     }
