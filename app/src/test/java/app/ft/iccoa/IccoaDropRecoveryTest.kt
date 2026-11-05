@@ -245,6 +245,30 @@ class IccoaDropRecoveryTest {
         assertTrue(gate.isCurrent("B"))
     }
 
+    @Test fun lateAuthenticatedResponseCannotCommitCipherOnSupersededNetwork() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        var cipher: String? = null
+        val confirms = mutableListOf<String>()
+        val ready = mutableListOf<String>()
+        gate.onAvailable("A")
+        // A has already sent AuthRequest. Android replaces its Network while
+        // the authenticated response is still being decoded.
+        gate.onAvailable("B")
+        assertFalse(gate.commitIfCurrent("A") { cipher = "A-key" })
+        if (gate.isCurrent("A")) ready.add("A")
+        if (gate.isCurrent("A")) confirms.add("A")
+        assertEquals(null, cipher)
+        assertTrue(ready.isEmpty())
+        assertTrue(confirms.isEmpty())
+        // Current B can commit a verified key without A reviving itself.
+        assertTrue(gate.commitIfCurrent("B") { cipher = "B-key" })
+        if (gate.isCurrent("B")) ready.add("B")
+        if (gate.isCurrent("B")) confirms.add("B")
+        assertEquals("B-key", cipher)
+        assertEquals(listOf("B"), ready)
+        assertEquals(listOf("B"), confirms)
+    }
+
     @Test fun staleNetworkAuthExceptionCannotTerminateReplacementAttempt() {
         val gate = IccoaNetworkCallbackGate<String>()
         gate.onAvailable("A")
