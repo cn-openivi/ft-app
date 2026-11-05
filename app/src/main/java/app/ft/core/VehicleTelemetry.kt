@@ -84,7 +84,7 @@ object VehicleTelemetry {
         val latestPosition = _current.value?.takeIf { it.source == location.source }
         if (latestPosition != null && latestPosition.positionAtMs > 0L &&
             (location.positionAtMs <= 0L ||
-                latestPosition.positionAtMs > location.positionAtMs)) return
+                latestPosition.positionAtMs >= location.positionAtMs)) return
         // A new GPS frame must not erase a recent, separately sourced GearInfo frame.
         val preserved = if (location.source == "ICCOA" && previous != null)
             location.copy(gearSpeedRaw = previous.gearSpeedRaw,
