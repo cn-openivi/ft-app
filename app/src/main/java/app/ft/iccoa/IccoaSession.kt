@@ -96,6 +96,22 @@ internal class IccoaGatewayRetryGate<T : Any> {
 /** Typed ICCOA terminal action; Quick reject and transport loss must never collide. */
 enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
 
+/** A delayed gateway lookup belongs to one Network, never to the whole Attempt. */
+internal class IccoaGatewayRetryGate<T> {
+    private var pending: T? = null
+    @Synchronized fun schedule(network: T): Boolean {
+        if (pending == network) return false
+        pending = network
+        return true
+    }
+    @Synchronized fun consume(network: T): Boolean {
+        if (pending != network) return false
+        pending = null
+        return true
+    }
+    @Synchronized fun clear() { pending = null }
+}
+
 data class IccoaCloseEvent(val message: String, val action: IccoaCloseAction) {
     companion object {
         fun classify(message: String, transportFailure: Boolean = false,
