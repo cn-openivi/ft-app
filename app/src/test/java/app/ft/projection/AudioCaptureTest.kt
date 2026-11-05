@@ -161,6 +161,7 @@ class AudioCaptureTest {
         val newReadEntered = CountDownLatch(1)
         val finishNewRead = CountDownLatch(1)
         val resetFinished = CountDownLatch(1)
+        val resetFailure = java.util.concurrent.atomic.AtomicReference<Throwable>()
         val oldReader = java.util.concurrent.atomic.AtomicReference<Thread>()
         val delivered = AtomicInteger()
         `when`(oldRecord.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
@@ -184,6 +185,8 @@ class AudioCaptureTest {
         val reset = Thread {
             try {
                 assertTrue(capture.start(projection))
+            } catch (t: Throwable) {
+                resetFailure.set(t)
             } finally {
                 resetFinished.countDown()
             }
@@ -195,6 +198,7 @@ class AudioCaptureTest {
             assertFalse("reset must wait for in-flight PCM callback", resetFinished.await(100, TimeUnit.MILLISECONDS))
             finishCallback.countDown()
             await(resetFinished)
+            resetFailure.get()?.let { throw AssertionError("reset thread failed", it) }
             await(newReadEntered)
             oldReader.get().join(5000)
             assertFalse("old reader must exit", oldReader.get().isAlive)
