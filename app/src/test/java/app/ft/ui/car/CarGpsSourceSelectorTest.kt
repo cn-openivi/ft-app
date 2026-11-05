@@ -362,6 +362,33 @@ class CarGpsSourceSelectorTest {
         assertEquals(20f, restored.speedKmh!!, 0f)
     }
 
+    @Test fun invalidHeadingNeverLeaksFromSelectedGpsSource() {
+        val selector = connectedSelector()
+        val invalidCar = selector.select(
+            car(18_000L).copy(headingDegrees = Float.NaN),
+            phone(18_000L), 18_000L
+        )
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, invalidCar.source)
+        assertEquals(55.55207, invalidCar.latitude!!, 0.00001)
+        assertNull(invalidCar.headingDegrees)
+
+        val fallback = selector.select(
+            null, phone(24_000L).copy(bearingDegrees = Float.POSITIVE_INFINITY), 24_000L
+        )
+        assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
+        assertEquals(55.55, fallback.latitude!!, 0.00001)
+        assertNull(fallback.headingDegrees)
+
+        val outOfRange = selector.select(
+            null, phone(24_100L).copy(bearingDegrees = -12f), 24_100L
+        )
+        assertNull(outOfRange.headingDegrees)
+        val valid = selector.select(
+            null, phone(24_200L).copy(bearingDegrees = 359.5f), 24_200L
+        )
+        assertEquals(359.5f, valid.headingDegrees!!, 0f)
+    }
+
     @Test fun invalidCarCoordinatesNeverBecomeCandidateFix() {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..30_000L step 1_000L) {
