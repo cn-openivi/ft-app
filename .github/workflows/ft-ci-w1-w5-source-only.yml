@@ -1,9 +1,11 @@
 name: FT W1-W5 exact-SHA source-only regression
 
 on:
-  push:
+  # A PR-triggered run can be independently read back with the existing
+  # GitHub connector; a push-only run cannot be inspected through it.
+  pull_request:
     branches:
-      - openivi/ft-ci-source-only-matrix-20261105
+      - openivi/ft-inertial-widget-dr-design-20261103
     paths:
       - '.github/workflows/ft-ci-w1-w5-source-only.yml'
 
