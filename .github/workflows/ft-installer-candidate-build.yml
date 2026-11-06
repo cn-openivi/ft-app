@@ -1,0 +1,98 @@
+name: FT XA60 installer candidate - unsigned APK and manifest proof
+
+on:
+  push:
+    branches:
+      - openivi/ft-installer-candidate-20261106
+    paths:
+      - '.github/workflows/ft-installer-candidate-build.yml'
+      - 'app/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft-installer-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-unsigned:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-ft-installer
+    steps:
+      - name: Checkout candidate exact source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify source and candidate identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$GITHUB_REF_NAME" = 'openivi/ft-installer-candidate-20261106'
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 174' app/build.gradle.kts
+          echo "CANDIDATE_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Bounded Gradle resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+      - name: Test exact candidate and compile real unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit --stacktrace
+      - name: Check actual APK package manifest and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          apk=$(find app/build/outputs/apk/unsignedTransit -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$apk"
+          test -s "$apk"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          "$bt/aapt" dump badging "$apk" > candidate/manifest-badging.txt
+          grep -m1 "^package: name='app.ft.xa60' versionCode='174'" candidate/manifest-badging.txt
+          if grep -q '^application-debuggable' candidate/manifest-badging.txt; then
+            echo 'FAIL: release-mode unsigned APK is debuggable' >&2
+            exit 1
+          fi
+          cp "$apk" candidate/ft-xa60-unsigned-for-owner-signing.apk
+          (cd candidate && sha256sum ft-xa60-unsigned-for-owner-signing.apk > SHA256SUMS)
+          printf '%s\n' "$GITHUB_SHA" > candidate/SOURCE_SHA
+          printf 'UNSIGNED_PACKAGE_ONLY; NOT INSTALLABLE; OWNER SIGNATURE REQUIRED\n' > candidate/STATUS
+          cat candidate/SHA256SUMS
+          echo "Real unsigned APK exists; signing and field acceptance are separate owner gates."
+      - name: Preserve evidence and unsigned APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ft-xa60-unsigned-candidate-${{ github.sha }}
+          path: candidate/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
