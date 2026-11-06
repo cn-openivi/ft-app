@@ -234,4 +234,74 @@ class AaVideoDecoderTest {
         }
     }
 
+
+    @Test fun resetWaitingForOutputMustNotHoldAaInputDispatchLock() {
+        val rendering = CountDownLatch(1)
+        val allowRender = CountDownLatch(1)
+        val inputFinished = CountDownLatch(1)
+        val inputFailure = AtomicReference<Throwable?>()
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        `when`(codec.dequeueInputBuffer(anyLong())).thenReturn(-1)
+        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong()))
+            .thenReturn(0, MediaCodec.INFO_TRY_AGAIN_LATER)
+        doAnswer {
+            rendering.countDown()
+            check(allowRender.await(5, TimeUnit.SECONDS))
+            null
+        }.`when`(codec).releaseOutputBuffer(0, true)
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                val resetThread = Thread { decoder.reset() }
+                val inputThread = Thread {
+                    try {
+                        decoder.onFrame(byteArrayOf(0, 0, 1, 65), 7L)
+                    } catch (t: Throwable) {
+                        inputFailure.set(t)
+                    } finally {
+                        inputFinished.countDown()
+                    }
+                }
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(1, 2, 3))
+                    assertTrue("render did not begin", rendering.await(5, TimeUnit.SECONDS))
+                    resetThread.start()
+                    // Volatile codec=null is published by stopLocked immediately before
+                    // it waits for outputLock. Observe the lifecycle milestone, not
+                    // Thread.State or an arbitrary sleep-based scheduling assumption.
+                    val field = AaVideoDecoder::class.java.getDeclaredField("codec")
+                    field.isAccessible = true
+                    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                    while (field.get(decoder) != null && System.nanoTime() < deadline) {
+                        Thread.yield()
+                    }
+                    assertNull("reset never invalidated the codec", field.get(decoder))
+                    verify(codec, never()).stop()
+                    verify(codec, never()).release()
+                    inputThread.start()
+                    assertTrue("onFrame blocked behind reset waiting for output render",
+                        inputFinished.await(1, TimeUnit.SECONDS))
+                    assertNull("onFrame threw", inputFailure.get())
+                    verify(codec, never()).stop()
+                    verify(codec, never()).release()
+                } finally {
+                    allowRender.countDown()
+                    resetThread.join(5000)
+                    if (inputThread.state != Thread.State.NEW) inputThread.join(5000)
+                    decoder.reset()
+                }
+                assertFalse("reset did not finish", resetThread.isAlive)
+                verify(codec, times(1)).stop()
+                verify(codec, times(1)).release()
+            }
+        }
+    }
 }
