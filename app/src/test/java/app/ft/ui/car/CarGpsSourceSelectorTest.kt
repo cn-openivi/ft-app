@@ -397,4 +397,21 @@ class CarGpsSourceSelectorTest {
                 selector.select(invalid,phone(t),t).source)
         }
     }
+    @Test fun delayedNewOemPositionDoesNotExtendCarHysteresisPastMeasurementAge() {
+        val selector = connectedSelector() // Last measurement at 17_000 ms.
+        // Packet arrives at 20_000 but OEM position was measured at 17_500.
+        val delayed = car(17_500L).copy(receivedAtMs = 20_000L)
+        val accepted = selector.select(delayed, phone(20_000L), 20_000L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, accepted.source)
+        assertEquals(2_500L, accepted.lastPacketAgeMs)
+
+        val before = selector.select(null, phone(24_499L), 24_499L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, before.source)
+        assertEquals(6_999L, before.lastPacketAgeMs)
+
+        val expired = selector.select(null, phone(24_500L), 24_500L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, expired.source)
+        assertEquals(55.55, expired.latitude!!, 0.00001)
+    }
+
 }
