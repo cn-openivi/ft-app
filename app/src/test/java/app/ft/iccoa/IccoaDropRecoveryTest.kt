@@ -229,6 +229,45 @@ class IccoaDropRecoveryTest {
         assertTrue(selected.isCurrent("B"))
     }
 
+    @Test fun nullLinkPropertiesOnAvailableMustScheduleRetryWithoutAnotherCallback() {
+        val selected = IccoaNetworkCallbackGate<String>()
+        val retry = IccoaGatewayRetryGate<String>()
+        val accepted = mutableListOf<String>()
+        var missingCount = 0
+
+        selected.onAvailable("A")
+        // Android may return null from getLinkProperties(onAvailable) and emit
+        // no subsequent onLinkPropertiesChanged. The callback must still poll.
+        dispatchIccoaLinkProperties<String>(
+            null,
+            whenReady = { accepted.add(it) },
+            whenMissing = {
+                missingCount++
+                if (selected.isCurrent("A")) assertTrue(retry.schedule("A"))
+            }
+        )
+        assertEquals(1, missingCount)
+        assertTrue(accepted.isEmpty())
+        assertTrue(retry.consume("A"))
+
+        // The first timer also sees null: it must remain retryable.
+        assertTrue(retry.schedule("A"))
+        // A is replaced before its timer runs. B gets the sole pending retry.
+        selected.onAvailable("B")
+        assertTrue(retry.schedule("B"))
+        assertFalse(retry.consume("A"))
+        assertTrue(retry.consume("B"))
+
+        // DHCP now reports usable properties: do not request another retry.
+        dispatchIccoaLinkProperties(
+            "192.0.2.10",
+            whenReady = { accepted.add(it) },
+            whenMissing = { fail("a ready link must not be retried") }
+        )
+        assertEquals(listOf("192.0.2.10"), accepted)
+        assertEquals(1, missingCount)
+    }
+
     @Test fun replacedNetworkCannotStartAuthOrTearDownLiveConnection() {
         val gate = IccoaNetworkCallbackGate<String>()
         gate.onAvailable("A")
