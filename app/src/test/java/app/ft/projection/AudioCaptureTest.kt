@@ -326,6 +326,38 @@ class AudioCaptureTest {
         verify(working, times(1)).release()
     }
 
+    @Test fun callbackInitiatedStopDoesNotDeliverLaterPcm() {
+        val record = mock(AudioRecord::class.java)
+        val reader = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val readerFinished = CountDownLatch(1)
+        val delivered = AtomicInteger()
+        val readCount = AtomicInteger()
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            reader.set(Thread.currentThread())
+            readCount.incrementAndGet()
+            val bytes = it.arguments[0] as ByteArray
+            bytes[0] = 1
+            bytes[1] = 0
+            2
+        }
+        lateinit var capture: AudioCapture
+        capture = AudioCapture({ record }, {
+            delivered.incrementAndGet()
+            // stop() may be invoked synchronously by a PCM consumer.
+            // It must not deadlock or deliver another block after returning.
+            capture.stop()
+            readerFinished.countDown()
+        })
+        assertTrue(capture.start(projection))
+        await(readerFinished)
+        reader.get().join(5000)
+        assertFalse("reader must exit after callback-initiated stop", reader.get().isAlive)
+        assertEquals(1, delivered.get())
+        assertEquals(1, readCount.get())
+        assertFalse(capture.active)
+        verify(record, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
