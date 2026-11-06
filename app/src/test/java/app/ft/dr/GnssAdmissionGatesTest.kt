@@ -125,4 +125,24 @@ class GnssAdmissionGatesTest {
         assertTrue(gate.permits(9_600L, 0.0, 0.0, 0.0, 0.0))
     }
 
+    @Test fun unverifiedGapCannotAdmitHundredMetreGnssTeleportWithoutWheelEvidence() {
+        val gate = GnssOdometryPlausibility()
+        gate.reset(0.0, 0.0)
+        gate.onUnverifiedMotion()
+        assertFalse(gate.permits(100.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(0.0, 0.0, 0.0, 0.0))
+    }
+
+    @Test fun resumedVerifiedWheelCannotFabricateTravelDuringUntrustedGap() {
+        val gate = GnssOdometryPlausibility()
+        gate.reset(0.0, 0.0)
+        gate.onVerifiedMotion(10.0)
+        gate.onUnverifiedMotion()
+        repeat(10) { gate.onVerifiedMotion(10.0) }
+        assertFalse(gate.permits(100.0, 0.0, 100.0, 0.0))
+        gate.confirmed(0.0, 0.0)
+        gate.onVerifiedMotion(100.0)
+        assertTrue(gate.permits(100.0, 0.0, 100.0, 0.0))
+    }
+
 }
