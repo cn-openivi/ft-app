@@ -224,4 +224,108 @@ class DeadReckoningEkfTest {
         assertEquals(old.eastMetres, dr.estimate()!!.eastMetres, 0.0)
         assertTrue(abs(dr.estimate()!!.headingDegrees - 30.0) < 1e-6)
     }
+    @Test fun missingVerifiedMotionFreezesPositionAndGrowsUncertainty() {
+        val dr = DeadReckoningEkf()
+        assertNull(dr.holdUnverifiedMotion(1.0))
+        assertTrue(dr.anchor(100.0, -20.0, 45.0, 2.0))
+        val anchored = dr.estimate()!!
+        repeat(30) {
+            val held = dr.holdUnverifiedMotion(1.0)!!
+            assertEquals(anchored.eastMetres, held.eastMetres, 0.0)
+            assertEquals(anchored.northMetres, held.northMetres, 0.0)
+            assertEquals(anchored.headingDegrees, held.headingDegrees, 0.0)
+        }
+        val after = dr.estimate()!!
+        assertEquals(30.0, after.secondsSinceGnss, 0.0)
+        assertTrue(after.estimated)
+        assertTrue(after.horizontalUncertaintyMetres >
+            anchored.horizontalUncertaintyMetres)
+        // No synthetic wheel path is accumulated during unverified motion.
+        assertFalse(dr.correctGnss(200.0, 80.0, 2.0, true))
+        assertEquals(100.0, dr.estimate()!!.eastMetres, 0.0)
+    }
+
+    @Test fun unboundedGnssAccuracyCannotConfirmEstimatedPosition() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0))
+        assertNotNull(dr.holdUnverifiedMotion(1.0))
+        val before = dr.estimate()!!
+        // A receiver reporting a 1km uncertainty is not a reliable
+        // independent position observation, even if EKF NIS is permissive.
+        assertFalse(dr.correctGnss(100.0, 0.0, 1000.0, genuineGnss = true))
+        assertFalse(dr.correctGnss(0.0, 0.0, 0.1, genuineGnss = true))
+        assertEquals(before.eastMetres, dr.estimate()!!.eastMetres, 0.0)
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertEquals(before.secondsSinceGnss, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertTrue(dr.estimate()!!.estimated)
+        // A well-characterised, consistent fix remains eligible.
+        assertTrue(dr.correctGnss(0.1, 0.1, 2.0, genuineGnss = true))
+        assertFalse(dr.estimate()!!.estimated)
+    }
+
+    @Test fun invalidHoldIntervalDoesNotAdvanceTimeOrPosition() {
+        val dr = DeadReckoningEkf()
+        dr.anchor(0.0, 0.0, 0.0, 1.0)
+        for (bad in listOf(Double.NaN, -1.0, 0.0, 2.0)) {
+            assertNull(dr.holdUnverifiedMotion(bad))
+        }
+        assertEquals(0.0, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertEquals(0.0, dr.estimate()!!.northMetres, 0.0)
+    }
+
+    @Test fun staleTimestampCannotReanchorOrRewindGnssAfterCorrection() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        assertNotNull(dr.predict(1.0, 2.0, 0.0, true))
+        val before = dr.estimate()!!
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 9_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 0L))
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertEquals(before.secondsSinceGnss, dr.estimate()!!.secondsSinceGnss, 0.0)
+        assertTrue(dr.correctGnss(0.0, 2.1, 2.0, true, measurementTimestampMs = 11_000L))
+        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_500L))
+        assertTrue(dr.anchor(0.0, 2.2, 0.0, 2.0, measurementTimestampMs = 12_000L))
+    }
+
+    @Test fun staleGnssCorrectionCannotRewindAcceptedMeasurementTimestamp() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        // A new correction, unlike anchor(), must enforce the same monotonic clock.
+        assertTrue(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = 11_000L))
+        val accepted = dr.estimate()!!
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 10_500L))
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 11_000L))
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 0L))
+        assertEquals(accepted.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertTrue(dr.correctGnss(0.0, 0.3, 2.0, true, measurementTimestampMs = 12_000L))
+    }
+
+    @Test fun missingTimestampCannotBypassMonotonicGnssClock() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        val before = dr.estimate()!!
+        assertFalse(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = null))
+        assertFalse(dr.anchor(50.0, 50.0, 0.0, 2.0, measurementTimestampMs = null))
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        assertTrue(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = 11_000L))
+        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = null))
+        assertTrue(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 12_000L))
+    }
+
+
+    @Test fun newerTimestampCannotTeleportByRepeatedAnchor() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        val before = dr.estimate()!!
+        // Newer observation time does not establish 14 km of vehicle motion.
+        assertFalse(dr.anchor(10_000.0, 10_000.0, 0.0, 2.0,
+            measurementTimestampMs = 11_000L))
+        assertEquals(before.eastMetres, dr.estimate()!!.eastMetres, 0.0)
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        // A near and later genuine GNSS re-anchor remains possible.
+        assertTrue(dr.anchor(0.2, 0.1, 0.0, 2.0, measurementTimestampMs = 12_000L))
+        assertEquals(0.2, dr.estimate()!!.eastMetres, 0.0)
+    }
+
 }
