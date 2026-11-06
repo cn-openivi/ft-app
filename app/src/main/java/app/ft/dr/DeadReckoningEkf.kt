@@ -57,10 +57,11 @@ internal class DeadReckoningEkf {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
             horizontalAccuracyMetres !in 0.5..30.0 ||
-            (measurementTimestampMs != null &&
-                (measurementTimestampMs <= 0L ||
-                    (lastAcceptedGnssTimestampMs != null &&
-                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
+            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
+                (measurementTimestampMs != null &&
+                    (measurementTimestampMs <= 0L ||
+                        (lastAcceptedGnssTimestampMs != null &&
+                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
@@ -195,10 +196,11 @@ internal class DeadReckoningEkf {
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
             horizontalAccuracyMetres !in 0.5..30.0 ||
-            (measurementTimestampMs != null &&
-                (measurementTimestampMs <= 0L ||
-                    (lastAcceptedGnssTimestampMs != null &&
-                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
+            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
+                (measurementTimestampMs != null &&
+                    (measurementTimestampMs <= 0L ||
+                        (lastAcceptedGnssTimestampMs != null &&
+                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
 
         val x = filter.state()
         val p = filter.covariance()
