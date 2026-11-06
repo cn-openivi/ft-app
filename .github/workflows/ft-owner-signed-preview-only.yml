@@ -1,0 +1,142 @@
+name: FT XA60 owner-signed local preview (NO RELEASE)
+
+on:
+  push:
+    branches:
+      - openivi/ft-installer-candidate-20261106
+    paths:
+      - '.github/workflows/ft-owner-signed-preview-only.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ft-owner-signed-preview-only-20261106
+  cancel-in-progress: false
+
+jobs:
+  sign-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact verified preview source metadata
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Fail closed on unauthorized source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = 'f2316c5ab7291e9e92a1d04a4875afd017acbba0'
+          test "$(git diff --name-only HEAD^ HEAD)" = '.github/workflows/ft-owner-signed-preview-only.yml'
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 174' app/build.gradle.kts
+          echo 'ORIGINAL_SOURCE_SHA=f2316c5ab7291e9e92a1d04a4875afd017acbba0'
+
+      - name: JDK 17 (owner signer verification)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 36 (zipalign and apksigner)
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Retrieve exact tested unsigned APK from successful build 42176979056
+        uses: actions/download-artifact@v4
+        with:
+          name: ft-xa60-unsigned-candidate-f2316c5ab7291e9e92a1d04a4875afd017acbba0
+          run-id: 42176979056
+          github-token: ${{ github.token }}
+          path: unsigned/
+
+      - name: Verify unsigned input digest before signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk='unsigned/ft-xa60-unsigned-for-owner-signing.apk'
+          test -s "$apk"
+          printf '%s  %s\n' 'f1e46a34024da1a9a3d4a3375482754ea9c71e33075c356470aa8c80c4a8c53a' "$apk" | sha256sum -c -
+          test "$(cat unsigned/SOURCE_SHA)" = 'f2316c5ab7291e9e92a1d04a4875afd017acbba0'
+          grep -Fxq 'UNSIGNED_PACKAGE_ONLY; NOT INSTALLABLE; OWNER SIGNATURE REQUIRED' unsigned/STATUS
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -m1 "^package: name='app.ft.xa60' versionCode='174'"
+
+      - name: Restore and pin ONLY existing FT174 owner signing key
+        shell: bash
+        env:
+          FT_XA60_SIGNING_BUNDLE_JSON: ${{ secrets.FT_XA60_SIGNING_BUNDLE_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, sys
+          raw = os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON", "")
+          if not raw:
+              sys.exit("BLOCKED: existing FT174 owner signer secret unavailable; no APK signed")
+          bundle = json.loads(raw)
+          assert bundle["format"] == "openivi-ft-xa60-pkcs12-v1"
+          assert bundle["alias"] == "openivi_ft_xa60"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          assert hashlib.sha256(key).hexdigest() == bundle["keystore_sha256"]
+          password = bundle["store_password"]
+          assert password and all(c in "0123456789abcdef" for c in password)
+          private = pathlib.Path(".ft-xa60")
+          private.mkdir(mode=0o700, exist_ok=True)
+          ks = private / "ft-xa60-owner.p12"
+          ks.write_bytes(key)
+          ks.chmod(0o600)
+          pw = private / "password.txt"
+          pw.write_text(password)
+          pw.chmod(0o600)
+          PY
+          actual=$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | awk '{print $1}')
+          expected='e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c'
+          test "$actual" = "$expected"
+          echo "PINNED_OWNER_CERT_SHA256=$actual"
+
+      - name: Sign exact existing APK for local owner inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          mkdir -p signed
+          "$bt/zipalign" -f -p 4 unsigned/ft-xa60-unsigned-for-owner-signing.apk signed/ft-xa60-preview-aligned.apk
+          "$bt/zipalign" -c -v 4 signed/ft-xa60-preview-aligned.apk
+          "$bt/apksigner" sign \
+            --ks .ft-xa60/ft-xa60-owner.p12 \
+            --ks-type PKCS12 \
+            --ks-key-alias openivi_ft_xa60 \
+            --ks-pass file:.ft-xa60/password.txt \
+            --key-pass file:.ft-xa60/password.txt \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out signed/ft-xa60-174-owner-preview-signed.apk \
+            signed/ft-xa60-preview-aligned.apk
+          rm signed/ft-xa60-preview-aligned.apk
+          "$bt/apksigner" verify --verbose --print-certs --min-sdk-version 29 signed/ft-xa60-174-owner-preview-signed.apk | tee signed/apksigner-verified.txt
+          grep -iq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' signed/apksigner-verified.txt
+          "$bt/aapt" dump badging signed/ft-xa60-174-owner-preview-signed.apk > signed/manifest-badging.txt
+          grep -m1 "^package: name='app.ft.xa60' versionCode='174'" signed/manifest-badging.txt
+          if grep -q '^application-debuggable' signed/manifest-badging.txt; then
+            echo "REFUSE: debuggable preview APK"; exit 1
+          fi
+          (cd signed && sha256sum ft-xa60-174-owner-preview-signed.apk > SHA256SUMS)
+          printf '%s\n' 'f2316c5ab7291e9e92a1d04a4875afd017acbba0' > signed/SOURCE_SHA
+          printf '%s\n' 'OWNER_SIGNED_PREVIEW; NOT HU TESTED; NO GITHUB RELEASE' > signed/STATUS
+          cat signed/SHA256SUMS
+
+      - name: Upload owner-signed preview without publishing any release
+        uses: actions/upload-artifact@v4
+        with:
+          name: ft-xa60-174-owner-signed-preview-${{ github.sha }}
+          path: signed/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
