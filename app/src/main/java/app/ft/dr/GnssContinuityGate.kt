@@ -23,13 +23,11 @@ internal class GnssContinuityGate {
     private val accepted = ArrayDeque<Fix>(5)
     private val cleanResiduals = ArrayDeque<Double>(5)
     private var lastObservedTimestampMs = Long.MIN_VALUE
-    private var pendingActualGapAtMs = Long.MIN_VALUE
 
     fun reset() {
         accepted.clear()
         cleanResiduals.clear()
         lastObservedTimestampMs = Long.MIN_VALUE
-        pendingActualGapAtMs = Long.MIN_VALUE
     }
 
     /**
@@ -49,11 +47,12 @@ internal class GnssContinuityGate {
         // Use the stream of ALL GNSS candidates, including rejected ones,
         // for gap detection and out-of-order protection. A stable reflection
         // series cannot re-anchor simply because none was accepted recently.
-        if (timestampMs <= lastObservedTimestampMs) return false
+        // Rejected observations can inform gap detection, but cannot set
+        // the ordering floor for a later genuinely accepted GNSS fix.
+        // Only the last confirmed fix defines that floor (checked below).
         val actualGap = lastObservedTimestampMs != Long.MIN_VALUE &&
             timestampMs - lastObservedTimestampMs > GPS_GAP_MS
-        lastObservedTimestampMs = timestampMs
-        if (actualGap) pendingActualGapAtMs = timestampMs
+        // Do not commit a candidate clock before EKF acceptance.
         val last = accepted.peekLast() ?: return true
         if (timestampMs <= last.timestampMs) return false
         if (actualGap) return true
@@ -69,7 +68,13 @@ internal class GnssContinuityGate {
         val learned = cleanResiduals.maxOrNull() ?: 0.0
         val tolerance = max(BASE_TOLERANCE_METRES, learned * 2.5)
             .coerceAtMost(MAX_TOLERANCE_METRES)
-        return continuityResidual.isFinite() && continuityResidual <= tolerance
+        val allowed = continuityResidual.isFinite() && continuityResidual <= tolerance
+        // Contiguous rejected reflections still count as observations, but
+        // speculative far-future candidates cannot poison the time anchor.
+        if (!allowed && !actualGap && timestampMs > lastObservedTimestampMs) {
+            lastObservedTimestampMs = timestampMs
+        }
+        return allowed
     }
 
     fun confirmed(
@@ -82,12 +87,12 @@ internal class GnssContinuityGate {
         // Only a genuine gap in observed GNSS packets clears the local
         // continuity history. Repeated rejected measurements must never
         // reset it or provide a false re-anchor.
-        if (pendingActualGapAtMs != Long.MIN_VALUE &&
-            timestampMs >= pendingActualGapAtMs) {
+        if (lastObservedTimestampMs != Long.MIN_VALUE &&
+            timestampMs > lastObservedTimestampMs &&
+            timestampMs - lastObservedTimestampMs > GPS_GAP_MS) {
             accepted.clear()
             cleanResiduals.clear()
-            pendingActualGapAtMs = Long.MIN_VALUE
-        }
+            }
         if (timestampMs > lastObservedTimestampMs) lastObservedTimestampMs = timestampMs
         val line = if (accepted.size >= HISTORY_REQUIRED)
             forecast(timestampMs) else null

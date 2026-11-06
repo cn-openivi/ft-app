@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
 
 object AaVideoSink {
     private val _surface = MutableStateFlow<Surface?>(null)
@@ -36,6 +37,9 @@ object AaVideoSink {
 class AaVideoDecoder(private val width: Int, private val height: Int) {
     private val tag = "AaDecoder"
     private val lock = Any()
+    // Acquired under lock when beginning output work; held without lock while rendering.
+    // stopLocked acquires it before destroying the codec, preventing use-after-release.
+    private val outputLock = ReentrantLock()
     private val running = AtomicBoolean(false)
     private val _frames = MutableStateFlow(0L)
     val frames: StateFlow<Long> = _frames
@@ -168,13 +172,16 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             slot = c.dequeueInputBuffer(INPUT_DEQUEUE_TIMEOUT_US)
             if (slot < 0) return
             val buf = c.getInputBuffer(slot)
+            // A recycled codec ByteBuffer may retain a nonzero position/limit.
+            // Capacity, not pre-clear remaining(), determines whether the
+            // complete H.264 access unit fits after resetting its window.
+            buf?.clear()
             if (buf == null || data.size > buf.remaining()) {
                 if (buf != null) DiagLog.w(tag, "a ${data.size} byte picture did not fit the decoder, skipping it")
                 c.queueInputBuffer(slot, 0, 0, ptsUs, 0)
                 given = true
                 return
             }
-            buf.clear()
             buf.put(data)
             c.queueInputBuffer(slot, 0, data.size, ptsUs, if (isConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG else 0)
             given = true
@@ -189,13 +196,24 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         while (running.get() && generation == mine) {
             try {
                 val idx = c.dequeueOutputBuffer(info, 20_000)
-                synchronized(lock) {
-                    if (!running.get() || generation != mine || codec !== c) return
-                    if (idx >= 0) {
+                if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                    // Format publication remains atomic with reset/generation changes.
+                    synchronized(lock) {
+                        if (!running.get() || generation != mine || codec !== c) return
+                        shown(c.outputFormat)
+                    }
+                } else if (idx >= 0) {
+                    // Lock order: lock -> outputLock. Do not reacquire lock while
+                    // outputLock is held: stopLocked takes lock before outputLock.
+                    synchronized(lock) {
+                        if (!running.get() || generation != mine || codec !== c) return
+                        outputLock.lock()
+                    }
+                    try {
                         c.releaseOutputBuffer(idx, true)
                         _frames.value = _frames.value + 1
-                    } else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                        shown(c.outputFormat)
+                    } finally {
+                        outputLock.unlock()
                     }
                 }
             } catch (t: Throwable) {
@@ -227,26 +245,57 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         AaVideoSink.frameSize(w, h)
     }
 
-    private fun stopLocked() {
+    /**
+     * Invalidate the old codec under the session monitor, but never wait for
+     * slow output rendering while holding that monitor: incoming AA frames
+     * must still be able to observe running=false and return promptly.
+     * The retired codec is released exactly once after the output completes.
+     */
+    private fun stopLocked(): Thread? {
         val old = codec
         generation++
-        if (!running.getAndSet(false) && old == null) return
+        if (!running.getAndSet(false) && old == null) return null
         codec = null
         drain = null
-        runCatching { old?.stop() }
-        runCatching { old?.release() }
+        if (old == null) return null
+        if (outputLock.tryLock()) {
+            try {
+                runCatching { old.stop() }
+                runCatching { old.release() }
+            } finally {
+                outputLock.unlock()
+            }
+            return null
+        }
+        return Thread({
+            outputLock.lock()
+            try {
+                runCatching { old.stop() }
+                runCatching { old.release() }
+            } finally {
+                outputLock.unlock()
+            }
+        }, "FT-AaRetire-$generation").apply {
+            isDaemon = true
+            start()
+        }
     }
 
     fun stop() {
-        synchronized(lock) { stopLocked() }
+        // Wait outside the input monitor so onFrame() cannot stall behind
+        // an outstanding releaseOutputBuffer() operation.
+        val retirement = synchronized(lock) { stopLocked() }
+        retirement?.join()
     }
 
     fun reset() {
-        synchronized(lock) {
-            stopLocked()
+        val retirement = synchronized(lock) {
+            val pending = stopLocked()
             config = null
             askForAFreshPicture = null
+            pending
         }
+        retirement?.join()
     }
 
     companion object {

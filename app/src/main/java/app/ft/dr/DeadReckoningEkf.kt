@@ -25,6 +25,8 @@ internal class DeadReckoningEkf {
     private var initialized = false
     private var secondsWithoutGnss = 0.0
     private var previousWheelSpeedMetresPerSecond: Double? = null
+    // An explicit GNSS timestamp must never rewind a live trust anchor.
+    private var lastAcceptedGnssTimestampMs: Long? = null
 
     data class Estimate(
         val eastMetres: Double,
@@ -39,6 +41,7 @@ internal class DeadReckoningEkf {
         initialized = false
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
+        lastAcceptedGnssTimestampMs = null
         gnssContinuity.reset()
         // Resetting the model invalidates the preceding trust anchor.
     }
@@ -53,7 +56,11 @@ internal class DeadReckoningEkf {
     ): Boolean {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0) return false
+            horizontalAccuracyMetres !in 0.5..30.0 ||
+            (measurementTimestampMs != null &&
+                (measurementTimestampMs <= 0L ||
+                    (lastAcceptedGnssTimestampMs != null &&
+                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
@@ -68,7 +75,8 @@ internal class DeadReckoningEkf {
         previousWheelSpeedMetresPerSecond = null
         gnssContinuity.reset()
         odometryPlausibility.reset(eastMetres, northMetres)
-        if (measurementTimestampMs != null && measurementTimestampMs > 0L) {
+        if (measurementTimestampMs != null) {
+            lastAcceptedGnssTimestampMs = measurementTimestampMs
             gnssContinuity.confirmed(measurementTimestampMs, eastMetres, northMetres,
                 eastMetres, northMetres)
         }
@@ -143,6 +151,35 @@ internal class DeadReckoningEkf {
     }
 
     /**
+     * Explicit coasting step when either wheel speed or mapped yaw is NOT
+     * independently verified. Freeze position and heading, never integrate
+     * guessed motion, but increase covariance and GNSS-outage age.
+     *
+     * This is deliberately not called implicitly by predict(): a rejected
+     * malformed sample must not invent elapsed time. The future validated
+     * sensor adapter must supply measured monotonic elapsed seconds.
+     */
+    fun holdUnverifiedMotion(dtSeconds: Double): Estimate? {
+        if (!initialized || !dtSeconds.isFinite() ||
+            dtSeconds !in 0.001..1.0) return null
+        val frozen = filter.state()
+        val identity = DoubleArray(STATE_SIZE * STATE_SIZE) { i ->
+            if (i / STATE_SIZE == i % STATE_SIZE) 1.0 else 0.0
+        }
+        val q = DoubleArray(STATE_SIZE * STATE_SIZE)
+        // Conservative uncertainty growth with no assumed displacement.
+        val positionVariancePerSecond = sq(3.0)
+        q[EAST * STATE_SIZE + EAST] = positionVariancePerSecond * dtSeconds
+        q[NORTH * STATE_SIZE + NORTH] = positionVariancePerSecond * dtSeconds
+        q[HEADING * STATE_SIZE + HEADING] = sq(0.03) * dtSeconds
+        q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
+        filter.predict(frozen, identity, q)
+        previousWheelSpeedMetresPerSecond = null
+        secondsWithoutGnss += dtSeconds
+        return estimate()
+    }
+
+    /**
      * A verified independent GNSS position corrects the state through EKF
      * innovation gating. Bogus fixes cannot instantly teleport the estimate.
      */
@@ -156,7 +193,11 @@ internal class DeadReckoningEkf {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres < 0.0) return false
+            horizontalAccuracyMetres !in 0.5..30.0 ||
+            (measurementTimestampMs != null &&
+                (measurementTimestampMs <= 0L ||
+                    (lastAcceptedGnssTimestampMs != null &&
+                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
 
         val x = filter.state()
         val p = filter.covariance()
@@ -204,6 +245,9 @@ internal class DeadReckoningEkf {
             doubleArrayOf(x[EAST], x[NORTH]), h, r
         )) return false
         secondsWithoutGnss = 0.0
+        if (measurementTimestampMs != null) {
+            lastAcceptedGnssTimestampMs = measurementTimestampMs
+        }
         val updated = filter.state()
         if (measurementTimestampMs != null) {
             gnssContinuity.confirmed(measurementTimestampMs,

@@ -37,6 +37,11 @@ class GnssAdmissionGatesTest {
         assertTrue(gate.permits(80_000L, 40.0, 490.0, 40.0, 490.0))
         gate.confirmed(80_000L, 40.0, 490.0, 40.0, 490.0)
         assertTrue(gate.permits(81_000L, 41.0, 499.0, 41.0, 499.0))
+        // permits() is a precheck, not a timestamp commitment. The
+        // candidate at 80_500 remains newer than confirmed 80_000.
+        assertTrue(gate.permits(80_500L, 40.5, 494.5, 40.5, 494.5))
+        // Only a successful downstream EKF update may advance the floor.
+        gate.confirmed(81_000L, 41.0, 499.0, 41.0, 499.0)
         assertFalse(gate.permits(80_500L, 42.0, 490.0, 42.0, 490.0))
     }
 
@@ -78,4 +83,46 @@ class GnssAdmissionGatesTest {
         assertFalse(gate.permits(100.0, 0.0, 0.0, 0.0))
         assertTrue(gate.permits(0.5, 0.0, 0.0, 0.0))
     }
+    @Test fun rejectedReflectionCannotRewindOrderingFloorForValidFix() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        // 10m reflected fix at 6500 is rejected, but its timestamp must
+        // not reject the valid 6200 fix, which is newer than confirmed 5000.
+        assertFalse(gate.permits(6_500L, 10.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(6_200L, 0.0, 0.0, 0.0, 0.0))
+        gate.confirmed(6_200L, 0.0, 0.0, 0.0, 0.0)
+        assertFalse(gate.permits(6_100L, 0.0, 0.0, 0.0, 0.0))
+        // A later rejected reflection must still be denied.
+        assertFalse(gate.permits(6_700L, 10.0, 0.0, 0.0, 0.0))
+    }
+
+    @Test fun unconfirmedFutureTimestampDoesNotPoisonLaterRealGnss() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) {
+            gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        }
+        // The candidate passes continuity precheck, but the caller's
+        // subsequent EKF/odometry check rejects it: no confirmed() call.
+        assertTrue(gate.permits(1_000_000L, 0.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(6_000L, 0.0, 0.0, 0.0, 0.0))
+        gate.confirmed(6_000L, 0.0, 0.0, 0.0, 0.0)
+        assertFalse(gate.permits(5_500L, 0.0, 0.0, 0.0, 0.0))
+    }
+
+    @Test fun outOfOrderRejectedReflectionCannotManufactureGnssGap() {
+        val gate = GnssContinuityGate()
+        for (i in 1..5) gate.confirmed(i * 1000L, 0.0, 0.0, 0.0, 0.0)
+        // Continuous reflected samples remain rejected and advance only
+        // the observation clock, not the confirmed GNSS position.
+        for (t in listOf(6_000L, 7_000L, 8_000L, 9_000L)) {
+            assertFalse(gate.permits(t, 10.0, 0.0, 0.0, 0.0))
+        }
+        // A delayed rejected packet must not rewind the observation clock.
+        assertFalse(gate.permits(6_000L, 10.0, 0.0, 0.0, 0.0))
+        // Without the monotonic guard, 9500-6000 > 3000 falsely
+        // declares a blackout and admits the same 10m reflection.
+        assertFalse(gate.permits(9_500L, 10.0, 0.0, 0.0, 0.0))
+        assertTrue(gate.permits(9_600L, 0.0, 0.0, 0.0, 0.0))
+    }
+
 }
