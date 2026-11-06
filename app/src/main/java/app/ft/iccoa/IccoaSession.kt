@@ -76,6 +76,15 @@ internal class IccoaNetworkCallbackGate<T : Any> {
 enum class IccoaCloseAction { STOP, RETRY_TRANSPORT, REQUIRE_NORMAL_PIN }
 
 /** A delayed gateway lookup belongs to one Network, never to the whole Attempt. */
+/** Dispatch onAvailable even when Android has not published LinkProperties yet. */
+internal fun <P> dispatchIccoaLinkProperties(
+    properties: P?,
+    whenReady: (P) -> Unit,
+    whenMissing: () -> Unit
+) {
+    if (properties == null) whenMissing() else whenReady(properties)
+}
+
 internal class IccoaGatewayRetryGate<T> {
     private var pending: T? = null
     @Synchronized fun schedule(network: T): Boolean {
@@ -496,8 +505,13 @@ class IccoaSession(
                 if (attempt.network != network) attempt.authStarted = false
                 attempt.network = network
                 attempt.networkGate.onAvailable(network)
-                // Link properties may not yet exist in onAvailable; onLinkPropertiesChanged retries.
-                connectivity.getLinkProperties(network)?.let { networkReady(attempt, network, it) }
+                // Some devices never send another LinkProperties callback after onAvailable.
+                // The same selected Network must receive a bounded gateway recheck.
+                dispatchIccoaLinkProperties(
+                    connectivity.getLinkProperties(network),
+                    whenReady = { networkReady(attempt, network, it) },
+                    whenMissing = { scheduleGatewayRetry(attempt, network) }
+                )
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
                 if (attempt.networkGate.isCurrent(network)) networkReady(attempt, network, properties)
@@ -547,7 +561,13 @@ class IccoaSession(
 
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
         if (!attempt.networkGate.isCurrent(network) || attempt.authStarted) return
-        val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
+        val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address }
+        if (link == null) {
+            // onAvailable can precede DHCP IPv4 assignment. Some Android builds
+            // do not deliver another LinkProperties callback; poll this Network.
+            scheduleGatewayRetry(attempt, network)
+            return
+        }
         val address = link.address as Inet4Address
         val local = address.hostAddress ?: return
         attempt.hasWifiAddress = true
