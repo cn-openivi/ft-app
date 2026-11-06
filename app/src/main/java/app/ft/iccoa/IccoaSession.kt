@@ -177,7 +177,7 @@ class IccoaSession(
         var reusingPin = false
         var quickMode = false
         var pinnedCarIdentity: ByteArray? = null
-        val trustedCommitGate = IccoaTrustedCommitGate()
+        var trustedCommitGate = IccoaTrustedCommitGate()
         var pendingTrustedCarIdentity: ByteArray? = null
         var wifiRequested = false
         var authStarted = false
@@ -516,6 +516,7 @@ class IccoaSession(
                         attempt.cipher = null
                         attempt.pendingTrustedCarIdentity = null
                         attempt.trustedCommitGate.cancel()
+                        attempt.trustedCommitGate = IccoaTrustedCommitGate()
                     }
                 }
                 attempt.network = network
