@@ -175,6 +175,7 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(frozen, identity, q)
         previousWheelSpeedMetresPerSecond = null
+        odometryPlausibility.onUnverifiedMotion()
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
