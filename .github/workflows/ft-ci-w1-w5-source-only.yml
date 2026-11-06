@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   source-only:
-    name: Five fixed worker SHAs - unit tests only
+    name: Five worker SHAs and integrated source - unit tests only
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
@@ -56,11 +56,12 @@ jobs:
           EOF
 
           checks=(
-            'W1:90aec228ad0a7a99e71f43961c093c21af323fda'
-            'W2:8d3da8c5ff2ba8bfcb3703ce6494367b76458ce7'
-            'W3:1f45946fe47590e94a4284feb9b47e1b50b60e1f'
-            'W4:f93f1a47de931c5c64c5c1bce7154c8fcdad8ab3'
-            'W5:6dc8c1d88fcb7506b4ac8687ba6bfc7c57e874e2'
+            'W1:c96ad635b7aba6a68f350b9dd507d634c2067c1d'
+            'W2:df7753120c26b6cd1b6af47437879c56f82c6336'
+            'W3:9bbbc21bd494b9a258ebc2b53db63a7f0abf6f3e'
+            'W4:058ae14d159bebf53112f8a4f770424fff98deed'
+            'W5:92324359ecfb9488ff3d0c86799347402c5e7fde'
+            'INTEGRATED:8479b3d945b077215767de2f64852378fd4cef28'
           )
           echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
           echo '| Worker | SHA | Gradle compile + unit | APK guard |' >> "$GITHUB_STEP_SUMMARY"
