@@ -245,31 +245,57 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         AaVideoSink.frameSize(w, h)
     }
 
-    private fun stopLocked() {
+    /**
+     * Invalidate the old codec under the session monitor, but never wait for
+     * slow output rendering while holding that monitor: incoming AA frames
+     * must still be able to observe running=false and return promptly.
+     * The retired codec is released exactly once after the output completes.
+     */
+    private fun stopLocked(): Thread? {
         val old = codec
         generation++
-        if (!running.getAndSet(false) && old == null) return
+        if (!running.getAndSet(false) && old == null) return null
         codec = null
         drain = null
-        outputLock.lock()
-        try {
-            runCatching { old?.stop() }
-            runCatching { old?.release() }
-        } finally {
-            outputLock.unlock()
+        if (old == null) return null
+        if (outputLock.tryLock()) {
+            try {
+                runCatching { old.stop() }
+                runCatching { old.release() }
+            } finally {
+                outputLock.unlock()
+            }
+            return null
+        }
+        return Thread({
+            outputLock.lock()
+            try {
+                runCatching { old.stop() }
+                runCatching { old.release() }
+            } finally {
+                outputLock.unlock()
+            }
+        }, "FT-AaRetire-$generation").apply {
+            isDaemon = true
+            start()
         }
     }
 
     fun stop() {
-        synchronized(lock) { stopLocked() }
+        // Wait outside the input monitor so onFrame() cannot stall behind
+        // an outstanding releaseOutputBuffer() operation.
+        val retirement = synchronized(lock) { stopLocked() }
+        retirement?.join()
     }
 
     fun reset() {
-        synchronized(lock) {
-            stopLocked()
+        val retirement = synchronized(lock) {
+            val pending = stopLocked()
             config = null
             askForAFreshPicture = null
+            pending
         }
+        retirement?.join()
     }
 
     companion object {
