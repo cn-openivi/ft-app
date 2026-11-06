@@ -37,6 +37,11 @@ class GnssAdmissionGatesTest {
         assertTrue(gate.permits(80_000L, 40.0, 490.0, 40.0, 490.0))
         gate.confirmed(80_000L, 40.0, 490.0, 40.0, 490.0)
         assertTrue(gate.permits(81_000L, 41.0, 499.0, 41.0, 499.0))
+        // permits() is a precheck, not a timestamp commitment. The
+        // candidate at 80_500 remains newer than confirmed 80_000.
+        assertTrue(gate.permits(80_500L, 40.5, 494.5, 40.5, 494.5))
+        // Only a successful downstream EKF update may advance the floor.
+        gate.confirmed(81_000L, 41.0, 499.0, 41.0, 499.0)
         assertFalse(gate.permits(80_500L, 42.0, 490.0, 42.0, 490.0))
     }
 
