@@ -160,6 +160,7 @@ class IccoaSession(
         @Volatile var closed = false
         @Volatile var cipher: IccoaControl.Cipher? = null
         @Volatile var control: Socket? = null
+        @Volatile var controlNetwork: Network? = null
         @Volatile var audio: Socket? = null
         @Volatile var controlWritingAt = 0L
         @Volatile var audioWritingAt = 0L
@@ -502,7 +503,21 @@ class IccoaSession(
             override fun onAvailable(network: Network) = post(attempt) {
                 // A queued auth worker for the previous Network must not monopolize
                 // authStarted when Android replaces the Wi-Fi handle before TCP bind.
-                if (attempt.network != network) attempt.authStarted = false
+                if (attempt.network != network) {
+                    attempt.authStarted = false
+                    // Invalidate CONTROL(A) before B's authentication can begin.
+                    // Closing A may synchronously deliver a late onDisconnected(A).
+                    synchronized(attempt) {
+                        attempt.controlNetwork = null
+                        attempt.control?.let { runCatching { it.close() } }
+                        attempt.control = null
+                        attempt.audio?.let { runCatching { it.close() } }
+                        attempt.audio = null
+                        attempt.cipher = null
+                        attempt.pendingTrustedCarIdentity = null
+                        attempt.trustedCommitGate.cancel()
+                    }
+                }
                 attempt.network = network
                 attempt.networkGate.onAvailable(network)
                 // Some devices never send another LinkProperties callback after onAvailable.
@@ -651,7 +666,7 @@ class IccoaSession(
                 attempt.pin = IccoaNetworkPinLifecycle.afterVerifiedAuth()
             }
             progress("open-control-listeners")
-            for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, local, peer, port)
+            for (port in intArrayOf(57219, 57229, 57239, 57249, 57259)) listen(attempt, network, local, peer, port)
             if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             // External callbacks may acquire their owner's lifecycle lock. Never hold ours here.
             progress("open-media-listeners")
@@ -742,12 +757,13 @@ class IccoaSession(
         trustedPin.clear()
     }
 
-    private fun listen(attempt: Attempt, local: String, peer: String, port: Int) {
+    private fun listen(attempt: Attempt, network: Network, local: String, peer: String, port: Int) {
         val lane = IccoaLaneServer(port, InetSocketAddress(local, port), InetAddress.getByName(peer),
             onConnected = { socket ->
                 synchronized(attempt) {
-                    if (active(attempt)) {
+                    if (active(attempt) && attempt.networkGate.isCurrent(network)) {
                         if (port == IccoaLaneServer.CONTROL_PORT) {
+                            attempt.controlNetwork = network
                             attempt.control = socket
                             val heartbeat = IccoaHeartbeat(
                                 send = { body -> send(attempt, 1, 1, body, 1) },
@@ -759,28 +775,36 @@ class IccoaSession(
                         if (port == IccoaLaneServer.AUDIO_PORT) attempt.audio = socket
                     }
                 }
-                if (port == IccoaLaneServer.CONTROL_PORT && active(attempt)) {
+                if (port == IccoaLaneServer.CONTROL_PORT && active(attempt) &&
+                    attempt.networkGate.isCurrent(network) && attempt.control === socket) {
                     if (attempt.trustedCommitGate.onControlReady()) confirmTrustedCarAfterControl(attempt)
                     onControlReady()
                 }
             },
             onDisconnected = { socket ->
                 val lostControl = synchronized(attempt) {
-                    val wasControl = attempt.control === socket
-                    if (wasControl) attempt.control = null
+                    val wasControl = attempt.control === socket &&
+                        attempt.controlNetwork == network && attempt.networkGate.isCurrent(network)
+                    if (wasControl) {
+                        attempt.control = null
+                        attempt.controlNetwork = null
+                    }
                     if (attempt.audio === socket) attempt.audio = null
                     wasControl
                 }
                 if (lostControl && active(attempt))
                     fail(attempt, "ICCOA CONTROL channel disconnected", transportFailure = true)
             },
-            onFrame = { frame -> handleFrame(attempt, frame) },
+            onFrame = { frame -> if (attempt.networkGate.isCurrent(network)) handleFrame(attempt, frame) },
             log = { message -> if (active(attempt)) DiagLog.i("ICCOA", message) })
         if (!track(attempt, lane)) return
         worker(attempt) {
             try {
                 lane.run()
-            } catch (e: Exception) { fail(attempt, "Канал ICCOA $port закрыт (${e.javaClass.simpleName})", transportFailure = true) }
+            } catch (e: Exception) {
+                if (attempt.networkGate.isCurrent(network))
+                    fail(attempt, "Канал ICCOA $port закрыт (${e.javaClass.simpleName})", transportFailure = true)
+            }
         }
     }
 
@@ -856,6 +880,7 @@ class IccoaSession(
             attempt.resources.forEach { runCatching { it.close() } }
             attempt.resources.clear()
             attempt.control = null
+            attempt.controlNetwork = null
             attempt.audio = null
         }
         main.removeCallbacksAndMessages(attempt)
