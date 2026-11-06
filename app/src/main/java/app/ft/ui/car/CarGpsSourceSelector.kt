@@ -75,12 +75,15 @@ internal class CarGpsSourceSelector(
                 // A rejected future timestamp must not poison subsequent
                 // valid OEM positions or delay the 7s recovery timer.
                 lastObservedCarPositionMs = candidate.positionAtMs
+                // Timestamp of the actual OEM measurement, not its delayed
+                // arrival. Clamp tolerated future clock skew to now.
+                val measuredAtMs = candidate.positionAtMs.coerceAtMost(nowMs)
                 val last = lastCarPacketAtMs
-                if (last == null || nowMs < last || nowMs - last > maxRecoveryGapMs) {
-                    stableCarSinceMs = nowMs
+                if (last == null || measuredAtMs < last || measuredAtMs - last > maxRecoveryGapMs) {
+                    stableCarSinceMs = measuredAtMs
                     carSpeedFilteredKmh = null
                 }
-                lastCarPacketAtMs = nowMs
+                lastCarPacketAtMs = measuredAtMs
                 lastCarFix = candidate
                 val speed = candidate.speedKmh?.takeIf { it.isFinite() && it in 0f..300f }
                 if (speed != null) {
