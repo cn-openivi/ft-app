@@ -62,6 +62,14 @@ internal class DeadReckoningEkf {
                     (measurementTimestampMs <= 0L ||
                         (lastAcceptedGnssTimestampMs != null &&
                             measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
+        // A newer timestamp alone is not independent proof of displacement.
+        // Re-anchor must obey the same verified-odometry admission gate as
+        // ordinary GNSS corrections, otherwise it bypasses anti-teleport.
+        if (initialized) {
+            val current = filter.state()
+            if (!odometryPlausibility.permits(eastMetres, northMetres,
+                    current[EAST], current[NORTH])) return false
+        }
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
