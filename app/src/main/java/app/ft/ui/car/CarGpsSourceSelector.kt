@@ -64,6 +64,7 @@ internal class CarGpsSourceSelector(
             } == true) {
             source = Source.PHONE
         }
+        var acceptedNewCarPosition = false
         if (candidate != null && candidate.positionAtMs > lastObservedCarPositionMs) {
             // A reordered OEM packet must not lower the high-water mark:
             // otherwise a second stale packet could look newly accepted.
@@ -75,6 +76,7 @@ internal class CarGpsSourceSelector(
                 // A rejected future timestamp must not poison subsequent
                 // valid OEM positions or delay the 7s recovery timer.
                 lastObservedCarPositionMs = candidate.positionAtMs
+                acceptedNewCarPosition = true
                 // Timestamp of the actual OEM measurement, not its delayed
                 // arrival. Clamp tolerated future clock skew to now.
                 val measuredAtMs = candidate.positionAtMs.coerceAtMost(nowMs)
@@ -106,7 +108,7 @@ internal class CarGpsSourceSelector(
                 if (lastCar == null || nowMs - lastCar >= switchAfterMs)
                     source = Source.PHONE
             Source.PHONE ->
-                if (lastCar != null && stableCarSinceMs != null &&
+                if (acceptedNewCarPosition && lastCar != null && stableCarSinceMs != null &&
                     nowMs - lastCar <= maxRecoveryGapMs &&
                     nowMs - stableCarSinceMs!! >= switchAfterMs)
                     source = Source.ICCOA
