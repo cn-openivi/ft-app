@@ -390,6 +390,32 @@ class IccoaDropRecoveryTest {
             IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
     }
 
+    @Test fun missingIpv4SchedulesSameNetworkRetryUntilAddressArrives() {
+        val network = IccoaNetworkCallbackGate<String>()
+        val retry = IccoaGatewayRetryGate<String>()
+        val attempts = mutableListOf<String>()
+        network.onAvailable("A")
+
+        // onAvailable: LinkProperties exist, but DHCP has not assigned IPv4.
+        assertTrue(retry.schedule("A"))
+        assertFalse(retry.schedule("A"))
+        // First delayed poll still has no IPv4: re-arm, don't wait for a callback.
+        assertTrue(retry.consume("A"))
+        assertTrue(network.isCurrent("A"))
+        assertTrue(retry.schedule("A"))
+        // Second poll finds IPv4 and a valid gateway: auth may start once.
+        assertTrue(retry.consume("A"))
+        assertTrue(network.bindIfCurrent("A") { attempts.add("A") })
+        retry.clear()
+        assertEquals(listOf("A"), attempts)
+        assertFalse(retry.consume("A"))
+
+        // A late timer cannot start auth after the selected network is lost.
+        assertTrue(network.onLost("A"))
+        assertFalse(network.bindIfCurrent("A") { attempts.add("stale-A") })
+        assertEquals(listOf("A"), attempts)
+    }
+
     @Test fun gatewayRetryBelongsToReplacementNetworkNotStaleTimer() {
         val network = IccoaNetworkCallbackGate<String>()
         val retry = IccoaGatewayRetryGate<String>()
