@@ -547,7 +547,13 @@ class IccoaSession(
 
     private fun networkReady(attempt: Attempt, network: Network, properties: LinkProperties) {
         if (!attempt.networkGate.isCurrent(network) || attempt.authStarted) return
-        val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address } ?: return
+        val link = properties.linkAddresses.firstOrNull { it.address is Inet4Address }
+        if (link == null) {
+            // onAvailable can precede DHCP IPv4 assignment. Some Android builds
+            // do not deliver another LinkProperties callback; poll this Network.
+            scheduleGatewayRetry(attempt, network)
+            return
+        }
         val address = link.address as Inet4Address
         val local = address.hostAddress ?: return
         attempt.hasWifiAddress = true
