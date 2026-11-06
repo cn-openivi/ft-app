@@ -230,11 +230,20 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             if (codec !== dead || generation != mine) return
             running.set(false)
             codec = null
+            generation++
             if (drain === Thread.currentThread()) drain = null
+        }
+        // A hardware codec can block in stop()/release(). Never hold the AA
+        // input monitor while retiring a failed decoder: the next H.264 frame
+        // must be able to start a fresh codec independently.
+        outputLock.lock()
+        try {
             runCatching { dead.stop() }
             runCatching { dead.release() }
-            DiagLog.w(tag, "the decoder stopped, FT will start a fresh one with the next picture")
+        } finally {
+            outputLock.unlock()
         }
+        DiagLog.w(tag, "the decoder stopped, FT will start a fresh one with the next picture")
     }
 
     private fun shown(f: MediaFormat) {
