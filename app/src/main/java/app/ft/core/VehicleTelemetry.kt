@@ -69,8 +69,11 @@ object VehicleTelemetry {
 
     @Synchronized fun publish(location: VehicleLocation) {
         require(location.source == "ICCOA" || location.source == "BAIDU")
+        // A delayed GPS measurement may carry an older receivedAtMs than a
+        // just-arrived GearInfo frame. Evaluate GearInfo freshness against
+        // the local clock, never against the GPS packet's past timestamp.
         val previous = _current.value?.takeIf {
-            it.source == location.source && it.fresh(location.receivedAtMs)
+            it.source == location.source && it.fresh(System.currentTimeMillis())
         }
         // Late OEM GPS frames must not replace a newer accepted position.
         // GearInfo is updated independently by updateIccoaSpeed(), so an
