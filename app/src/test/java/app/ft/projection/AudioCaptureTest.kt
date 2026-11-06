@@ -358,6 +358,62 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+    @Test fun concurrentStopAndThrowingCallbackReleaseOnceWithoutLatePcm() {
+        val record = mock(AudioRecord::class.java)
+        val callbackEntered = CountDownLatch(1)
+        val finishCallback = CountDownLatch(1)
+        val stopReturned = CountDownLatch(1)
+        val released = CountDownLatch(1)
+        val readerRef = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val stopFailure = java.util.concurrent.atomic.AtomicReference<Throwable>()
+        val reads = AtomicInteger()
+        val deliveries = AtomicInteger()
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            readerRef.set(Thread.currentThread())
+            reads.incrementAndGet()
+            val bytes = it.arguments[0] as ByteArray
+            bytes[0] = 1
+            bytes[1] = 0
+            2
+        }
+        doAnswer { released.countDown(); null }.`when`(record).release()
+        val capture = AudioCapture({ record }, {
+            deliveries.incrementAndGet()
+            callbackEntered.countDown()
+            await(finishCallback)
+            throw IllegalStateException("consumer failed during stop")
+        })
+        val stopper = Thread {
+            try {
+                capture.stop()
+            } catch (t: Throwable) {
+                stopFailure.set(t)
+            } finally {
+                stopReturned.countDown()
+            }
+        }
+        try {
+            assertTrue(capture.start(projection))
+            await(callbackEntered)
+            stopper.start()
+            assertFalse("stop waits for in-flight callback", stopReturned.await(100, TimeUnit.MILLISECONDS))
+        } finally {
+            finishCallback.countDown()
+        }
+        await(stopReturned)
+        await(released)
+        stopper.join(5000)
+        val reader = readerRef.get()
+        assertNotNull(reader)
+        reader.join(5000)
+        assertFalse("failed callback reader must terminate", reader.isAlive)
+        stopFailure.get()?.let { throw AssertionError("stop failed", it) }
+        assertFalse(capture.active)
+        assertEquals(1, reads.get())
+        assertEquals(1, deliveries.get())
+        verify(record, times(1)).release()
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
