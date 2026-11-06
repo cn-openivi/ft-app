@@ -24,14 +24,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Fail closed on unauthorized source changes
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = 'f2316c5ab7291e9e92a1d04a4875afd017acbba0'
-          test "$(git diff --name-only HEAD^ HEAD)" = '.github/workflows/ft-owner-signed-preview-only.yml'
+          git merge-base --is-ancestor 'f2316c5ab7291e9e92a1d04a4875afd017acbba0' HEAD
+          test "$(git diff --name-only f2316c5ab7291e9e92a1d04a4875afd017acbba0 HEAD)" = '.github/workflows/ft-owner-signed-preview-only.yml'
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 174' app/build.gradle.kts
           echo 'ORIGINAL_SOURCE_SHA=f2316c5ab7291e9e92a1d04a4875afd017acbba0'
@@ -93,6 +93,9 @@ jobs:
           pw = private / "password.txt"
           pw.write_text(password)
           pw.chmod(0o600)
+          key_pw = private / "key-password.txt"
+          key_pw.write_text(password)
+          key_pw.chmod(0o600)
           PY
           actual=$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | awk '{print $1}')
           expected='e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c'
@@ -113,7 +116,7 @@ jobs:
             --ks-type PKCS12 \
             --ks-key-alias openivi_ft_xa60 \
             --ks-pass file:.ft-xa60/password.txt \
-            --key-pass file:.ft-xa60/password.txt \
+            --key-pass file:.ft-xa60/key-password.txt \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
