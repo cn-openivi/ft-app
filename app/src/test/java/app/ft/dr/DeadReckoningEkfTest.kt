@@ -314,4 +314,18 @@ class DeadReckoningEkfTest {
     }
 
 
+    @Test fun newerTimestampCannotTeleportByRepeatedAnchor() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
+        val before = dr.estimate()!!
+        // Newer observation time does not establish 14 km of vehicle motion.
+        assertFalse(dr.anchor(10_000.0, 10_000.0, 0.0, 2.0,
+            measurementTimestampMs = 11_000L))
+        assertEquals(before.eastMetres, dr.estimate()!!.eastMetres, 0.0)
+        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
+        // A near and later genuine GNSS re-anchor remains possible.
+        assertTrue(dr.anchor(0.2, 0.1, 0.0, 2.0, measurementTimestampMs = 12_000L))
+        assertEquals(0.2, dr.estimate()!!.eastMetres, 0.0)
+    }
+
 }
