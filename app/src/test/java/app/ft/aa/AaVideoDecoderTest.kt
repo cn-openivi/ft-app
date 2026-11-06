@@ -334,7 +334,23 @@ class AaVideoDecoderTest {
                 val decoder = AaVideoDecoder(1280, 720)
                 val input = Thread {
                     try {
-                        decoder.onFrame(byteArrayOf(0, 0, 1, 65), 1000L)
+                        // Mockito static mocks are thread-local. The initial codec mock
+                        // belongs to the test thread, but recovery runs on this input
+                        // thread and must install its own factory fixture.
+                        mockStatic(MediaFormat::class.java).use { inputFormats ->
+                            inputFormats.`when`<MediaFormat> {
+                                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+                            }.thenReturn(format)
+                            mockStatic(MediaCodec::class.java).use { inputCodecs ->
+                                inputCodecs.`when`<MediaCodec> {
+                                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                                }.thenReturn(nextCodec)
+                                decoder.onFrame(byteArrayOf(0, 0, 1, 65), 1000L)
+                                // A swallowed startLocked failure must not masquerade
+                                // as successful recovery just because onFrame returned.
+                                verify(nextCodec, times(1)).start()
+                            }
+                        }
                     } catch (t: Throwable) {
                         failure.set(t)
                     } finally {
