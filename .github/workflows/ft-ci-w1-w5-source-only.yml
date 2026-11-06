@@ -56,7 +56,7 @@ jobs:
           EOF
 
           checks=(
-            'INTEGRATED:446ddecb4304a0b76c67a2a9680871546e5b25c6'
+            'INTEGRATED:216c072eb02f8135a043cbd534b6acb256ffd196'
             'W1_ICCOA_NULL_LINK:2c255ce1e4a61e40a78f488722b85e250ee6fbed'
           )
           echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
