@@ -20,6 +20,7 @@ internal class GnssOdometryPlausibility {
     private var cumulativeVerifiedWheelMetres = 0.0
     private var anchored = false
     private var observedVerifiedWheel = false
+    private var unverifiedMotionSinceAnchor = false
 
     fun reset(east: Double, north: Double) {
         require(east.isFinite() && north.isFinite())
@@ -27,6 +28,7 @@ internal class GnssOdometryPlausibility {
         lastAcceptedNorth = north
         cumulativeVerifiedWheelMetres = 0.0
         observedVerifiedWheel = false
+        unverifiedMotionSinceAnchor = false
         anchored = true
     }
 
@@ -34,6 +36,11 @@ internal class GnssOdometryPlausibility {
         if (!anchored || !distanceMetres.isFinite() || distanceMetres < 0.0) return
         cumulativeVerifiedWheelMetres += distanceMetres
         observedVerifiedWheel = true
+    }
+
+    /** A missing trusted wheel/gyro interval makes travelled distance unknowable. */
+    fun onUnverifiedMotion() {
+        if (anchored) unverifiedMotionSinceAnchor = true
     }
 
     /**
@@ -53,7 +60,17 @@ internal class GnssOdometryPlausibility {
     ): Boolean {
         if (!candidateEast.isFinite() || !candidateNorth.isFinite() ||
             !predictedEast.isFinite() || !predictedNorth.isFinite()) return false
-        if (!anchored || !observedVerifiedWheel) return true
+        if (!anchored) return false
+        // No independent displacement proof exists after an untrusted gap.
+        // Admit only a near-anchor fix; never treat grown EKF covariance
+        // or resumed wheel ticks as evidence of motion during that gap.
+        if (unverifiedMotionSinceAnchor || !observedVerifiedWheel) {
+            val displacement = hypot(candidateEast - lastAcceptedEast,
+                candidateNorth - lastAcceptedNorth)
+            val predictionError = hypot(candidateEast - predictedEast,
+                candidateNorth - predictedNorth)
+            return displacement <= 12.0 && predictionError <= 14.0
+        }
 
         val travelled = cumulativeVerifiedWheelMetres
         if (!travelled.isFinite()) return false
