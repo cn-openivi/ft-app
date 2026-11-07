@@ -57,8 +57,10 @@ jobs:
 
           checks=(
             'INTEGRATED:216c072eb02f8135a043cbd534b6acb256ffd196'
-            'W1_ICCOA_NULL_LINK:2c255ce1e4a61e40a78f488722b85e250ee6fbed'
-            'W5_DR_CLOCK:84169fee2b21ee621c884b72cf2acb2e22e0bde8'
+            'W1_LATEST_CONTROL:886764a73c39332b8ec4b87070fdbca4b9e78a8f'
+            'W2_LATEST_GPS:91adaf6bd98a608dde61e43d6b0dc637f79546d7'
+            'W3_LATEST_DECODER:81c2a4ca17ad17d0eedc5e04422e36acf2f008ff'
+            'W5_LATEST_DR:cc01673612bf1163a616c2ca2ed5c9e606365da3'
           )
           echo '### Exact source SHA results (no APK)' >> "$GITHUB_STEP_SUMMARY"
           echo '| Scope | SHA | Gradle compile + unit | APK guard |' >> "$GITHUB_STEP_SUMMARY"
