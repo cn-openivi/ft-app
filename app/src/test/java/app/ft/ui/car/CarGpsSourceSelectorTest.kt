@@ -373,18 +373,18 @@ class CarGpsSourceSelectorTest {
         assertNull(invalidCar.headingDegrees)
 
         val fallback = selector.select(
-            null, phone(24_000L).copy(bearingDegrees = Float.POSITIVE_INFINITY), 24_000L
+            null, phone(25_000L).copy(bearingDegrees = Float.POSITIVE_INFINITY), 25_000L
         )
         assertEquals(CarGpsSourceSelector.Source.PHONE, fallback.source)
         assertEquals(55.55, fallback.latitude!!, 0.00001)
         assertNull(fallback.headingDegrees)
 
         val outOfRange = selector.select(
-            null, phone(24_100L).copy(bearingDegrees = -12f), 24_100L
+            null, phone(25_100L).copy(bearingDegrees = -12f), 25_100L
         )
         assertNull(outOfRange.headingDegrees)
         val valid = selector.select(
-            null, phone(24_200L).copy(bearingDegrees = 359.5f), 24_200L
+            null, phone(25_200L).copy(bearingDegrees = 359.5f), 25_200L
         )
         assertEquals(359.5f, valid.headingDegrees!!, 0f)
     }
