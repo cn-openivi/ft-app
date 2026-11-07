@@ -254,31 +254,43 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         AaVideoSink.frameSize(w, h)
     }
 
-    private fun stopLocked() {
+    // Caller holds the input monitor. Invalidate immediately; retire outside it.
+    // Never execute MediaCodec.stop/release synchronously under the AA input lock,
+    // even when outputLock is uncontended: hardware stop itself can hang.
+    private fun stopLocked(): Thread? {
         val old = codec
         generation++
-        if (!running.getAndSet(false) && old == null) return
+        running.set(false)
         codec = null
         drain = null
-        outputLock.lock()
-        try {
-            runCatching { old?.stop() }
-            runCatching { old?.release() }
-        } finally {
-            outputLock.unlock()
+        if (old == null) return null
+        return Thread({
+            outputLock.lock()
+            try {
+                runCatching { old.stop() }
+                runCatching { old.release() }
+            } finally {
+                outputLock.unlock()
+            }
+        }, "FT-AaRetire-$generation").apply {
+            isDaemon = true
+            start()
         }
     }
 
     fun stop() {
-        synchronized(lock) { stopLocked() }
+        val retirement = synchronized(lock) { stopLocked() }
+        retirement?.join()
     }
 
     fun reset() {
-        synchronized(lock) {
-            stopLocked()
+        val retirement = synchronized(lock) {
+            val pending = stopLocked()
             config = null
             askForAFreshPicture = null
+            pending
         }
+        retirement?.join()
     }
 
     companion object {
