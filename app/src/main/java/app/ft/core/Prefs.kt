@@ -142,7 +142,13 @@ class Prefs(context: Context) {
     var carBtAddress: String get() = str("carBtAddress", ""); set(v) = set("carBtAddress", v)
     var carBtReconnect: Boolean get() = bool("carBtReconnect", false); set(v) = set("carBtReconnect", v)
     /** Consent to save exact vehicle coordinates in FT diagnostic logs; off by default. */
-    var vehicleCoordinateLogging: Boolean get() = bool("vehicleCoordinateLogging", false); set(v) = set("vehicleCoordinateLogging", v)
+    var vehicleCoordinateLogging: Boolean
+        get() = bool("vehicleCoordinateLogging", false)
+        set(v) {
+            set("vehicleCoordinateLogging", v)
+            // Disabling location-bearing diagnostics must discard pending IMU/GPS trace.
+            if (!v) VehicleTraceRecorder.clear()
+        }
     var iccoaMicGain: Int
         get() = Pcm16Gain.clamp(int("iccoaMicGain", 1))
         set(v) = set("iccoaMicGain", Pcm16Gain.clamp(v))
