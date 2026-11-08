@@ -70,7 +70,7 @@ from pathlib import Path
 import re
 p = Path("app/src/main/java/app/ft/aa/AaVideoDecoder.kt")
 s = p.read_text()
-pattern = re.compile(r"(?m)^<<<<<<< HEAD\\n(?P<ours>.*?)^=======\\n(?P<theirs>.*?)^>>>>>>> e9b2df5[^\\n]*\\n", re.S | re.M)
+pattern = re.compile(r"(?m)^<<<<<<< HEAD\n(?P<ours>.*?)^=======\n(?P<theirs>.*?)^>>>>>>> e9b2df5[^\n]*\n", re.S | re.M)
 matches = list(pattern.finditer(s))
 assert len(matches) == 1, "unexpected codec merge conflict count"
 m = matches[0]
