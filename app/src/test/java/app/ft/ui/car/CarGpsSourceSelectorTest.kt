@@ -397,6 +397,21 @@ class CarGpsSourceSelectorTest {
                 selector.select(invalid,phone(t),t).source)
         }
     }
+    @Test fun duplicateAtSevenSecondRecoveryBoundaryCannotActivateCar() {
+        val selector = CarGpsSourceSelector()
+        for (t in 10_000L..16_000L step 1_000L)
+            assertEquals(CarGpsSourceSelector.Source.PHONE,
+                selector.select(car(t), phone(t), t).source)
+        // At the threshold there is no new OEM measurement, only GearInfo.
+        val duplicate = selector.select(
+            car(16_000L).copy(receivedAtMs = 17_000L, gearAtMs = 17_000L),
+            phone(17_000L), 17_000L
+        )
+        assertEquals(CarGpsSourceSelector.Source.PHONE, duplicate.source)
+        val fresh = selector.select(car(17_500L), phone(17_500L), 17_500L)
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, fresh.source)
+    }
+
     @Test fun delayedNewOemPositionDoesNotExtendCarHysteresisPastMeasurementAge() {
         val selector = connectedSelector() // Last measurement at 17_000 ms.
         // Packet arrives at 20_000 but OEM position was measured at 17_500.

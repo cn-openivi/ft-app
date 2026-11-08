@@ -57,10 +57,19 @@ internal class DeadReckoningEkf {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
             horizontalAccuracyMetres !in 0.5..30.0 ||
-            (measurementTimestampMs != null &&
-                (measurementTimestampMs <= 0L ||
-                    (lastAcceptedGnssTimestampMs != null &&
-                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
+            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
+                (measurementTimestampMs != null &&
+                    (measurementTimestampMs <= 0L ||
+                        (lastAcceptedGnssTimestampMs != null &&
+                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
+        // A newer timestamp alone is not independent proof of displacement.
+        // Re-anchor must obey the same verified-odometry admission gate as
+        // ordinary GNSS corrections, otherwise it bypasses anti-teleport.
+        if (initialized) {
+            val current = filter.state()
+            if (!odometryPlausibility.permits(eastMetres, northMetres,
+                    current[EAST], current[NORTH])) return false
+        }
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
@@ -175,6 +184,7 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(frozen, identity, q)
         previousWheelSpeedMetresPerSecond = null
+        odometryPlausibility.onUnverifiedMotion()
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
@@ -194,10 +204,11 @@ internal class DeadReckoningEkf {
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
             horizontalAccuracyMetres !in 0.5..30.0 ||
-            (measurementTimestampMs != null &&
-                (measurementTimestampMs <= 0L ||
-                    (lastAcceptedGnssTimestampMs != null &&
-                        measurementTimestampMs <= lastAcceptedGnssTimestampMs!!)))) return false
+            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
+                (measurementTimestampMs != null &&
+                    (measurementTimestampMs <= 0L ||
+                        (lastAcceptedGnssTimestampMs != null &&
+                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
 
         val x = filter.state()
         val p = filter.covariance()

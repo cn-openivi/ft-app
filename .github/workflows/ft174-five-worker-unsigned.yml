@@ -1,0 +1,95 @@
+name: FT174 W1-W5 integrated exact-SHA unsigned APK
+
+on:
+  push:
+    branches:
+      - openivi/ft174-five-worker-integration-20261106
+    paths:
+      - 'app/**'
+      - '.github/workflows/ft174-five-worker-unsigned.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft174-w1-w5-unsigned
+  cancel-in-progress: false
+
+jobs:
+  verify-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-ft174-combined
+    steps:
+      - name: Checkout exact integrated SHA without credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify exact source and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 174' app/build.gradle.kts
+          echo "SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Run combined unit regressions and assemble COMPLETE unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          org.gradle.caching=false
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit --stacktrace
+      - name: Validate package manifest, ZIP, unsigned state and exact SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=$(find app/build/outputs/apk/unsignedTransit -maxdepth 1 -type f -name '*.apk' -print -quit)
+          test -n "$apk" && test -s "$apk"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          "$bt/aapt" dump badging "$apk" | grep -m1 "^package: name='app.ft.xa60' versionCode='174'"
+          if "$bt/aapt" dump badging "$apk" | grep -q '^application-debuggable'; then
+            echo 'REFUSE: APK is debuggable' >&2
+            exit 1
+          fi
+          unzip -t "$apk" >/dev/null
+          unzip -Z1 "$apk" | grep -Fxq 'AndroidManifest.xml'
+          unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
+          if "$bt/apksigner" verify "$apk" > /dev/null 2>&1; then
+            echo 'REFUSE: APK unexpectedly signed' >&2
+            exit 1
+          fi
+          mkdir -p verified
+          cp "$apk" verified/ft174-w1-w5-full-unsigned.apk
+          size=$(stat -c%s verified/ft174-w1-w5-full-unsigned.apk)
+          test "$size" -gt 100000
+          sha256sum verified/ft174-w1-w5-full-unsigned.apk | tee verified/SHA256SUMS
+          printf 'source_sha=%s\nsize_bytes=%s\npackage=app.ft.xa60\nversion_code=174\nvariant=unsignedTransit\nsigned=false\nfield_test=NOT_TESTED\n' "$GITHUB_SHA" "$size" | tee verified/PROVENANCE.txt
+      - name: Save full unsigned APK and verification evidence (no release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ft174-w1-w5-combined-unsigned
+          path: verified/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0

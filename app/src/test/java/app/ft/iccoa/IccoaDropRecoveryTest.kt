@@ -475,4 +475,49 @@ class IccoaDropRecoveryTest {
             IccoaCloseEvent.classify("Quick rejected", quickNormalFallback = true).action)
     }
 
+
+    @Test fun lateControlDisconnectFromNetworkACannotTerminateAuthenticatedNetworkB() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        var activeControl: String? = null
+        var controlOwner: String? = null
+        var cipher: String? = null
+        var terminalFailures = 0
+        fun connect(owner: String, socket: String) {
+            if (gate.isCurrent(owner)) {
+                activeControl = socket
+                controlOwner = owner
+            }
+        }
+        fun disconnect(owner: String, socket: String) {
+            if (gate.isCurrent(owner) && controlOwner == owner && activeControl == socket) {
+                activeControl = null
+                controlOwner = null
+                terminalFailures++
+            }
+        }
+        gate.onAvailable("A")
+        cipher = "authenticated-A"
+        connect("A", "socket-A")
+        assertEquals("socket-A", activeControl)
+
+        // Android publishes B before A's lane invokes its delayed callbacks.
+        gate.onAvailable("B")
+        activeControl = null
+        controlOwner = null
+        cipher = null
+        disconnect("A", "socket-A")
+        connect("A", "late-A")
+        assertNull(activeControl)
+        assertNull(cipher)
+        assertEquals(0, terminalFailures)
+
+        assertTrue(gate.commitIfCurrent("B") { cipher = "authenticated-B" })
+        connect("B", "socket-B")
+        disconnect("A", "socket-A")
+        assertEquals("socket-B", activeControl)
+        assertEquals("authenticated-B", cipher)
+        assertEquals(0, terminalFailures)
+        disconnect("B", "socket-B")
+        assertEquals(1, terminalFailures)
+    }
 }

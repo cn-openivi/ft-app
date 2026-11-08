@@ -304,4 +304,76 @@ class AaVideoDecoderTest {
             }
         }
     }
+
+    @Test fun failedDrainCodecStopMustNotBlockNextAaFrame() {
+        val stopEntered = CountDownLatch(1)
+        val allowStop = CountDownLatch(1)
+        val nextFrameFinished = CountDownLatch(1)
+        val failure = AtomicReference<Throwable?>()
+        val oldCodec = mock(MediaCodec::class.java)
+        val nextCodec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        `when`(oldCodec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong()))
+            .thenThrow(IllegalStateException("decoder failed"))
+        `when`(nextCodec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong()))
+            .thenAnswer { Thread.sleep(2); MediaCodec.INFO_TRY_AGAIN_LATER }
+        `when`(nextCodec.dequeueInputBuffer(anyLong())).thenReturn(-1)
+        doAnswer {
+            stopEntered.countDown()
+            check(allowStop.await(5, TimeUnit.SECONDS))
+            null
+        }.`when`(oldCodec).stop()
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(oldCodec, nextCodec)
+                val decoder = AaVideoDecoder(1280, 720)
+                val input = Thread {
+                    try {
+                        // Mockito static mocks are thread-local. The initial codec mock
+                        // belongs to the test thread, but recovery runs on this input
+                        // thread and must install its own factory fixture.
+                        mockStatic(MediaFormat::class.java).use { inputFormats ->
+                            inputFormats.`when`<MediaFormat> {
+                                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+                            }.thenReturn(format)
+                            mockStatic(MediaCodec::class.java).use { inputCodecs ->
+                                inputCodecs.`when`<MediaCodec> {
+                                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                                }.thenReturn(nextCodec)
+                                decoder.onFrame(byteArrayOf(0, 0, 1, 65), 1000L)
+                                // A swallowed startLocked failure must not masquerade
+                                // as successful recovery just because onFrame returned.
+                                verify(nextCodec, times(1)).start()
+                            }
+                        }
+                    } catch (t: Throwable) {
+                        failure.set(t)
+                    } finally {
+                        nextFrameFinished.countDown()
+                    }
+                }
+                try {
+                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.onConfig(byteArrayOf(1, 2, 3))
+                    assertTrue("failed drain did not reach codec.stop", stopEntered.await(5, TimeUnit.SECONDS))
+                    input.start()
+                    assertTrue("AA frame blocked by failed decoder cleanup",
+                        nextFrameFinished.await(1, TimeUnit.SECONDS))
+                    assertNull(failure.get())
+                } finally {
+                    allowStop.countDown()
+                    if (input.state != Thread.State.NEW) input.join(5000)
+                    decoder.reset()
+                }
+                verify(oldCodec, times(1)).release()
+                verify(nextCodec, times(1)).release()
+            }
+        }
+    }
+
 }

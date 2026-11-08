@@ -230,11 +230,20 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             if (codec !== dead || generation != mine) return
             running.set(false)
             codec = null
+            generation++
             if (drain === Thread.currentThread()) drain = null
+        }
+        // A hardware codec can block in stop()/release(). Never hold the AA
+        // input monitor while retiring a failed decoder: the next H.264 frame
+        // must be able to start a fresh codec independently.
+        outputLock.lock()
+        try {
             runCatching { dead.stop() }
             runCatching { dead.release() }
-            DiagLog.w(tag, "the decoder stopped, FT will start a fresh one with the next picture")
+        } finally {
+            outputLock.unlock()
         }
+        DiagLog.w(tag, "the decoder stopped, FT will start a fresh one with the next picture")
     }
 
     private fun shown(f: MediaFormat) {
@@ -245,28 +254,16 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         AaVideoSink.frameSize(w, h)
     }
 
-    /**
-     * Invalidate the old codec under the session monitor, but never wait for
-     * slow output rendering while holding that monitor: incoming AA frames
-     * must still be able to observe running=false and return promptly.
-     * The retired codec is released exactly once after the output completes.
-     */
+    // Caller holds the input monitor. Invalidate immediately; retire outside it.
+    // Never execute MediaCodec.stop/release synchronously under the AA input lock,
+    // even when outputLock is uncontended: hardware stop itself can hang.
     private fun stopLocked(): Thread? {
         val old = codec
         generation++
-        if (!running.getAndSet(false) && old == null) return null
+        running.set(false)
         codec = null
         drain = null
         if (old == null) return null
-        if (outputLock.tryLock()) {
-            try {
-                runCatching { old.stop() }
-                runCatching { old.release() }
-            } finally {
-                outputLock.unlock()
-            }
-            return null
-        }
         return Thread({
             outputLock.lock()
             try {
@@ -282,8 +279,6 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
     }
 
     fun stop() {
-        // Wait outside the input monitor so onFrame() cannot stall behind
-        // an outstanding releaseOutputBuffer() operation.
         val retirement = synchronized(lock) { stopLocked() }
         retirement?.join()
     }
