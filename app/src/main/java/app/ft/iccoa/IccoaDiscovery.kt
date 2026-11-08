@@ -49,7 +49,7 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
     private val scanTimeout = Runnable { finishScan() }
     private val gattTimeout = Runnable { failGatt("GATT discovery timed out") }
 
-    fun start() {
+    fun start(lowPower: Boolean = false) {
         // Starting a NEW scan must not advertise the interrupted old scan as
         // SCAN_COMPLETE. In recovery mode that false terminal event consumes
         // another retry slot and can exhaust all three attempts immediately.
@@ -91,11 +91,14 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
         callback = cb
         runCatching {
             scanner = adapter?.bluetoothLeScanner ?: error("No BLE scanner")
-            val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).setReportDelay(0).build()
+            val mode = if (lowPower) ScanSettings.SCAN_MODE_LOW_POWER else ScanSettings.SCAN_MODE_LOW_LATENCY
+            val settings = ScanSettings.Builder().setScanMode(mode).setReportDelay(0).build()
             publish(IccoaPhase.SCANNING)
-            DiagLog.i(TAG, "Starting 60s unfiltered BLE evidence scan; phone=${Build.MODEL} build=${Build.DISPLAY}; manifest neverForLocation may filter some beacons. No ICCOA session is established.")
+            DiagLog.i(TAG, "Starting ${if (lowPower) "20s LOW_POWER background" else "60s manual"} BLE scan; " +
+                "phone=${Build.MODEL}; manifest neverForLocation may filter some beacons. " +
+                "Automatic waiting has no overall timeout.")
             scanner!!.startScan(null, settings, cb)
-            main.postDelayed(scanTimeout, 60_000)
+            main.postDelayed(scanTimeout, if (lowPower) 20_000L else 60_000L)
         }.onFailure {
             endScan()
             DiagLog.w(TAG, "Cannot start BLE scan: ${it.javaClass.simpleName} ${it.message}")

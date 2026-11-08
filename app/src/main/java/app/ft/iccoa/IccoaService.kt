@@ -53,13 +53,34 @@ class IccoaService : Service() {
     private var pendingCar: IccoaPeer? = null
     private var autoConnectAttempted = false
     private val dropRecovery = IccoaDropRecovery()
+    private val seekPolicy = IccoaSeekPolicy()
+    private val passiveSeek = Runnable {
+        if (seekingAllowed()) {
+            DiagLog.i("ICCOA", "Continuing low-power search for remembered car")
+            discovery?.start(lowPower = true)
+        }
+    }
+    private fun seekingAllowed(): Boolean =
+        FTApp.instance.prefs.autoConnect &&
+            FTApp.instance.prefs.carProtocol == CarProtocol.ICCOA &&
+            _state.value.running && !_state.value.connected && !_state.value.connecting &&
+            !_state.value.pinRequired
+
+    private fun schedulePassiveSeek() {
+        if (!seekingAllowed() || dropRecovery.active) return
+        main.removeCallbacks(passiveSeek)
+        val delayMs = seekPolicy.nextDelayMs()
+        DiagLog.i("ICCOA", "Car not in range; low-power scan resumes in ${delayMs}ms, no global attempt limit")
+        main.postDelayed(passiveSeek, delayMs)
+    }
     private val recoveryScan = Runnable {
         if (dropRecovery.active && _state.value.running &&
             !_state.value.connecting && !_state.value.connected)
-            discovery?.start()
+            discovery?.start(lowPower = true)
     }
     private fun scheduleRecoveryScan(number: Int) {
         main.removeCallbacks(recoveryScan)
+        main.removeCallbacks(passiveSeek)
         val delayMs = when (number) { 1 -> 0L; 2 -> 3_000L; else -> 6_000L }
         DiagLog.i("ICCOA", "Remembered-car recovery attempt $number/${IccoaDropRecovery.MAX_ATTEMPTS}")
         main.postDelayed(recoveryScan, delayMs)
@@ -246,6 +267,11 @@ class IccoaService : Service() {
         discovery = IccoaDiscovery(this) { result ->
             _state.update { it.copy(discovery = result) }
             maybeAutoConnect(result)
+            // Every completed scan can be followed by another low-power scan.
+            // This waiting loop is independent from the three-attempt auth/transport budget.
+            if (result.phase == IccoaPhase.SCAN_COMPLETE || result.phase == IccoaPhase.FAILED) {
+                schedulePassiveSeek()
+            }
         }
         projection = IccoaProjection(this, ::promoteProjection, {
             session?.sendControl(5, byteArrayOf())
@@ -306,19 +332,25 @@ class IccoaService : Service() {
                 }
             }
             DISCONNECT -> {
+                // Manual disconnect must agree with the single owner toggle: OFF really stops.
+                prefs.autoConnect = false
                 main.removeCallbacks(recoveryScan)
+                main.removeCallbacks(passiveSeek)
                 dropRecovery.onExplicitOwnerRequest()
                 endConnection()
                 _state.update { it.copy(status = "Disconnected") }
+                stopSelf()
             }
             INSPECT -> if (!_state.value.connecting && !_state.value.connected) intent.getStringExtra("address")?.let { discovery?.inspect(it) }
             SCAN -> { endConnection(); autoConnectAttempted = false
                 main.removeCallbacks(recoveryScan)
+                main.removeCallbacks(passiveSeek)
+                seekPolicy.reset()
                 dropRecovery.onExplicitOwnerRequest()
                 _state.update { it.copy(status = "") }; discovery?.start() }
-            else -> if (!wasRunning) discovery?.start()
+            else -> if (!wasRunning) discovery?.start(lowPower = true)
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     private fun maybeAutoConnect(result: IccoaDiscoveryState) {
@@ -353,6 +385,7 @@ class IccoaService : Service() {
             return
         }
         autoConnectAttempted = true
+        main.removeCallbacks(passiveSeek)
         val attempt = dropRecovery.onInitialRememberedCarAutoSelect()
         DiagLog.i("ICCOA", "Auto-select remembered vehicle, attempt $attempt/" +
             "${IccoaDropRecovery.MAX_ATTEMPTS}; encrypted credential tried once per session if available")
@@ -505,6 +538,8 @@ class IccoaService : Service() {
             if (rememberedCar.remember(car)) DiagLog.i("ICCOA", "Authenticated vehicle selection remembered for next connection")
         }
         dropRecovery.onConnected()
+        seekPolicy.reset()
+        main.removeCallbacks(passiveSeek)
         main.removeCallbacks(recoveryScan)
         _state.update { it.copy(connecting = false, connected = true, pinRequired = false,
             status = "ICCOA linked · awaiting H.264 video · ${plan.streamWidth}×${plan.streamHeight} · ${plan.fps} fps") }
@@ -574,8 +609,17 @@ class IccoaService : Service() {
                 "$reason. Переподключение $number/${IccoaDropRecovery.MAX_ATTEMPTS}") }
             scheduleRecoveryScan(number)
         } else {
-            _state.update { it.copy(status = "$reason. Автоматические попытки остановлены") }
-            if (_state.value.running) discovery?.start()
+            // Transport retries have a finite per-episode budget, but ON must
+            // never permanently disable searching. Auth/PIN failures do not
+            // reset autoConnectAttempted and cannot loop credentials.
+            val stillSeeking = seekingAllowed() && retryableTransportFailure
+            if (stillSeeking) {
+                autoConnectAttempted = false
+                _state.update { it.copy(status = "$reason. Ищем автомобиль…") }
+                schedulePassiveSeek()
+            } else {
+                _state.update { it.copy(status = "$reason. Автоматическая авторизация остановлена") }
+            }
         }
     }
 
@@ -633,6 +677,7 @@ class IccoaService : Service() {
         }
 
     override fun onDestroy() {
+        main.removeCallbacks(passiveSeek)
         main.removeCallbacks(recoveryScan)
         dropRecovery.onExplicitOwnerRequest()
         bluetoothReconnect?.close(); bluetoothReconnect = null

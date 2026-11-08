@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 174
-        versionName = "3.9.60-xa60-iccoa-aa-gps-field"
+        versionCode = 175
+        versionName = "3.9.61-xa60-field-recovery"
     }
 
     signingConfigs {
