@@ -13,6 +13,15 @@ class IccoaSeekPolicyTest {
         assertEquals(5_000L, policy.nextDelayMs())
     }
 
+    @Test fun ownerSwitchHasStrictSearchLifecycle() {
+        assertTrue(IccoaSeekPolicy.eligible(true, true, false, false, false))
+        assertFalse(IccoaSeekPolicy.eligible(false, true, false, false, false))
+        assertFalse(IccoaSeekPolicy.eligible(true, false, false, false, false))
+        assertFalse(IccoaSeekPolicy.eligible(true, true, true, false, false))
+        assertFalse(IccoaSeekPolicy.eligible(true, true, false, true, false))
+        assertFalse(IccoaSeekPolicy.eligible(true, true, false, false, true))
+    }
+
     @Test fun transportAuthenticationRetriesRemainSeparatelyBounded() {
         val guard = IccoaDropRecovery()
         assertEquals(1, guard.onFailure(true, true, true))

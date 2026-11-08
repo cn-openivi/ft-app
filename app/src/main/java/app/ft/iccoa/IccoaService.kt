@@ -61,10 +61,14 @@ class IccoaService : Service() {
         }
     }
     private fun seekingAllowed(): Boolean =
-        FTApp.instance.prefs.autoConnect &&
-            FTApp.instance.prefs.carProtocol == CarProtocol.ICCOA &&
-            _state.value.running && !_state.value.connected && !_state.value.connecting &&
-            !_state.value.pinRequired
+        FTApp.instance.prefs.carProtocol == CarProtocol.ICCOA &&
+            IccoaSeekPolicy.eligible(
+                enabled = FTApp.instance.prefs.autoConnect,
+                running = _state.value.running,
+                connected = _state.value.connected,
+                connecting = _state.value.connecting,
+                pinRequired = _state.value.pinRequired
+            )
 
     private fun schedulePassiveSeek() {
         if (!seekingAllowed() || dropRecovery.active) return
@@ -276,7 +280,11 @@ class IccoaService : Service() {
             maybeAutoConnect(result)
             // Every completed scan can be followed by another low-power scan.
             // This waiting loop is independent from the three-attempt auth/transport budget.
-            if (result.phase == IccoaPhase.SCAN_COMPLETE || result.phase == IccoaPhase.FAILED) {
+            if (result.phase == IccoaPhase.SCAN_COMPLETE ||
+                result.phase == IccoaPhase.FAILED ||
+                result.phase == IccoaPhase.BLUETOOTH_OFF) {
+                // When BT is off there is no radio work; keep checking at low
+                // frequency, and resume discovery when the owner enables BT.
                 schedulePassiveSeek()
             }
         }

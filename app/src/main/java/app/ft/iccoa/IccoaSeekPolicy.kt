@@ -6,6 +6,13 @@ package app.ft.iccoa
  * Only the OS service lifecycle and the owner toggle decide when waiting ends.
  */
 internal class IccoaSeekPolicy {
+    companion object {
+        /** Explicit OFF immediately makes the service ineligible for more scans. */
+        fun eligible(enabled: Boolean, running: Boolean, connected: Boolean,
+                     connecting: Boolean, pinRequired: Boolean): Boolean =
+            enabled && running && !connected && !connecting && !pinRequired
+    }
+
     private var missingWindows = 0L
 
     fun nextDelayMs(): Long {

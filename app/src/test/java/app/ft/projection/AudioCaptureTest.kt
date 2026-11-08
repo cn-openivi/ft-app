@@ -114,12 +114,20 @@ class AudioCaptureTest {
         val released = CountDownLatch(1)
         val delivered = AtomicInteger()
         val readerRef = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val reads = AtomicInteger()
         `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
             readerRef.set(Thread.currentThread())
-            val bytes = it.arguments[0] as ByteArray
-            bytes[0] = 1
-            bytes[1] = 0
-            2
+            if (reads.incrementAndGet() > 1) {
+                // A second mock read must not invent another audible PCM callback
+                // before the stop thread acquires the ownership lock.
+                assertTrue(released.await(5, TimeUnit.SECONDS))
+                AudioRecord.ERROR_DEAD_OBJECT
+            } else {
+                val bytes = it.arguments[0] as ByteArray
+                bytes[0] = 1
+                bytes[1] = 0
+                2
+            }
         }
         doAnswer { released.countDown(); null }.`when`(record).release()
         val capture = AudioCapture({ record }, {
