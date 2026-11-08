@@ -22,7 +22,7 @@ internal object VehicleTraceRecorder {
     private const val HEADER =
         "phone_wall_ms,phone_elapsed_ns,source,event,oem_timestamp_raw," +
         "latitude,longitude,gps_speed_raw,gps_heading_raw,sat_used,sat_visible," +
-        "gear_raw,gear_speed_raw,x,y,z,gyro_type"
+        "gear_raw,gear_speed_raw,x,y,z,gyro_type,gps_altitude_oem_raw"
 
     private fun eligible(kind: Int, elapsedNs: Long): Boolean {
         val previous = lastNs[kind]
@@ -40,12 +40,12 @@ internal object VehicleTraceRecorder {
         satUsed: Long? = null, satVisible: Long? = null,
         gearRaw: Long? = null, gearSpeedRaw: Long? = null,
         x: Double? = null, y: Double? = null, z: Double? = null,
-        gyroType: Int? = null
+        gyroType: Int? = null, gpsAltitudeRaw: Double? = null
     ) {
         val fields: Array<Any?> = arrayOf(
             wallMs, elapsedNs, "ICCOA", event, oemTimestampRaw,
             latitude, longitude, gpsSpeedRaw, headingRaw, satUsed, satVisible,
-            gearRaw, gearSpeedRaw, x, y, z, gyroType
+            gearRaw, gearSpeedRaw, x, y, z, gyroType, gpsAltitudeRaw
         )
         if (rows.size >= CAPACITY) {
             rows.removeFirst()
@@ -57,11 +57,11 @@ internal object VehicleTraceRecorder {
     @Synchronized fun gps(
         wallMs: Long, elapsedNs: Long, oemTimestampRaw: Long,
         latitude: Double, longitude: Double, speedRaw: Long, headingRaw: Long,
-        satUsed: Long, satVisible: Long
+        satUsed: Long, satVisible: Long, altitudeRaw: Double? = null
     ) {
         if (!eligible(GPS, elapsedNs)) return
         add(wallMs, elapsedNs, "GPS", oemTimestampRaw, latitude, longitude,
-            speedRaw, headingRaw, satUsed, satVisible)
+            speedRaw, headingRaw, satUsed, satVisible, gpsAltitudeRaw = altitudeRaw)
     }
 
     @Synchronized fun gear(
@@ -99,6 +99,7 @@ internal object VehicleTraceRecorder {
         "gps_heading_raw=OEM floor(Location.getBearing()), nominal degrees\n" +
         "gear_speed_raw=OEM GearInfo value, units unverified\n" +
         "x_y_z=OEM raw axes, mapping and units unverified\n" +
+        "gps_altitude_oem_raw=raw OEM protobuf altitude, blank if field absent; reference datum/accuracy not verified\n" +
         "no interpolation; rows reflect received events only\n"
 
     @Synchronized fun clear() {

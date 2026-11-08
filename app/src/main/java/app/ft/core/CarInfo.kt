@@ -67,6 +67,7 @@ object CarInfo {
         val fixAgeNanosAtReceipt: Long? = null,
         val receivedElapsedRealtimeNanos: Long? = null
     )
+    private var lastPhoneGpsMetadataLogMs = 0L
     private val _phoneGps = MutableStateFlow<PhoneGpsFix?>(null)
     val phoneGps: StateFlow<PhoneGpsFix?> = _phoneGps
 
@@ -189,6 +190,14 @@ object CarInfo {
                     receivedElapsedRealtimeNanos = monotonicAtReceipt
                 )
                 remember(location)
+                if (FTApp.instance.prefs.vehicleCoordinateLogging &&
+                    (lastPhoneGpsMetadataLogMs == 0L || received - lastPhoneGpsMetadataLogMs >= 15_000L)) {
+                    lastPhoneGpsMetadataLogMs = received
+                    val accuracy = if (location.hasAccuracy()) location.accuracy.toString() else "unknown"
+                    val ageMs = ((monotonicAtReceipt - location.elapsedRealtimeNanos) / 1_000_000L)
+                    DiagLog.i("PhoneGPS", "provider=${location.provider} accuracyM=$accuracy ageMs=$ageMs " +
+                        "hasSpeed=${location.hasSpeed()} (coordinates omitted)")
+                }
             }
         }
         val ok = try {

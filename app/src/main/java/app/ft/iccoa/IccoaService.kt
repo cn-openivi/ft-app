@@ -213,8 +213,13 @@ class IccoaService : Service() {
         if (fix != null) {
             gpsFixCount++
             lastCarGps = fix
-            VehicleTelemetry.publish(VehicleLocation(
-                source = "ICCOA", receivedAtMs = System.currentTimeMillis(),
+            val receivedAtMs = System.currentTimeMillis()
+            val measuredAtMs = IccoaGpsTimestampGate.measuredAtMs(fix.timestampRaw, receivedAtMs)
+            // Always preserve the raw received frame in the opt-in trace, even
+            // when its measurement age is unacceptable for UI/AA/DR.
+            if (measuredAtMs != null) VehicleTelemetry.publish(VehicleLocation(
+                source = "ICCOA", receivedAtMs = receivedAtMs,
+                positionAtMs = measuredAtMs,
                 latitude = fix.latitude, longitude = fix.longitude,
                 // OEM CarLinkSensorMgr reads Android Location.getLatitude/Longitude.
                 // WGS84 is the Android API contract; confirm actual HU values on-road.
@@ -226,12 +231,14 @@ class IccoaService : Service() {
                 headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED",
                 satellitesUsed = fix.satellitesUsed, satellitesVisible = fix.satellitesVisible,
                 deviceTimestampRaw = fix.timestampRaw
-            ))
+            )) else DiagLog.w("ICCOA", "OEM GPS measurement rejected: unverified/stale/future timestamp; " +
+                "received=$receivedAtMs rawTs=${fix.timestampRaw} (coordinates omitted)")
             if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                 VehicleTraceRecorder.gps(
                     System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(),
                     fix.timestampRaw, fix.latitude, fix.longitude, fix.speedRaw, fix.headingRaw,
-                    fix.satellitesUsed, fix.satellitesVisible
+                    fix.satellitesUsed, fix.satellitesVisible,
+                    altitudeRaw = fix.altitude.takeIf { fix.altitudePresent }
                 )
             }
         }

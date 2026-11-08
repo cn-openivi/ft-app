@@ -8,7 +8,7 @@ class VehicleTraceRecorderTest {
         VehicleTraceRecorder.clear()
         try {
             val t = 1_000_000_000L
-            VehicleTraceRecorder.gps(1_000L, t, 901L, 55.75, 37.61, 5L, 123L, 8L, 10L)
+            VehicleTraceRecorder.gps(1_000L, t, 901L, 55.75, 37.61, 5L, 123L, 8L, 10L, altitudeRaw = 124.5)
             VehicleTraceRecorder.gear(1_000L, t, 2L, 17L)
             VehicleTraceRecorder.imu(1_000L, t, true, 902L, 1.25, -2.5, 0.75, 3)
             VehicleTraceRecorder.imu(1_000L, t, false, 903L, -0.2, 0.3, 9.8, null)
@@ -18,10 +18,13 @@ class VehicleTraceRecorderTest {
             val lines = VehicleTraceRecorder.exportCsv().trimEnd().lines()
             assertEquals(6, lines.size)
             val heading = lines[0].split(",")
-            assertEquals(17, heading.size)
+            assertEquals(18, heading.size)
             assertEquals("phone_wall_ms", heading[0])
             val records = lines.drop(1).map { it.split(",") }
-            assertTrue(records.all { it.size == 17 })
+            assertTrue(records.all { it.size == 18 })
+            assertEquals("gps_altitude_oem_raw", heading.last())
+            assertEquals("124.5", records[0].last())
+            assertEquals("", records[1].last())
             assertEquals(listOf("GPS", "GEAR", "GYRO", "ACCEL", "GYRO"),
                 records.map { it[3] })
             assertEquals("55.75", records[0][5])

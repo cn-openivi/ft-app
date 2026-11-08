@@ -14,7 +14,9 @@ internal data class IccoaGpsFix(
     val headingRaw: Long,
     val satellitesUsed: Long,
     val satellitesVisible: Long,
-    val timestampRaw: Long
+    val timestampRaw: Long,
+    /** Proto3 zero and an absent field are different for altitude diagnostics. */
+    val altitudePresent: Boolean = false
 )
 
 internal object IccoaGpsWire {
@@ -68,6 +70,7 @@ internal object IccoaGpsWire {
         var latitude: Double? = null
         var longitude: Double? = null
         var altitude = 0.0
+        var altitudePresent = false
         val numbers = LongArray(11)
         fun varint(): Long {
             var value = 0L
@@ -100,7 +103,7 @@ internal object IccoaGpsWire {
                     1 -> {
                         val value = fixed64()
                         when (field) {
-                            1 -> altitude = value
+                            1 -> { altitude = value; altitudePresent = true }
                             2 -> latitude = value
                             3 -> longitude = value
                         }
@@ -120,7 +123,7 @@ internal object IccoaGpsWire {
             require(lat in -90.0..90.0 && lon in -180.0..180.0)
             require(numbers[8] <= 255 && numbers[9] <= 255)
             IccoaGpsFix(lat, lon, altitude, numbers[4], numbers[5], numbers[6],
-                numbers[7], numbers[8], numbers[9], numbers[10])
+                numbers[7], numbers[8], numbers[9], numbers[10], altitudePresent)
         }.getOrNull()
     }
 }

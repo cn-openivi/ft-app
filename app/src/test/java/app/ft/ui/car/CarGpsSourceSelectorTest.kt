@@ -17,6 +17,30 @@ class CarGpsSourceSelectorTest {
         bearingDegrees = 220f, receivedAtMs = t
     )
 
+    @Test fun handsetGpsWithPoorAccuracyOrUnexpectedProviderIsHiddenInGarage() {
+        val selector = CarGpsSourceSelector()
+        val uncertain = phone(10_000L).copy(provider = "gps", horizontalAccuracyMetres = 350f)
+        val result = selector.select(null, uncertain, 10_000L)
+        assertEquals(CarGpsSourceSelector.Source.PHONE, result.source)
+        assertNull(result.latitude)
+        assertNull(result.speedKmh)
+        val network = phone(10_100L).copy(provider = "network", horizontalAccuracyMetres = 8f)
+        assertNull(selector.select(null, network, 10_100L).latitude)
+        val accurate = phone(11_000L).copy(provider = "gps", horizontalAccuracyMetres = 15f)
+        assertEquals(55.55, selector.select(null, accurate, 11_000L).latitude!!, 0.000001)
+    }
+
+    @Test fun sourceTransitionsAreLoggedOnceWithoutGearRefreshFlapping() {
+        val transitions = mutableListOf<String>()
+        val selector = CarGpsSourceSelector(onTransition = { old, new, _ ->
+            transitions.add("$old->$new")
+        })
+        for (t in 10_000L..17_000L step 1_000L) selector.select(car(t), phone(t), t)
+        for (t in 18_000L..24_000L step 1_000L)
+            selector.select(car(17_000L).copy(receivedAtMs = t), phone(t), t)
+        assertEquals(listOf("PHONE->ICCOA", "ICCOA->PHONE"), transitions)
+    }
+
     private fun connectedSelector(): CarGpsSourceSelector {
         val selector = CarGpsSourceSelector()
         for (t in 10_000L..17_000L step 1_000L) {

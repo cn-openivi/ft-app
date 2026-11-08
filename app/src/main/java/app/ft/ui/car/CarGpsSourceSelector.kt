@@ -14,7 +14,8 @@ import app.ft.core.VehicleLocation
  */
 internal class CarGpsSourceSelector(
     private val switchAfterMs: Long = 7_000L,
-    private val maxRecoveryGapMs: Long = 3_500L
+    private val maxRecoveryGapMs: Long = 3_500L,
+    private val onTransition: (Source, Source, Long) -> Unit = { _, _, _ -> }
 ) {
     init {
         require(switchAfterMs in 5_000L..10_000L)
@@ -52,6 +53,7 @@ internal class CarGpsSourceSelector(
         phone: CarInfo.PhoneGpsFix?,
         nowMs: Long
     ): Reading {
+        val sourceBefore = source
         val candidate = vehicle?.takeIf {
             it.source == "ICCOA" && it.positionAtMs > 0L &&
                 it.displayLatitude != null && it.displayLongitude != null
@@ -113,6 +115,7 @@ internal class CarGpsSourceSelector(
                     nowMs - stableCarSinceMs!! >= switchAfterMs)
                     source = Source.ICCOA
         }
+        if (sourceBefore != source) onTransition(sourceBefore, source, nowMs)
         // Preserve the defensive PHONE input validation from the newer
         // source-only branch when restoring FT174's car-primary hysteresis.
         // A corrupted/stale Android coordinate must not replace a lost OEM fix.
@@ -131,6 +134,12 @@ internal class CarGpsSourceSelector(
                 fixAge <= (switchAfterMs - callbackAge) * 1_000_000L)
             it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
                 it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
+                // Network-derived or low-quality GNSS in a garage is not
+                // a trustworthy screen coordinate simply because it is recent.
+                (it.provider == null || it.provider.equals("gps", ignoreCase = true)) &&
+                (it.horizontalAccuracyMetres == null ||
+                    (it.horizontalAccuracyMetres.isFinite() &&
+                        it.horizontalAccuracyMetres in 0f..75f)) &&
                 callbackFresh && originalFixFresh
         }
         val carChosen = source == Source.ICCOA && lastCarFix != null

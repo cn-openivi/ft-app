@@ -58,7 +58,11 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val inertial by VehicleMotionTelemetry.current.collectAsState()
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
-    val selector = remember { CarGpsSourceSelector() }
+    val selector = remember {
+        CarGpsSourceSelector(onTransition = { before, after, at ->
+            app.ft.core.DiagLog.i("VehicleGPS", "UI_SOURCE_CHANGE from=$before to=$after atMs=$at")
+        })
+    }
     val now by produceState(initialValue = System.currentTimeMillis()) {
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
