@@ -183,7 +183,7 @@ private fun CoordinatesChip(reading: CarGpsSourceSelector.Reading) {
 
 @Composable
 private fun CourseChip(reading: CarGpsSourceSelector.Reading) {
-    val bearing = reading.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
+    val bearing = CarWidgetReadings.courseDegrees(reading)
     Chip(CarIcons.Compass, bearing?.let { "${it.roundToInt()}°" } ?: "—",
         CarWidgetReadings.sourceLabel(reading))
 }
