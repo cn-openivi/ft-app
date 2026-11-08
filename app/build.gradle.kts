@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 175
-        versionName = "3.9.61-xa60-field-recovery"
+        versionCode = 176
+        versionName = "3.9.62-xa60-road-ready"
     }
 
     signingConfigs {
