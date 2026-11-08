@@ -30,6 +30,7 @@ import app.ft.core.MotionSource
 import app.ft.core.MotionKind
 import app.ft.core.MotionVector
 import app.ft.core.VehicleMotionTelemetry
+import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -148,6 +149,14 @@ class IccoaService : Service() {
                     MotionVector(it.x, it.y, it.z, it.deviceTimestampRaw, it.gyroType)
                 }
             )
+            // Capture OEM double XYZ as delivered; no additional sensor requests.
+            if (decoded != null && FTApp.instance.prefs.vehicleCoordinateLogging) {
+                VehicleTraceRecorder.imu(
+                    System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(),
+                    gyro, decoded.deviceTimestampRaw, decoded.x, decoded.y, decoded.z,
+                    decoded.gyroType
+                )
+            }
             val total = counter.accepted + counter.rejected
             if (total <= 3 || (total and (total - 1L)) == 0L) {
                 // The diagnostic log records counts, not per-frame raw readings.
@@ -159,7 +168,16 @@ class IccoaService : Service() {
         }
         if (method == IccoaGearWire.SENSOR_METHOD) {
             gearSpeedFrames++
-            if (IccoaGearWire.accept(body)) gearSpeedValid++
+            if (IccoaGearWire.accept(body)) {
+                gearSpeedValid++
+                if (FTApp.instance.prefs.vehicleCoordinateLogging) {
+                    val current = VehicleTelemetry.current.value
+                    VehicleTraceRecorder.gear(
+                        System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(),
+                        current?.gearRaw, current?.gearSpeedRaw
+                    )
+                }
+            }
             if (gearSpeedFrames <= 3 || gearSpeedFrames and (gearSpeedFrames - 1) == 0L) {
                 DiagLog.i("ICCOA", "SENSOR GearInfo count=$gearSpeedFrames valid=$gearSpeedValid " +
                     "payloadBytes=${body.size} unit=unconfirmed " +
@@ -188,6 +206,13 @@ class IccoaService : Service() {
                 satellitesUsed = fix.satellitesUsed, satellitesVisible = fix.satellitesVisible,
                 deviceTimestampRaw = fix.timestampRaw
             ))
+            if (FTApp.instance.prefs.vehicleCoordinateLogging) {
+                VehicleTraceRecorder.gps(
+                    System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(),
+                    fix.timestampRaw, fix.latitude, fix.longitude, fix.speedRaw, fix.headingRaw,
+                    fix.satellitesUsed, fix.satellitesVisible
+                )
+            }
         }
         if (gpsFrameCount <= 3 || gpsFrameCount and (gpsFrameCount - 1) == 0L) {
             DiagLog.i("ICCOA", "SENSOR GPS received=$gpsFrameCount valid=$gpsFixCount " +

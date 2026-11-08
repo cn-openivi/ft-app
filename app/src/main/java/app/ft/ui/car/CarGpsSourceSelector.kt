@@ -34,8 +34,9 @@ internal class CarGpsSourceSelector(
             car?.displayLatitude else phone?.latitude
         val longitude: Double? get() = if (source == Source.ICCOA)
             car?.displayLongitude else phone?.longitude
-        val headingDegrees: Float? get() = if (source == Source.ICCOA)
-            car?.headingDegrees else phone?.bearingDegrees
+        val headingDegrees: Float? get() = (if (source == Source.ICCOA)
+            car?.headingDegrees else phone?.bearingDegrees)
+            ?.takeIf { it.isFinite() && it >= 0f && it <= 360f }
         val label: String get() = source.name
     }
 
@@ -55,20 +56,36 @@ internal class CarGpsSourceSelector(
             it.source == "ICCOA" && it.positionAtMs > 0L &&
                 it.displayLatitude != null && it.displayLongitude != null
         }
-        if (candidate != null && candidate.positionAtMs != lastObservedCarPositionMs) {
-            val previousPosition = lastObservedCarPositionMs
-            lastObservedCarPositionMs = candidate.positionAtMs
+        // Expire a full OEM GPS outage BEFORE consuming a newly arriving fix.
+        // Otherwise the first packet at the 7s boundary resets lastCarPacketAtMs
+        // and conceals the outage, incorrectly retaining ICCOA as the source.
+        if (source == Source.ICCOA && lastCarPacketAtMs?.let {
+                nowMs - it >= switchAfterMs
+            } == true) {
+            source = Source.PHONE
+        }
+        var acceptedNewCarPosition = false
+        if (candidate != null && candidate.positionAtMs > lastObservedCarPositionMs) {
+            // A reordered OEM packet must not lower the high-water mark:
+            // otherwise a second stale packet could look newly accepted.
             // Newly mounted screens may see an old stored fix. That is not
             // evidence of live telemetry, even though it can be displayed.
             val age = nowMs - candidate.positionAtMs
-            if (candidate.positionAtMs > previousPosition &&
-                age >= -1_000L && age <= maxRecoveryGapMs) {
+            if (age >= -1_000L && age <= maxRecoveryGapMs) {
+                // Advance the high-water mark only for an accepted fix.
+                // A rejected future timestamp must not poison subsequent
+                // valid OEM positions or delay the 7s recovery timer.
+                lastObservedCarPositionMs = candidate.positionAtMs
+                acceptedNewCarPosition = true
+                // Timestamp of the actual OEM measurement, not its delayed
+                // arrival. Clamp tolerated future clock skew to now.
+                val measuredAtMs = candidate.positionAtMs.coerceAtMost(nowMs)
                 val last = lastCarPacketAtMs
-                if (last == null || nowMs < last || nowMs - last > maxRecoveryGapMs) {
-                    stableCarSinceMs = nowMs
+                if (last == null || measuredAtMs < last || measuredAtMs - last > maxRecoveryGapMs) {
+                    stableCarSinceMs = measuredAtMs
                     carSpeedFilteredKmh = null
                 }
-                lastCarPacketAtMs = nowMs
+                lastCarPacketAtMs = measuredAtMs
                 lastCarFix = candidate
                 val speed = candidate.speedKmh?.takeIf { it.isFinite() && it in 0f..300f }
                 if (speed != null) {
@@ -77,6 +94,10 @@ internal class CarGpsSourceSelector(
                     carSpeedFilteredKmh = carSpeedFilteredKmh?.let {
                         it * 0.55f + speed * 0.45f
                     } ?: speed
+                } else {
+                    // A new valid position without a valid speed must not
+                    // reuse a speed measured at an older GPS position.
+                    carSpeedFilteredKmh = null
                 }
             }
         }
@@ -87,7 +108,7 @@ internal class CarGpsSourceSelector(
                 if (lastCar == null || nowMs - lastCar >= switchAfterMs)
                     source = Source.PHONE
             Source.PHONE ->
-                if (lastCar != null && stableCarSinceMs != null &&
+                if (acceptedNewCarPosition && lastCar != null && stableCarSinceMs != null &&
                     nowMs - lastCar <= maxRecoveryGapMs &&
                     nowMs - stableCarSinceMs!! >= switchAfterMs)
                     source = Source.ICCOA
@@ -101,10 +122,16 @@ internal class CarGpsSourceSelector(
             // does not make its old elapsedRealtime fix physically current.
             val callbackAge = nowMs - it.receivedAtMs
             val fixAge = it.fixAgeNanosAtReceipt
+            val callbackFresh = callbackAge in 0L..switchAfterMs
+            // Age at receipt and age since receipt are cumulative. Checking
+            // each against 7s separately could admit a 12s-old GNSS fix.
+            // Use a remaining nanosecond budget to avoid rounding at the edge.
+            val originalFixFresh = fixAge == null || (callbackFresh &&
+                fixAge >= 0L &&
+                fixAge <= (switchAfterMs - callbackAge) * 1_000_000L)
             it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
                 it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
-                callbackAge in 0L..switchAfterMs &&
-                (fixAge == null || fixAge in 0L..(switchAfterMs * 1_000_000L))
+                callbackFresh && originalFixFresh
         }
         val carChosen = source == Source.ICCOA && lastCarFix != null
         return if (carChosen) {
@@ -112,7 +139,14 @@ internal class CarGpsSourceSelector(
                 (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
         } else {
             Reading(Source.PHONE, null, safePhone,
-                (nowMs - (safePhone?.receivedAtMs ?: nowMs)).coerceAtLeast(0L),
+                safePhone?.let { fix ->
+                    val callbackAgeMs = (nowMs - fix.receivedAtMs).coerceAtLeast(0L)
+                    val fixAgeMs = fix.fixAgeNanosAtReceipt?.let { nanos ->
+                        // Round up: never display a sub-millisecond stale fix as newer.
+                        nanos / 1_000_000L + if (nanos % 1_000_000L == 0L) 0L else 1L
+                    } ?: 0L
+                    callbackAgeMs + fixAgeMs
+                } ?: 0L,
                 safePhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
         }
     }

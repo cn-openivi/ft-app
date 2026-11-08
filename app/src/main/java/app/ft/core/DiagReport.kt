@@ -54,6 +54,13 @@ object DiagReport {
                 }.onFailure { zip.write("could not read: ${it.message}\n".toByteArray()) }
             }
             zip.closeEntry()
+            // Preserve timestamp-aligned raw GPS/IMU only with explicit location consent.
+            if (recordCoordinates) {
+                put("vehicle-track.csv", VehicleTraceRecorder.exportCsv())
+                put("vehicle-track-info.txt", VehicleTraceRecorder.exportInfo())
+            } else {
+                VehicleTraceRecorder.clear()
+            }
             put("exits.txt", exits(c))
             // System logcat is not under FT's control and may include third-party GPS data.
             // Fail closed while the owner has not consented to location-bearing diagnostics.
