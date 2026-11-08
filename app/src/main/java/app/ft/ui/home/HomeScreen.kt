@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.Canvas
 import android.provider.Settings
+import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -218,6 +219,23 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                     TextButton(onClick = { IccoaService.resetTouchCalibration() }) {
                         Text("Сбросить калибровку")
                     }
+                }
+            }
+        }
+
+        if (iccoa && screenState.mirroring &&
+            screenState.mirrorPackage.contains("yandex", ignoreCase = true)) item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Голос Яндекс Навигатора", style = MaterialTheme.typography.titleMedium)
+                    Text("Android разрешает FT захватывать мультимедиа, но не отдельные " +
+                        "подсказки NAVIGATION_GUIDANCE. Видео зеркалируется, звук подсказок " +
+                        "нужно направить на Bluetooth автомобиля через настройки телефона.")
+                    Text("Samsung: Звуки и вибрация → Раздельный вывод звука → " +
+                        "Яндекс Навигатор → Bluetooth автомобиля. Проверьте голос подсказки.")
+                    TextButton(onClick = {
+                        runCatching { context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS)) }
+                    }) { Text("Открыть настройки звука") }
                 }
             }
         }

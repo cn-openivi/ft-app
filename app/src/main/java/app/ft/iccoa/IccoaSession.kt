@@ -501,6 +501,8 @@ class IccoaSession(
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
+                DiagLog.i("ICCOA", "WiFi network available handle=$network " +
+                    "replacingCurrent=${attempt.network != null && attempt.network != network}")
                 // A queued auth worker for the previous Network must not monopolize
                 // authStarted when Android replaces the Wi-Fi handle before TCP bind.
                 if (attempt.network != network) {
@@ -530,13 +532,23 @@ class IccoaSession(
                 )
             }
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = post(attempt) {
-                if (attempt.networkGate.isCurrent(network)) networkReady(attempt, network, properties)
+                val current = attempt.networkGate.isCurrent(network)
+                DiagLog.i("ICCOA", "WiFi link properties handle=$network current=$current " +
+                    "iface=${properties.interfaceName ?: "unknown"} " +
+                    "ipv4=${properties.linkAddresses.any { it.address is Inet4Address }}")
+                if (current) networkReady(attempt, network, properties)
             }
             // May mean the owner declined Android's Wi-Fi consent prompt.
             // Do not repeat permission prompts automatically.
-            override fun onUnavailable() { fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут") }
+            override fun onUnavailable() {
+                DiagLog.w("ICCOA", "WiFi request unavailable (permission/timeout not distinguishable)")
+                fail(attempt, "Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут")
+            }
             override fun onLost(network: Network) = post(attempt) {
-                if (attempt.networkGate.onLost(network))
+                val owned = attempt.networkGate.onLost(network)
+                DiagLog.w("ICCOA", "WiFi network lost handle=$network ownsSession=$owned " +
+                    "(SSID/BSSID/redirection not inferred)")
+                if (owned)
                     fail(attempt, "Соединение с Wi-Fi автомобиля потеряно", transportFailure = true)
             }
         }
