@@ -1,0 +1,100 @@
+name: Mykolay five PR integration against FT 3.9.64 (source only)
+
+on:
+  push:
+    branches:
+      - integration/mykolay-five-prs-3.9.64-source-ci-20261108
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mykolay-3-9-64-five-prs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-all-five:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-mykolay-five-prs
+      RELEASE_SHA: '24e11436204f786c42ed8b5a131b652362122126'
+      FIX_10: 'f32a92423c583dbef4c67de749b85cffc3337362'
+      FIX_11: '3f4734bfaf135380e1ec52015167e18c3974965c'
+      FIX_12: 'e9b2df5a0a88866a516e89fedd106d99d4d87b4b'
+      FIX_13: '62dc30fa8d977ef0a3ab22331eabf08f56f364f6'
+      FIX_15: '1927bf218a3143aab3e1db856c5a30ecb9853ee1'
+    steps:
+      - name: Checkout exact CI workflow commit without credentials
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify workflow SHA and exact release SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch --no-tags --depth=12 https://github.com/mykolaq/ft-app.git refs/tags/v3.9.64-alice-panel
+          test "$(git rev-parse FETCH_HEAD^{commit})" = "$RELEASE_SHA"
+          echo "WORKFLOW_SHA=$GITHUB_SHA"
+          echo "RELEASE_SHA=$RELEASE_SHA"
+          git checkout --detach "$RELEASE_SHA"
+          git config user.name "OpenIVI integration CI"
+          git config user.email "integration-ci@users.noreply.github.com"
+
+      - name: Apply five exact PR source commits on released code
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in 10 11 12 13 15; do
+            case "$entry" in
+              10) sha="$FIX_10" ;;
+              11) sha="$FIX_11" ;;
+              12) sha="$FIX_12" ;;
+              13) sha="$FIX_13" ;;
+              15) sha="$FIX_15" ;;
+            esac
+            test "$(git cat-file -t "$sha")" = commit
+            echo "APPLY_PR_${entry}_SOURCE_SHA=$sha"
+            git cherry-pick -x "$sha"
+          done
+          echo "COMBINED_SOURCE_SHA=$(git rev-parse HEAD)"
+          git log --oneline -6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Run merged source unit regressions without generating APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest --stacktrace
+
+      - name: No APK produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+            echo 'Forbidden APK artifact during source-only integration CI' >&2
+            exit 1
+          fi
