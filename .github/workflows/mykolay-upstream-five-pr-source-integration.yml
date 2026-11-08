@@ -61,8 +61,40 @@ jobs:
             if ! git cherry-pick -x "$sha"; then
               echo "CHERRY_PICK_CONFLICT_PR=$entry"
               git status --short
-              git diff -- app/src/main/java/app/ft/aa/AaVideoDecoder.kt | head -500
-              exit 1
+              if [ "$entry" = 12 ] && [ "$(git diff --name-only --diff-filter=U)" = "app/src/main/java/app/ft/aa/AaVideoDecoder.kt" ]; then
+                # The released decoder added first-frame diagnostics in the same
+                # hunk where PR #12 separates its codec output lock.
+                # Preserve both behaviors; reject any unexpected conflict text.
+                python3 - <<'PY'
+from pathlib import Path
+import re
+p = Path("app/src/main/java/app/ft/aa/AaVideoDecoder.kt")
+s = p.read_text()
+pattern = re.compile(r"(?m)^<<<<<<< HEAD\\n(?P<ours>.*?)^=======\\n(?P<theirs>.*?)^>>>>>>> e9b2df5[^\\n]*\\n", re.S | re.M)
+matches = list(pattern.finditer(s))
+assert len(matches) == 1, "unexpected codec merge conflict count"
+m = matches[0]
+assert "if (firstFrame)" in m["ours"] and "diagnosticState()" in m["ours"]
+assert "else if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED)" in m["ours"]
+assert "outputLock.unlock()" in m["theirs"] and "finally" in m["theirs"]
+replacement = """                        if (firstFrame) {
+                            firstFrame = false
+                            DiagLog.i(tag, "first decoded output generation=$mine; ${diagnosticState()}")
+                        }
+                    } finally {
+                        outputLock.unlock()
+"""
+s2 = s[:m.start()] + replacement + s[m.end():]
+assert "<<<<<<<" not in s2 and ">>>>>>>" not in s2
+p.write_text(s2)
+PY
+                git add app/src/main/java/app/ft/aa/AaVideoDecoder.kt
+                GIT_EDITOR=true git cherry-pick --continue
+                echo "RESOLVED_RELEASE_PR12_CODEC_DIAGNOSTICS_PLUS_LOCK=PASS"
+              else
+                git diff -- app/src/main/java/app/ft/aa/AaVideoDecoder.kt | head -300
+                exit 1
+              fi
             fi
           done
           echo "COMBINED_SOURCE_SHA=$(git rev-parse HEAD)"
