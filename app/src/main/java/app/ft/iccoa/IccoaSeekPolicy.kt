@@ -14,6 +14,8 @@ internal class IccoaSeekPolicy {
     }
 
     private var missingWindows = 0L
+    /** Most low-power scans are OS-filtered; every fourth is unfiltered for fallback. */
+    fun useHardwareFilter(): Boolean = missingWindows % 4L != 3L
 
     fun nextDelayMs(): Long {
         if (missingWindows < Long.MAX_VALUE) missingWindows++

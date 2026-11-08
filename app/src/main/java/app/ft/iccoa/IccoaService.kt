@@ -54,10 +54,16 @@ class IccoaService : Service() {
     private var autoConnectAttempted = false
     private val dropRecovery = IccoaDropRecovery()
     private val seekPolicy = IccoaSeekPolicy()
+    private fun startBackgroundScan() {
+        discovery?.start(
+            lowPower = true, knownToken = rememberedCar.savedReceiverTokenBytes(),
+            useFilters = seekPolicy.useHardwareFilter()
+        )
+    }
     private val passiveSeek = Runnable {
         if (seekingAllowed()) {
             DiagLog.i("ICCOA", "Continuing low-power search for remembered car")
-            discovery?.start(lowPower = true)
+            startBackgroundScan()
         }
     }
     private fun seekingAllowed(): Boolean =
@@ -80,7 +86,7 @@ class IccoaService : Service() {
     private val recoveryScan = Runnable {
         if (dropRecovery.active && _state.value.running &&
             !_state.value.connecting && !_state.value.connected)
-            discovery?.start(lowPower = true)
+            startBackgroundScan()
     }
     private fun scheduleRecoveryScan(number: Int) {
         main.removeCallbacks(recoveryScan)
@@ -363,7 +369,7 @@ class IccoaService : Service() {
                 seekPolicy.reset()
                 dropRecovery.onExplicitOwnerRequest()
                 _state.update { it.copy(status = "") }; discovery?.start() }
-            else -> if (!wasRunning) discovery?.start(lowPower = true)
+            else -> if (!wasRunning) startBackgroundScan()
         }
         return START_STICKY
     }

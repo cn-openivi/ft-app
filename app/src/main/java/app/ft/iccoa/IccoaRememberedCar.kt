@@ -41,6 +41,13 @@ internal class IccoaRememberedCar(context: Context) {
             matching.size == 1 && matching.single().address.equals(peer.address, ignoreCase = true)
     }
 
+    /** Advertisement marker is an untrusted BLE hint, never a key. */
+    fun savedReceiverTokenBytes(): ByteArray? {
+        val hex = prefs.getString("receiverToken", "").orEmpty()
+        if (hex.length != 32 || !hex.all { it in '0'..'9' || it in 'a'..'f' }) return null
+        return ByteArray(16) { i -> hex.substring(i * 2, i * 2 + 2).toInt(16).toByte() }
+    }
+
     fun select(peers: List<IccoaPeer>, scanComplete: Boolean): IccoaPeer? {
         val address = prefs.getString("address", "").orEmpty()
         if (address.isBlank()) return null

@@ -27,7 +27,9 @@ object IccoaEvidence {
 
 
     fun hint(name: String?, services: Collection<String>): Boolean =
-        services.any { it.equals(REPORTED_SERVICE, ignoreCase = true) || it.equals(ADVERTISED_SERVICE, ignoreCase = true) } ||
+        services.any { it.equals(REPORTED_SERVICE, ignoreCase = true) ||
+            it.equals(ADVERTISED_SERVICE, ignoreCase = true) ||
+            it.equals(RECEIVER_TOKEN_SERVICE_DATA, ignoreCase = true) } ||
             name?.let { it.contains("iccoa", ignoreCase = true) || it.contains("carlink", ignoreCase = true) } == true
 }
 

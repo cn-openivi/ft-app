@@ -13,6 +13,17 @@ class IccoaSeekPolicyTest {
         assertEquals(5_000L, policy.nextDelayMs())
     }
 
+    @Test fun filteredBackgroundScanIncludesUnfilteredCompatibilityFallback() {
+        val policy = IccoaSeekPolicy()
+        assertTrue(policy.useHardwareFilter())
+        repeat(3) { policy.nextDelayMs() }
+        assertFalse(policy.useHardwareFilter())
+        policy.nextDelayMs()
+        assertTrue(policy.useHardwareFilter())
+        policy.reset()
+        assertTrue(policy.useHardwareFilter())
+    }
+
     @Test fun ownerSwitchHasStrictSearchLifecycle() {
         assertTrue(IccoaSeekPolicy.eligible(true, true, false, false, false))
         assertFalse(IccoaSeekPolicy.eligible(false, true, false, false, false))

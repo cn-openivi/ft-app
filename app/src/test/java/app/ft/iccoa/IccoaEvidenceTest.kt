@@ -26,6 +26,7 @@ class IccoaEvidenceTest {
         assertTrue(IccoaEvidence.hint("Toyota", listOf(IccoaEvidence.ADVERTISED_SERVICE)))
         assertFalse(IccoaEvidence.hint("Baidu CarLife", emptyList()))
         assertTrue(IccoaEvidence.hint(null, listOf(IccoaEvidence.REPORTED_SERVICE.uppercase())))
+        assertTrue(IccoaEvidence.hint(null, listOf(IccoaEvidence.RECEIVER_TOKEN_SERVICE_DATA)))
         assertTrue(IccoaEvidence.hint("ICCOA Carlink", emptyList()))
     }
 }

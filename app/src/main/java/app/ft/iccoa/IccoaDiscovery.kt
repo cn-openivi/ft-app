@@ -9,6 +9,7 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.Context
@@ -17,6 +18,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelUuid
 import android.os.SystemClock
 import app.ft.core.DiagLog
 
@@ -46,10 +48,12 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
     private val peers = LinkedHashMap<String, IccoaPeer>()
     private var generation = 0
     private var lastPublish = 0L
+    private var lowPowerScan = false
     private val scanTimeout = Runnable { finishScan() }
     private val gattTimeout = Runnable { failGatt("GATT discovery timed out") }
 
-    fun start(lowPower: Boolean = false) {
+    fun start(lowPower: Boolean = false, knownToken: ByteArray? = null, useFilters: Boolean = lowPower) {
+        lowPowerScan = lowPower
         // Starting a NEW scan must not advertise the interrupted old scan as
         // SCAN_COMPLETE. In recovery mode that false terminal event consumes
         // another retry slot and can exhaust all three attempts immediately.
@@ -93,11 +97,26 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
             scanner = adapter?.bluetoothLeScanner ?: error("No BLE scanner")
             val mode = if (lowPower) ScanSettings.SCAN_MODE_LOW_POWER else ScanSettings.SCAN_MODE_LOW_LATENCY
             val settings = ScanSettings.Builder().setScanMode(mode).setReportDelay(0).build()
+            // Android may suspend unfiltered scanning when the phone is locked.
+            // These advertised UUIDs are hints only; Quick authentication
+            // still requires the pinned OEM identity, not a shared BLE marker.
+            val filters = if (lowPower && useFilters) buildList {
+                add(ScanFilter.Builder().setServiceUuid(
+                    ParcelUuid.fromString(IccoaEvidence.ADVERTISED_SERVICE)).build())
+                add(ScanFilter.Builder().setServiceUuid(
+                    ParcelUuid.fromString(IccoaEvidence.REPORTED_SERVICE)).build())
+                val marker = ParcelUuid.fromString(IccoaEvidence.RECEIVER_TOKEN_SERVICE_DATA)
+                if (knownToken?.size == 16) {
+                    add(ScanFilter.Builder().setServiceData(marker, knownToken).build())
+                } else {
+                    add(ScanFilter.Builder().setServiceData(
+                        marker, byteArrayOf(0), byteArrayOf(0)).build())
+                }
+            } else null
             publish(IccoaPhase.SCANNING)
             DiagLog.i(TAG, "Starting ${if (lowPower) "20s LOW_POWER background" else "60s manual"} BLE scan; " +
-                "phone=${Build.MODEL}; manifest neverForLocation may filter some beacons. " +
-                "Automatic waiting has no overall timeout.")
-            scanner!!.startScan(null, settings, cb)
+                "filters=${filters?.size ?: 0}, phone=${Build.MODEL}, no global waiting timeout")
+            scanner!!.startScan(filters, settings, cb)
             main.postDelayed(scanTimeout, if (lowPower) 20_000L else 60_000L)
         }.onFailure {
             endScan()
@@ -120,6 +139,7 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
             }.orEmpty()
             val raw = hex(record?.bytes ?: byteArrayOf())
             val hint = IccoaEvidence.hint(name, services + record?.serviceData.orEmpty().keys.map { it.toString() })
+            if (lowPowerScan && !hint) return // Avoid logging unrelated parking beacons.
             val tokenBytes = record?.serviceData.orEmpty().entries.firstOrNull {
                 it.key.toString().equals(IccoaEvidence.RECEIVER_TOKEN_SERVICE_DATA, ignoreCase = true)
             }?.value
