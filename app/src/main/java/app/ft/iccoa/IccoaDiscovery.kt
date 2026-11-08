@@ -100,7 +100,7 @@ class IccoaDiscovery(private val context: Context, private val onState: (IccoaDi
             // Android may suspend unfiltered scanning when the phone is locked.
             // These advertised UUIDs are hints only; Quick authentication
             // still requires the pinned OEM identity, not a shared BLE marker.
-            val filters = if (lowPower && useFilters) buildList {
+            val filters: List<ScanFilter>? = if (lowPower && useFilters) mutableListOf<ScanFilter>().apply {
                 add(ScanFilter.Builder().setServiceUuid(
                     ParcelUuid.fromString(IccoaEvidence.ADVERTISED_SERVICE)).build())
                 add(ScanFilter.Builder().setServiceUuid(
