@@ -49,6 +49,42 @@ class CarWidgetReadingsTest {
         assertEquals(60f, CarWidgetReadings.speedKmh(reading, true)!!, 0f)
     }
 
+    @Test fun stationaryOemZeroBearingIsNotMisreportedAsNorth() {
+        val selector = CarGpsSourceSelector()
+        var result = selector.select(null, phone(10_000L), 10_000L)
+        for (t in 11_000L..18_000L step 1_000L) {
+            result = selector.select(
+                car(t, speed = 0f).copy(headingDegrees = 0f), phone(t), t
+            )
+        }
+        assertEquals(CarGpsSourceSelector.Source.ICCOA, result.source)
+        assertEquals(0f, result.headingDegrees!!, 0f) // Preserve OEM raw.
+        assertNull(CarWidgetReadings.courseDegrees(result)) // UI only.
+    }
+
+    @Test fun realMovingNorthIsStillDisplayed() {
+        val selector = CarGpsSourceSelector()
+        var reading = selector.select(null, phone(10_000L), 10_000L)
+        for (t in 11_000L..18_000L step 1_000L) {
+            reading = selector.select(
+                car(t, speed = 18f).copy(headingDegrees = 0f), phone(t), t
+            )
+        }
+        assertEquals(0f, CarWidgetReadings.courseDegrees(reading)!!, 0f)
+    }
+
+    @Test fun stoppedPhoneCourseAlsoRequiresRealMotion() {
+        val selector = CarGpsSourceSelector()
+        val stopped = phone(10_000L).copy(speedKmh = 0f, bearingDegrees = 0f)
+        assertNull(CarWidgetReadings.courseDegrees(
+            selector.select(null, stopped, 10_000L)
+        ))
+        val moving = stopped.copy(speedKmh = 22f)
+        assertEquals(0f, CarWidgetReadings.courseDegrees(
+            selector.select(null, moving, 10_000L)
+        )!!, 0f)
+    }
+
     @Test fun unavailableGpsDoesNotInventLocationOrSpeed() {
         val selector = CarGpsSourceSelector()
         val reading = selector.select(null, null, 10_000L)
