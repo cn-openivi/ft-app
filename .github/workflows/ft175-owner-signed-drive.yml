@@ -1,0 +1,135 @@
+name: FT175 owner-signed full APK for Drive handoff
+
+on:
+  push:
+    branches:
+      - openivi/ft175-owner-signed-drive-20261108
+    paths:
+      - '.github/workflows/ft175-owner-signed-drive.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft175-owner-signed-drive-20261108
+  cancel-in-progress: false
+
+jobs:
+  sign-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-ft175-owner-signed
+    steps:
+      - name: Checkout isolated full FT175 source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Prove application tree is unchanged from integrated CI PASS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD^)" = "d994efd3d5caab176f9b78040f9e2e458b000c2b"
+          test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/ft175-owner-signed-drive.yml"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 175' app/build.gradle.kts
+          echo "SOURCE_SHA=$GITHUB_SHA"
+          echo "APP_SOURCE_BASE_SHA=d994efd3d5caab176f9b78040f9e2e458b000c2b"
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Restore owner-controlled signing key and verify pinned certificate
+        shell: bash
+        env:
+          FT_XA60_SIGNING_BUNDLE_JSON: ${{ secrets.FT_XA60_SIGNING_BUNDLE_JSON }}
+        run: |
+          set -euo pipefail
+          umask 077
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, sys
+          raw = os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON", "")
+          if not raw:
+              sys.exit("Missing owner signing bundle GitHub Secret")
+          bundle = json.loads(raw)
+          assert bundle["format"] == "openivi-ft-xa60-pkcs12-v1"
+          assert bundle["alias"] == "openivi_ft_xa60"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          assert hashlib.sha256(key).hexdigest() == bundle["keystore_sha256"]
+          password = bundle["store_password"]
+          assert password and all(c in "0123456789abcdef" for c in password)
+          private = pathlib.Path(".ft-xa60")
+          private.mkdir(mode=0o700, exist_ok=True)
+          keystore = private / "ft-xa60-owner.p12"
+          keystore.write_bytes(key)
+          keystore.chmod(0o600)
+          pw_file = private / "password.txt"
+          pw_file.write_text(password)
+          pw_file.chmod(0o600)
+          props = pathlib.Path("ft-xa60-signing.properties")
+          props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+password+
+                           "\nkeyAlias=openivi_ft_xa60\nkeyPassword="+password+"\n")
+          props.chmod(0o600)
+          PY
+          actual=$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | awk '{print $1}')
+          expected=e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+          test "$actual" = "$expected"
+          echo "FT_OWNER_CERT_SHA256=$actual" >> "$GITHUB_ENV"
+      - name: Bounded Gradle memory profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+      - name: Re-run combined tests and assemble owner-signed release APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest :app:assembleRelease --stacktrace
+      - name: Verify signed package, signature, ZIP and exact hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          "$bt/apksigner" verify --verbose --print-certs "$apk" | tee "$RUNNER_TEMP/ft-signer-check.txt"
+          grep -iq "$FT_OWNER_CERT_SHA256" "$RUNNER_TEMP/ft-signer-check.txt"
+          "$bt/aapt" dump badging "$apk" | grep -m1 "^package: name='app.ft.xa60' versionCode='175'"
+          if "$bt/aapt" dump badging "$apk" | grep -q '^application-debuggable'; then
+            echo 'REFUSE: APK is debuggable' >&2
+            exit 1
+          fi
+          unzip -t "$apk" >/dev/null
+          unzip -Z1 "$apk" | grep -Fxq 'AndroidManifest.xml'
+          unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
+          mkdir -p verified
+          cp "$apk" verified/ft175-w1-w5-full-owner-signed.apk
+          size=$(stat -c%s verified/ft175-w1-w5-full-owner-signed.apk)
+          test "$size" -gt 100000
+          sha256sum verified/ft175-w1-w5-full-owner-signed.apk | tee verified/SHA256SUMS
+          printf 'git_sha=%s\napp_source_base_sha=d994efd3d5caab176f9b78040f9e2e458b000c2b\npackage=app.ft.xa60\nversion_code=175\nvariant=release\nsigned=true\nsigner_cert_sha256=%s\nsize_bytes=%s\nfield_test=NOT_TESTED\n' "$GITHUB_SHA" "$FT_OWNER_CERT_SHA256" "$size" | tee verified/PROVENANCE.txt
+      - name: Save verified signed APK for Google Drive (no GitHub release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ft175-w1-w5-owner-signed
+          path: verified/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
