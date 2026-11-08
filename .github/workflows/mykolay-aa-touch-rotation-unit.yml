@@ -1,0 +1,68 @@
+name: Mykolay AA touch rotation source-only CI
+
+on:
+  push:
+    branches:
+      - contrib/mykolay-aa-touch-gesture-rotation-20261105
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mykolay-aa-touch-rotation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aa-touch-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GRADLE_USER_HOME: /home/runner/.gradle-mykolay-aa-touch
+    steps:
+      - name: Checkout exact branch commit
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify checkout is the exact CI commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "SOURCE_SHA=$GITHUB_SHA"
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 36
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Compile source and run full JVM regression (no APK)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GRADLE_USER_HOME"
+          cat > "$GRADLE_USER_HOME/gradle.properties" <<'EOF'
+          org.gradle.jvmargs=-Xmx2304m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+          org.gradle.daemon=false
+          org.gradle.parallel=false
+          org.gradle.workers.max=1
+          kotlin.compiler.execution.strategy=in-process
+          kotlin.incremental=false
+          EOF
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 :app:testUnsignedTransitUnitTest --stacktrace
+
+      - name: Assert source-only CI did not produce an APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+            echo 'Unexpected APK: source-only job must not assemble an APK' >&2
+            exit 1
+          fi
