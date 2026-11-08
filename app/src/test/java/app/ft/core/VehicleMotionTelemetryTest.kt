@@ -57,7 +57,12 @@ class VehicleMotionTelemetryTest {
             MotionKind.GYROSCOPE, vector, 11_000L)
         assertEquals(12L, measured.accepted)
         assertEquals(11.0, measured.approximateHz!!, 0.001)
-        assertEquals(12L, VehicleMotionTelemetry.current.value
+        // UI snapshots are intentionally throttled to 250 ms. One later
+        // packet causes a publish without losing any accepted sensor frames.
+        val published = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, vector, 11_300L)
+        assertEquals(13L, published.accepted)
+        assertEquals(13L, VehicleMotionTelemetry.current.value
             .getValue(MotionSource.ICCOA).gyro.accepted)
     }
 
