@@ -38,18 +38,45 @@ class VehicleMotionTelemetryTest {
         assertEquals(4_000L, state.ageMs(14_000L))
     }
 
-    @Test fun frequencyEstimateUsesNewValidFramesAndUiThrottlePreservesCounts() {
+    @Test fun actualImuRateUsesOneSecondSampleWindowNotInterarrivalSpike() {
+        // A single 1 ms pair is NOT 1000 Hz sustained sensor evidence.
+        val vector = MotionVector(1.0, 2.0, 3.0)
         VehicleMotionTelemetry.accept(MotionSource.ICCOA,
-            MotionKind.GYROSCOPE, MotionVector(1.0, 2.0, 3.0), 10_000L)
-        val second = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
-            MotionKind.GYROSCOPE, MotionVector(1.0, 2.0, 3.0), 10_100L)
-        assertEquals(10.0, second.approximateHz!!, 0.001)
-        val third = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
-            MotionKind.GYROSCOPE, MotionVector(1.0, 2.0, 3.0), 10_300L)
-        assertEquals(3L, third.accepted)
-        assertEquals(9.0, third.approximateHz!!, 0.001)
-        assertEquals(3L, VehicleMotionTelemetry.current.value
+            MotionKind.GYROSCOPE, vector, 10_000L)
+        val burst = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, vector, 10_001L)
+        assertNull(burst.approximateHz)
+
+        // Actual 10 Hz sustained over 1 second (11 samples including t0)
+        // plus the 1 ms burst: 12 accepted samples / ~1 s.
+        for (t in 10_100L..10_900L step 100L) {
+            VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+                MotionKind.GYROSCOPE, vector, t)
+        }
+        val measured = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, vector, 11_000L)
+        assertEquals(11L, measured.accepted)
+        assertEquals(10.0, measured.approximateHz!!, 0.001)
+        assertEquals(11L, VehicleMotionTelemetry.current.value
             .getValue(MotionSource.ICCOA).gyro.accepted)
+    }
+
+    @Test fun invalidFramesAndLongGapsCannotMasqueradeAsCurrentFrequency() {
+        val vector = MotionVector(1.0, 2.0, 3.0)
+        VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, vector, 20_000L)
+        for (t in 20_100L..21_000L step 100L)
+            VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+                MotionKind.GYROSCOPE, vector, t)
+        val invalid = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, null, 21_100L)
+        assertEquals(10.0, invalid.approximateHz!!, 0.001)
+        assertEquals(1L, invalid.rejected)
+        // Reconnect / stalled stream clears the old sample rate.
+        val resumed = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
+            MotionKind.GYROSCOPE, vector, 25_000L)
+        assertNull(resumed.approximateHz)
+        assertEquals(12L, resumed.accepted)
     }
 
     @Test fun clearingOneProtocolDoesNotClearTheOther() {
