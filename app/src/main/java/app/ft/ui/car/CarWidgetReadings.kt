@@ -22,6 +22,24 @@ internal object CarWidgetReadings {
         }
     }
 
+    /**
+     * Course-over-ground is not a compass reading: at a standstill the OEM
+     * GPS reports headingRaw=0, which must not be presented as true north.
+     * Use the fresh selected source's measured speed, NOT smoothed display
+     * speed or a GearInfo frame. Preserve a genuine moving 0° course.
+     */
+    fun courseDegrees(reading: CarGpsSourceSelector.Reading): Float? {
+        val physicalSpeedKmh = when (reading.source) {
+            CarGpsSourceSelector.Source.ICCOA -> reading.car?.speedKmh
+            CarGpsSourceSelector.Source.PHONE -> reading.phone?.speedKmh
+        }
+        // The OEM CarLink rounds speed to integral m/s; below 1 m/s its
+        // course is not a reliable direction-of-travel measurement.
+        if (physicalSpeedKmh == null || !physicalSpeedKmh.isFinite() ||
+            physicalSpeedKmh < 3.6f) return null
+        return reading.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
+    }
+
     /** No STALE=0s labels. A short GPS pause does not switch the source. */
     fun sourceLabel(reading: CarGpsSourceSelector.Reading): String =
         if (reading.lastPacketAgeMs >= 2_000L)
