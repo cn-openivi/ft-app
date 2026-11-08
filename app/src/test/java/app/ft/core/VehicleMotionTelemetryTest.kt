@@ -47,17 +47,17 @@ class VehicleMotionTelemetryTest {
             MotionKind.GYROSCOPE, vector, 10_001L)
         assertNull(burst.approximateHz)
 
-        // Actual 10 Hz sustained over 1 second (11 samples including t0)
-        // plus the 1 ms burst: 12 accepted samples / ~1 s.
+        // Actual 10 Hz cadence over one second, plus one extra burst:
+        // the elapsed-window estimate is ~11 Hz, NOT 1000 Hz.
         for (t in 10_100L..10_900L step 100L) {
             VehicleMotionTelemetry.accept(MotionSource.ICCOA,
                 MotionKind.GYROSCOPE, vector, t)
         }
         val measured = VehicleMotionTelemetry.accept(MotionSource.ICCOA,
             MotionKind.GYROSCOPE, vector, 11_000L)
-        assertEquals(11L, measured.accepted)
-        assertEquals(10.0, measured.approximateHz!!, 0.001)
-        assertEquals(11L, VehicleMotionTelemetry.current.value
+        assertEquals(12L, measured.accepted)
+        assertEquals(11.0, measured.approximateHz!!, 0.001)
+        assertEquals(12L, VehicleMotionTelemetry.current.value
             .getValue(MotionSource.ICCOA).gyro.accepted)
     }
 
