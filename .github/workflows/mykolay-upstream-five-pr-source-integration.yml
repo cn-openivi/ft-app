@@ -58,7 +58,12 @@ jobs:
             esac
             test "$(git cat-file -t "$sha")" = commit
             echo "APPLY_PR_${entry}_SOURCE_SHA=$sha"
-            git cherry-pick -x "$sha"
+            if ! git cherry-pick -x "$sha"; then
+              echo "CHERRY_PICK_CONFLICT_PR=$entry"
+              git status --short
+              git diff -- app/src/main/java/app/ft/aa/AaVideoDecoder.kt | head -500
+              exit 1
+            fi
           done
           echo "COMBINED_SOURCE_SHA=$(git rev-parse HEAD)"
           git log --oneline -6
