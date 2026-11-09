@@ -32,6 +32,33 @@ class DeadReckoningEkfTest {
         assertEquals(10.0, position.secondsSinceGnss, 1e-10)
     }
 
+    @Test fun verifiedReverseMovesBehindCarAndKeepsPositivePathUncertainty() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0))
+        val initialUncertainty = dr.estimate()!!.horizontalUncertaintyMetres
+        // Signed velocity may come ONLY from a later independently verified
+        // fresh REVERSE gear + wheel/yaw adapter. This test proves maths,
+        // not that the FAW ICCOA rounded gyro has become usable.
+        val reversed = dr.predict(1.0, -5.0, 0.0, true)!!
+        assertEquals(0.0, reversed.eastMetres, 1e-8)
+        assertEquals(-5.0, reversed.northMetres, 1e-8)
+        assertEquals(0.0, reversed.headingDegrees, 1e-8)
+        assertTrue(reversed.horizontalUncertaintyMetres > initialUncertainty)
+        // Verified travelled path is abs(-5), not -5 or zero. It admits a
+        // plausible GNSS fix behind the previously anchored position.
+        assertTrue(dr.correctGnss(0.0, -5.0, 2.0, genuineGnss = true))
+        assertFalse(dr.estimate()!!.estimated)
+    }
+
+    @Test fun unverifiedReverseOrImpossibleMagnitudeCannotMoveDeadReckoning() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0))
+        assertNull(dr.predict(1.0, -5.0, 0.0, wheelAndGyroVerified = false))
+        assertNull(dr.predict(1.0, -66.0, 0.0, wheelAndGyroVerified = true))
+        assertEquals(0.0, dr.estimate()!!.northMetres, 0.0)
+        assertEquals(0.0, dr.estimate()!!.secondsSinceGnss, 0.0)
+    }
+
     @Test fun ninetyDegreeTurnUsesYawAndMidpointIntegration() {
         val dr = DeadReckoningEkf()
         dr.anchor(0.0, 0.0, 0.0, 1.0)
