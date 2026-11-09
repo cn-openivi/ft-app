@@ -49,7 +49,13 @@ internal object AaCarGps {
             gps.int32(6, (speed * 1_000L).toInt())
         }
         val bearing = location.headingRaw
+        // Course over ground is undefined at a standstill. FAW CarLink
+        // floors both speed and bearing; a raw zero at zero speed is not
+        // evidence that the car is physically pointing north. Preserve
+        // genuine moving zero-degree north without modifying raw diagnostics.
         if (location.headingUnit == "ANDROID_LOCATION_DEGREES_FLOORED" &&
+            location.speedUnit == "ANDROID_LOCATION_MPS_FLOORED" &&
+            speed != null && speed in 1L..125L &&
             bearing != null && bearing in 0L..359L) {
             gps.int32(7, (bearing * 1_000_000L).toInt())
         }
