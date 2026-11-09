@@ -520,8 +520,8 @@ class IccoaService : Service() {
             forceCurrentPin = forceCurrentPin)
         session = connection
         main.postDelayed({
-            if (generation == token && session === connection && sensorLiveness.gearWithoutGps())
-                DiagLog.w("ICCOA", "Sensor lane alive (GearInfo=${sensorLiveness.gearFrames}), but zero OEM GPS frames in THIS session; " +
+            if (generation == token && session === connection && sensorLiveness.gearWithoutAcceptedGps())
+                DiagLog.w("ICCOA", "Sensor lane alive (GearInfo=${sensorLiveness.gearFrames}), but zero fresh OEM GPS locations in THIS session;  " +
                     "real guided navigation may be required to activate the car's GPS producer")
         }, 20_000L)
         // Publish only after the captured session has been initialized: AA callbacks
