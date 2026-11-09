@@ -94,8 +94,11 @@ internal class DeadReckoningEkf {
 
     /**
      * Prediction must be explicitly authorised by verified/calibrated wheel
-     * speed and verified mapped OEM yaw. Never infer verification from a
-     * present-but-undecoded sensor packet.
+     * SIGNED speed and verified mapped OEM yaw. Negative speed is permitted
+     * only when the upstream adapter has independently verified a fresh
+     * REVERSE gear + calibrated wheel velocity; callers must NEVER infer
+     * reverse from a missing/old gear field or raw ICCOA speed alone.
+     * Never infer verification from a present-but-undecoded sensor packet.
      */
     fun predict(
         dtSeconds: Double,
@@ -108,7 +111,7 @@ internal class DeadReckoningEkf {
         if (!initialized || !wheelAndGyroVerified ||
             !dtSeconds.isFinite() || dtSeconds !in 0.001..1.0 ||
             !calibratedSpeedMetresPerSecond.isFinite() ||
-            calibratedSpeedMetresPerSecond !in 0.0..65.0 ||
+            abs(calibratedSpeedMetresPerSecond) > 65.0 ||
             !vehicleYawRateRadiansPerSecond.isFinite() ||
             abs(vehicleYawRateRadiansPerSecond) > 3.0 ||
             (accelerationVerified && (longitudinalAccelerationMetresPerSecond2 == null ||
@@ -135,7 +138,9 @@ internal class DeadReckoningEkf {
         f[HEADING * STATE_SIZE + GYRO_BIAS] = -dtSeconds
 
         val q = DoubleArray(STATE_SIZE * STATE_SIZE)
-        val travelledStdMetres = 0.15 + 0.03 * distance
+        // Reverse is signed displacement, but uncertainty scales with the
+        // absolute path length, never with signed/net travel.
+        val travelledStdMetres = 0.15 + 0.03 * abs(distance)
         // An independently verified longitudinal accelerometer can flag
         // disagreement with wheel-speed derivatives (slip or transient lag).
         // Increase EKF motion uncertainty; do not create a second filter,
@@ -154,7 +159,7 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(next, f, q)
         previousWheelSpeedMetresPerSecond = calibratedSpeedMetresPerSecond
-        odometryPlausibility.onVerifiedMotion(distance)
+        odometryPlausibility.onVerifiedMotion(abs(distance))
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
