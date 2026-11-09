@@ -28,7 +28,10 @@ internal class IccoaSensorSessionLiveness {
         if (accepted) acceptedGearFrames++
     }
 
-    fun gearWithoutGps(): Boolean = gearFrames > 0L && gpsFrames == 0L
+    // A decoded-but-stale GPS packet is still NO usable position. Do not
+    // suppress the diagnostic merely because non-fresh protobufs arrived.
+    fun gearWithoutAcceptedGps(): Boolean =
+        gearFrames > 0L && acceptedGpsFrames == 0L
 
     fun reset() {
         gpsFrames = 0L
