@@ -20,7 +20,10 @@ data class VehicleLocation(
     // OEM GearInfo and OEM GPS speed are different raw units; never conflate them.
     val gearSpeedRaw: Long? = null,
     val gearRaw: Long? = null,
+    // GearInfo can update speed without carrying a new gear enum. Never
+    // refresh a physical gear's age from a speed-only packet.
     val gearAtMs: Long = 0L,
+    val gearSpeedAtMs: Long = 0L,
     val headingRaw: Long? = null,
     val speedKmh: Float? = null,
     val headingDegrees: Float? = null,
@@ -36,6 +39,11 @@ data class VehicleLocation(
 
     fun positionFresh(nowMs: Long = System.currentTimeMillis()) =
         positionAtMs > 0L && nowMs >= positionAtMs && nowMs - positionAtMs <= 3_000L
+
+    /** OEM GearInfo speed, never a GNSS fix or proof of calibrated wheel speed. */
+    fun gearSpeedFresh(nowMs: Long = System.currentTimeMillis()) =
+        source == "ICCOA" && gearSpeedRaw != null && gearSpeedAtMs > 0L &&
+            nowMs >= gearSpeedAtMs && nowMs - gearSpeedAtMs <= 3_000L
 
     val displayLatitude: Double? get() = latitude?.takeIf { it.isFinite() && it in -90.0..90.0 }
     val displayLongitude: Double? get() = longitude?.takeIf { it.isFinite() && it in -180.0..180.0 }
@@ -91,7 +99,8 @@ object VehicleTelemetry {
         // A new GPS frame must not erase a recent, separately sourced GearInfo frame.
         val preserved = if (location.source == "ICCOA" && previous != null)
             location.copy(gearSpeedRaw = previous.gearSpeedRaw,
-                gearRaw = previous.gearRaw, gearAtMs = previous.gearAtMs) else location
+                gearRaw = previous.gearRaw, gearAtMs = previous.gearAtMs,
+                gearSpeedAtMs = previous.gearSpeedAtMs) else location
         _current.value = preserved
         note(preserved)
     }
@@ -116,6 +125,7 @@ object VehicleTelemetry {
         _current.value = (old ?: VehicleLocation("ICCOA", now, positionAtMs = 0L)).copy(
             receivedAtMs = now,
             gearSpeedRaw = rawSpeed,
+            gearSpeedAtMs = now,
             gearRaw = gearRaw ?: old?.gearRaw,
             gearAtMs = if (gearRaw != null) now else old?.gearAtMs ?: 0L,
             // Keep unknown GPS raw speed distinct from the received GearInfo integer.
