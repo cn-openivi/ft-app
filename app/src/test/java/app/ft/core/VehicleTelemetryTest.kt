@@ -120,6 +120,45 @@ class VehicleTelemetryTest {
         }
     }
 
+    @Test fun iccoaSpeedOnlyPacketDoesNotRefreshGearOrGpsClock() {
+        val now = System.currentTimeMillis()
+        val earlier = now - 5_000L
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            VehicleTelemetry.publish(VehicleLocation(
+                source = "ICCOA", receivedAtMs = earlier,
+                positionAtMs = earlier, latitude = 55.7, longitude = 37.6,
+                gearSpeedRaw = 10L, gearSpeedAtMs = earlier,
+                gearRaw = 2L, gearAtMs = earlier,
+                coordinatesUnit = "ANDROID_LOCATION_WGS84"
+            ))
+            // GearInfo method 6 can contain uint32 speed but no gear enum.
+            VehicleTelemetry.updateIccoaSpeed(25L, gearRaw = null)
+            val updated = VehicleTelemetry.current.value!!
+            assertEquals(25L, updated.gearSpeedRaw)
+            assertTrue(updated.gearSpeedFresh())
+            assertEquals(earlier, updated.gearAtMs)
+            assertEquals(2L, updated.gearRaw)
+            assertEquals(earlier, updated.positionAtMs)
+            assertFalse(updated.positionFresh())
+            assertFalse(updated.copy(gearSpeedAtMs = earlier).gearSpeedFresh(now))
+            // A later genuine GNSS fix may carry forward the *separate*
+            // speed clock, but must not make the old transmission gear fresh.
+            VehicleTelemetry.publish(VehicleLocation(
+                source = "ICCOA", receivedAtMs = System.currentTimeMillis(),
+                positionAtMs = System.currentTimeMillis(),
+                latitude = 55.701, longitude = 37.601,
+                coordinatesUnit = "ANDROID_LOCATION_WGS84"
+            ))
+            val merged = VehicleTelemetry.current.value!!
+            assertTrue(merged.gearSpeedFresh())
+            assertEquals(earlier, merged.gearAtMs)
+            assertEquals(25L, merged.gearSpeedRaw)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun gearFramesRetainLastKnownGpsButDoNotMakeItFresh() {
         val now = System.currentTimeMillis()
         val stalePosition = now - 10_000L
