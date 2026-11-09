@@ -163,10 +163,7 @@ class IccoaService : Service() {
     private var lastVideoConfig: IccoaVideoConfig? = null
     private val audioPlayerState = IccoaAudioPlayerState()
     private val audioStateRetry = Runnable { flushAudioState() }
-    private var gpsFrameCount = 0L
-    private var gpsFixCount = 0L
-    private var gearSpeedFrames = 0L
-    private var gearSpeedValid = 0L
+    private val sensorLiveness = IccoaSensorSessionLiveness()
     private var lastCarGps: IccoaGpsFix? = null
     private fun onSensorMessage(method: Int, body: ByteArray) {
         if (method == IccoaInertialWire.GYRO_METHOD || method == IccoaInertialWire.ACCEL_METHOD) {
@@ -198,9 +195,9 @@ class IccoaService : Service() {
             return
         }
         if (method == IccoaGearWire.SENSOR_METHOD) {
-            gearSpeedFrames++
-            if (IccoaGearWire.accept(body)) {
-                gearSpeedValid++
+            val acceptedGear = IccoaGearWire.accept(body)
+            sensorLiveness.onGear(acceptedGear)
+            if (acceptedGear) {
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
                     VehicleTraceRecorder.gear(
@@ -209,8 +206,9 @@ class IccoaService : Service() {
                     )
                 }
             }
-            if (gearSpeedFrames <= 3 || gearSpeedFrames and (gearSpeedFrames - 1) == 0L) {
-                DiagLog.i("ICCOA", "SENSOR GearInfo count=$gearSpeedFrames valid=$gearSpeedValid " +
+            val gearFrames = sensorLiveness.gearFrames
+            if (gearFrames <= 3L || gearFrames and (gearFrames - 1L) == 0L) {
+                DiagLog.i("ICCOA", "SENSOR GearInfo count=$gearFrames valid=${sensorLiveness.acceptedGearFrames} " +
                     "payloadBytes=${body.size} unit=unconfirmed " +
                     "rawGear=${VehicleTelemetry.current.value?.gearRaw ?: "NA"} " +
                     "rawSpeed=${VehicleTelemetry.current.value?.gearSpeedRaw ?: "NA"}")
@@ -218,13 +216,14 @@ class IccoaService : Service() {
             return
         }
         if (method != IccoaGpsWire.GPS_METHOD) return
-        gpsFrameCount++
         val fix = IccoaGpsWire.decode(body)
+        val receivedAtMs = System.currentTimeMillis()
+        val measuredAtMs = fix?.let {
+            IccoaGpsTimestampGate.measuredAtMs(it.timestampRaw, receivedAtMs)
+        }
+        sensorLiveness.onGps(measuredAtMs != null)
         if (fix != null) {
-            gpsFixCount++
             lastCarGps = fix
-            val receivedAtMs = System.currentTimeMillis()
-            val measuredAtMs = IccoaGpsTimestampGate.measuredAtMs(fix.timestampRaw, receivedAtMs)
             // Always preserve the raw received frame in the opt-in trace, even
             // when its measurement age is unacceptable for UI/AA/DR.
             if (measuredAtMs != null) VehicleTelemetry.publish(VehicleLocation(
@@ -252,8 +251,9 @@ class IccoaService : Service() {
                 )
             }
         }
-        if (gpsFrameCount <= 3 || gpsFrameCount and (gpsFrameCount - 1) == 0L) {
-            DiagLog.i("ICCOA", "SENSOR GPS received=$gpsFrameCount valid=$gpsFixCount " +
+        val gpsFrames = sensorLiveness.gpsFrames
+        if (gpsFrames <= 3L || gpsFrames and (gpsFrames - 1L) == 0L) {
+            DiagLog.i("ICCOA", "SENSOR GPS received=$gpsFrames accepted=${sensorLiveness.acceptedGpsFrames} " +
                 "payloadBytes=${body.size} fixPresent=${fix != null} " +
                 "satellitesUsed=${fix?.satellitesUsed ?: -1} " +
                 "satellitesVisible=${fix?.satellitesVisible ?: -1}")
@@ -520,8 +520,8 @@ class IccoaService : Service() {
             forceCurrentPin = forceCurrentPin)
         session = connection
         main.postDelayed({
-            if (generation == token && session === connection && gearSpeedFrames > 0L && gpsFrameCount == 0L)
-                DiagLog.w("ICCOA", "Sensor lane alive (GearInfo=$gearSpeedFrames), but zero OEM GPS frames; " +
+            if (generation == token && session === connection && sensorLiveness.gearWithoutGps())
+                DiagLog.w("ICCOA", "Sensor lane alive (GearInfo=${sensorLiveness.gearFrames}), but zero OEM GPS frames in THIS session; " +
                     "real guided navigation may be required to activate the car's GPS producer")
         }, 20_000L)
         // Publish only after the captured session has been initialized: AA callbacks
@@ -673,6 +673,9 @@ class IccoaService : Service() {
         projection?.stop()
         lastVideoConfig = null
         lastCarGps = null
+        // A reconnect starts a fresh sensor evidence epoch. Counts from the
+        // previous car session must not suppress missing-OEM-GPS diagnostics.
+        sensorLiveness.reset()
         VehicleTelemetry.clear("ICCOA")
         VehicleMotionTelemetry.clear(MotionSource.ICCOA)
         _state.update { it.copy(pinRequired = false, connecting = false, connected = false) }
