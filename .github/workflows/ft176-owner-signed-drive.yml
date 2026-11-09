@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ft176-owner-signed-drive-20261108
+  group: ft176-owner-signed-drive-20261109
   cancel-in-progress: false
 
 jobs:
@@ -32,7 +32,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD^)" = "c558f680452b219bdd1dc685e59eb447c0cefd9d"
+          git merge-base --is-ancestor "c558f680452b219bdd1dc685e59eb447c0cefd9d" HEAD
+          test "$(git diff --name-only c558f680452b219bdd1dc685e59eb447c0cefd9d HEAD)" = ".github/workflows/ft176-owner-signed-drive.yml"
           test "$(git diff --name-only HEAD^ HEAD)" = ".github/workflows/ft176-owner-signed-drive.yml"
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 176' app/build.gradle.kts
@@ -121,9 +122,9 @@ jobs:
           unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
           mkdir -p verified
           cp "$apk" verified/FT176_XA60_ROAD_READY_FULL_OWNER_SIGNED.apk
-          size=$(stat -c%s verified/ft176-road-ready-full-owner-signed.apk)
+          size=$(stat -c%s verified/FT176_XA60_ROAD_READY_FULL_OWNER_SIGNED.apk)
           test "$size" -gt 100000
-          sha256sum verified/ft176-road-ready-full-owner-signed.apk | tee verified/SHA256SUMS
+          sha256sum verified/FT176_XA60_ROAD_READY_FULL_OWNER_SIGNED.apk | tee verified/SHA256SUMS
           printf 'git_sha=%s\napp_source_base_sha=c558f680452b219bdd1dc685e59eb447c0cefd9d\npackage=app.ft.xa60\nversion_code=176\nvariant=release\nsigned=true\nsigner_cert_sha256=%s\nsize_bytes=%s\nfield_test=NOT_TESTED;iccoa_reconnect=FIELD_PENDING;aa_location_subscription=UNKNOWN;verified_dr_yaw=UNKNOWN\n' "$GITHUB_SHA" "$FT_OWNER_CERT_SHA256" "$size" | tee verified/PROVENANCE.txt
       - name: Save verified FT176 signed APK for Drive (NO public release)
         uses: actions/upload-artifact@v4
