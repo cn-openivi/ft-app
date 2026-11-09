@@ -54,9 +54,9 @@ class AaCarGpsTest {
         assertEquals(setOf(2, 3, 6, 7), gps.fields.keys)
     }
 
-    @Test fun validStationaryOemGpsDoesNotOmitZeroSpeedOrNorthHeading() {
-        // Zero is a measured value, not a missing field; the phone must be
-        // able to distinguish a stationary car from absent speed metadata.
+    @Test fun stationaryCarLocationKeepsZeroSpeedWithoutInventingNorthHeading() {
+        // The FAW CarLink OEM floors Android Location speed and course. A
+        // stationary 0-degree COG is not physical compass north.
         val stopped = car(1.0, 2.0).copy(
             speedRaw = 0L, headingRaw = 0L,
             speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
@@ -65,10 +65,30 @@ class AaCarGpsTest {
         val body = ProtoReader(AaCarGps.event(stopped, 1_500L)!!).message(1)!!
         assertTrue(body.has(6))
         assertEquals(0, body.int(6))
-        assertTrue(body.has(7))
-        assertEquals(0, body.int(7))
+        assertFalse(body.has(7)) // Optional COG unavailable when stopped.
         assertFalse(body.has(4)) // Unknown accuracy was not fabricated.
         assertFalse(body.has(5)) // Unknown altitude was not fabricated.
+    }
+
+    @Test fun genuineMovingNorthIsNotConfusedWithStoppedZeroBearing() {
+        val moving = car(1.0, 2.0).copy(
+            speedRaw = 5L, headingRaw = 0L,
+            speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
+            headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED"
+        )
+        val message = ProtoReader(AaCarGps.event(moving, 1_500L)!!).message(1)!!
+        assertEquals(5_000, message.int(6))
+        assertTrue(message.has(7))
+        assertEquals(0, message.int(7))
+
+        // Even a nonzero OEM bearing at zero speed cannot reliably describe
+        // the moving direction. Raw OEM fields remain available in logs.
+        val stopped = moving.copy(speedRaw = 0L, headingRaw = 173L)
+        assertFalse(ProtoReader(AaCarGps.event(stopped, 1_500L)!!)
+            .message(1)!!.has(7))
+        val unverifiedSpeed = moving.copy(speedUnit = "UNKNOWN")
+        assertFalse(ProtoReader(AaCarGps.event(unverifiedSpeed, 1_500L)!!)
+            .message(1)!!.has(7))
     }
 
     @Test fun unknownOrUnrelatedSpeedAndBearingMustNotEnterAaLocation() {
