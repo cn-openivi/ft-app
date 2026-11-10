@@ -51,7 +51,8 @@ internal object AaCarGps {
             val altitudeE2 = altitude * 100.0
             if (altitudeE2.isFinite() && altitudeE2 >= Int.MIN_VALUE &&
                 altitudeE2 <= Int.MAX_VALUE) {
-                gps.int32(5, altitudeE2.roundToInt())
+                // Signed int32 negative altitude must be encoded as a 10-byte varint.
+                gps.varint(5, altitudeE2.roundToInt().toLong())
             }
         }
         val speed = location.speedRaw
@@ -113,7 +114,8 @@ internal object AaCarGps {
     fun satellitesEvent(location: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
         if (location == null || location.source != "ICCOA" ||
             location.coordinatesUnit != CRS || !location.positionFresh(nowMs) ||
-            location.displayLatitude == null || location.displayLongitude == null) return null
+            location.displayLatitude == null || location.displayLongitude == null ||
+            (location.displayLatitude == 0.0 && location.displayLongitude == 0.0)) return null
         val view = location.satellitesVisible ?: return null
         val used = location.satellitesUsed ?: return null
         if (view !in 0L..255L || used !in 0L..255L) return null

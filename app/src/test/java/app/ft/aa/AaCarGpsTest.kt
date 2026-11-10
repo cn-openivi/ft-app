@@ -218,6 +218,17 @@ class AaCarGpsTest {
         // Antenna state/PDOP have no equivalent fields in AA LOCATION or GPS_SATELLITES.
     }
 
+    @Test fun negativeOemAltitudeUsesCanonicalSignedInt32() {
+        val sample = car(55.7, 37.6).copy(
+            altitudeMeters = -50.25, altitudeUnit = "ANDROID_LOCATION_METRES")
+        val packet = AaCarGps.event(sample, 1_500L)!!
+        val body = ProtoReader(packet).message(1)!!
+        assertEquals(-5_025, body.int(5))
+        // Canonical protobuf int32 -5025 is sign-extended, not truncated to uint32.
+        val bytes = packet.toList()
+        assertTrue(bytes.contains(0x28.toByte()))
+    }
+
     @Test fun unverifiedAltitudeCannotBeForwardedAsAaAltitude() {
         val sample = car(55.7, 37.6).copy(altitudeMeters = 112.5, altitudeUnit = "UNKNOWN")
         assertFalse(ProtoReader(AaCarGps.event(sample, 1_500L)!!).message(1)!!.has(5))

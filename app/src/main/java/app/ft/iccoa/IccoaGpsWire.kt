@@ -16,7 +16,14 @@ internal data class IccoaGpsFix(
     val satellitesVisible: Long,
     val timestampRaw: Long,
     /** Proto3 zero and an absent field are different for altitude diagnostics. */
-    val altitudePresent: Boolean = false
+    val altitudePresent: Boolean = false,
+    val antennaStatePresent: Boolean = false,
+    val pdopPresent: Boolean = false,
+    val speedPresent: Boolean = false,
+    val headingPresent: Boolean = false,
+    val satellitesUsedPresent: Boolean = false,
+    val satellitesVisiblePresent: Boolean = false,
+    val timestampPresent: Boolean = false
 )
 
 internal object IccoaGpsWire {
@@ -72,6 +79,7 @@ internal object IccoaGpsWire {
         var altitude = 0.0
         var altitudePresent = false
         val numbers = LongArray(11)
+        val present = BooleanArray(11)
         fun varint(): Long {
             var value = 0L
             for (index in 0 until 10) {
@@ -98,7 +106,10 @@ internal object IccoaGpsWire {
                 when (wire) {
                     0 -> {
                         val value = varint()
-                        if (field in 4..10) numbers[field] = value
+                        if (field in 4..10) {
+                            numbers[field] = value
+                            present[field] = true
+                        }
                     }
                     1 -> {
                         val value = fixed64()
@@ -123,7 +134,11 @@ internal object IccoaGpsWire {
             require(lat in -90.0..90.0 && lon in -180.0..180.0)
             require(numbers[8] <= 255 && numbers[9] <= 255)
             IccoaGpsFix(lat, lon, altitude, numbers[4], numbers[5], numbers[6],
-                numbers[7], numbers[8], numbers[9], numbers[10], altitudePresent)
+                numbers[7], numbers[8], numbers[9], numbers[10], altitudePresent,
+                antennaStatePresent = present[4], pdopPresent = present[5],
+                speedPresent = present[6], headingPresent = present[7],
+                satellitesUsedPresent = present[8], satellitesVisiblePresent = present[9],
+                timestampPresent = present[10])
         }.getOrNull()
     }
 }

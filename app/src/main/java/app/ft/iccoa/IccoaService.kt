@@ -233,16 +233,20 @@ class IccoaService : Service() {
                 // OEM CarLinkSensorMgr reads Android Location.getLatitude/Longitude.
                 // WGS84 is the Android API contract; confirm actual HU values on-road.
                 coordinatesUnit = "ANDROID_LOCATION_WGS84",
-                speedRaw = fix.speedRaw, headingRaw = fix.headingRaw,
-                speedKmh = IccoaGpsUnits.speedKmh(fix.speedRaw),
-                headingDegrees = IccoaGpsUnits.headingDegrees(fix.headingRaw),
+                speedRaw = fix.speedRaw.takeIf { fix.speedPresent },
+                headingRaw = fix.headingRaw.takeIf { fix.headingPresent },
+                speedKmh = fix.speedRaw.takeIf { fix.speedPresent }?.let(IccoaGpsUnits::speedKmh),
+                headingDegrees = fix.headingRaw.takeIf { fix.headingPresent }
+                    ?.let(IccoaGpsUnits::headingDegrees),
                 speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
                 headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED",
-                satellitesUsed = fix.satellitesUsed, satellitesVisible = fix.satellitesVisible,
+                satellitesUsed = fix.satellitesUsed.takeIf { fix.satellitesUsedPresent },
+                satellitesVisible = fix.satellitesVisible.takeIf { fix.satellitesVisiblePresent },
                 altitudeMeters = fix.altitude.takeIf { fix.altitudePresent },
                 altitudeUnit = if (fix.altitudePresent) "ANDROID_LOCATION_METRES" else "UNKNOWN",
-                antennaStateRaw = fix.antennaState, pdopRaw = fix.pdop,
-                deviceTimestampRaw = fix.timestampRaw
+                antennaStateRaw = fix.antennaState.takeIf { fix.antennaStatePresent },
+                pdopRaw = fix.pdop.takeIf { fix.pdopPresent },
+                deviceTimestampRaw = fix.timestampRaw.takeIf { fix.timestampPresent }
             )) else DiagLog.w("ICCOA", "OEM GPS measurement rejected: unverified/stale/future timestamp; " +
                 "received=$receivedAtMs rawTs=${fix.timestampRaw} (coordinates omitted)")
             if (FTApp.instance.prefs.vehicleCoordinateLogging) {
