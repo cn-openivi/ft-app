@@ -2,161 +2,118 @@ package app.ft.ui.car
 
 import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
+import app.ft.dr.DrNavigationFix
 
 /**
- * FT widget source hysteresis, independent of the Android Auto sensor channel.
+ * Owner policy: CAR GNSS -> verified vehicle DR -> UNKNOWN, NEVER auto PHONE.
+ * The PHONE source is used only when explicitly selected in Settings.
  *
- * The car has priority. Do NOT fall back because a GPS coordinate is >3s old,
- * and do NOT allow GearInfo traffic to masquerade as a new GPS fix.
- * Change source only after a sustained 7s GPS gap / 7s recovery.
- * This is the FT on-screen source selector, independent of Android Auto's
- * explicit LOCATION subscription and the TinyEKF GNSS-reference gate.
+ * A five-second live-GNSS gap is a loss/status boundary, NOT an artificial
+ * hold before forwarding new OEM GPS events to AA. Separate AA subscriptions
+ * and TinyEKF admission/uncertainty gates still apply.
  */
 internal class CarGpsSourceSelector(
-    private val switchAfterMs: Long = 7_000L,
-    private val maxRecoveryGapMs: Long = 3_500L,
+    private val signalLossAfterMs: Long = 5_000L,
     private val onTransition: (Source, Source, Long) -> Unit = { _, _, _ -> }
 ) {
-    init {
-        require(switchAfterMs in 5_000L..10_000L)
-        require(maxRecoveryGapMs in 1_000L until switchAfterMs)
-    }
+    init { require(signalLossAfterMs == 5_000L) }
 
-    enum class Source { ICCOA, PHONE }
+    enum class Source { ICCOA, DR, PHONE, UNKNOWN }
 
     data class Reading(
         val source: Source,
         val car: VehicleLocation?,
         val phone: CarInfo.PhoneGpsFix?,
+        val dr: DrNavigationFix?,
         val lastPacketAgeMs: Long,
         val speedKmh: Float?
     ) {
-        val latitude: Double? get() = if (source == Source.ICCOA)
-            car?.displayLatitude else phone?.latitude
-        val longitude: Double? get() = if (source == Source.ICCOA)
-            car?.displayLongitude else phone?.longitude
-        val headingDegrees: Float? get() = (if (source == Source.ICCOA)
-            car?.headingDegrees else phone?.bearingDegrees)
-            ?.takeIf { it.isFinite() && it >= 0f && it <= 360f }
+        val latitude: Double? get() = when (source) {
+            Source.ICCOA -> car?.displayLatitude
+            Source.DR -> dr?.latitude
+            Source.PHONE -> phone?.latitude
+            Source.UNKNOWN -> null
+        }
+        val longitude: Double? get() = when (source) {
+            Source.ICCOA -> car?.displayLongitude
+            Source.DR -> dr?.longitude
+            Source.PHONE -> phone?.longitude
+            Source.UNKNOWN -> null
+        }
+        val headingDegrees: Float? get() = (when (source) {
+            Source.ICCOA -> car?.headingDegrees
+            Source.DR -> dr?.headingDegrees?.toFloat()
+            Source.PHONE -> phone?.bearingDegrees
+            Source.UNKNOWN -> null
+        })?.takeIf { it.isFinite() && it in 0f..360f }
         val label: String get() = source.name
     }
 
-    private var source = Source.PHONE
-    private var lastObservedCarPositionMs = Long.MIN_VALUE
-    private var lastCarPacketAtMs: Long? = null
-    private var stableCarSinceMs: Long? = null
-    private var lastCarFix: VehicleLocation? = null
-    private var carSpeedFilteredKmh: Float? = null
+    private var lastChosenSource = Source.UNKNOWN
 
+    /**
+     * Manual phone selection is an explicit setting, never derived from loss of
+     * ICCOA packets or DR quality. Only the verified GPS_PROVIDER is accepted
+     * in manual mode; cell/Wi-Fi/fused approximations are not car GNSS.
+     */
     fun select(
         vehicle: VehicleLocation?,
         phone: CarInfo.PhoneGpsFix?,
-        nowMs: Long
+        nowMs: Long,
+        manualPhoneMode: Boolean = false,
+        drFix: DrNavigationFix? = null
     ): Reading {
-        val sourceBefore = source
         val candidate = vehicle?.takeIf {
             it.source == "ICCOA" && it.positionAtMs > 0L &&
-                it.displayLatitude != null && it.displayLongitude != null
+                it.displayLatitude != null && it.displayLongitude != null &&
+                !(it.displayLatitude == 0.0 && it.displayLongitude == 0.0)
         }
-        // Expire a full OEM GPS outage BEFORE consuming a newly arriving fix.
-        // Otherwise the first packet at the 7s boundary resets lastCarPacketAtMs
-        // and conceals the outage, incorrectly retaining ICCOA as the source.
-        if (source == Source.ICCOA && lastCarPacketAtMs?.let {
-                nowMs - it >= switchAfterMs
-            } == true) {
-            source = Source.PHONE
-        }
-        var acceptedNewCarPosition = false
-        if (candidate != null && candidate.positionAtMs > lastObservedCarPositionMs) {
-            // A reordered OEM packet must not lower the high-water mark:
-            // otherwise a second stale packet could look newly accepted.
-            // Newly mounted screens may see an old stored fix. That is not
-            // evidence of live telemetry, even though it can be displayed.
-            val age = nowMs - candidate.positionAtMs
-            if (age >= -1_000L && age <= maxRecoveryGapMs) {
-                // Advance the high-water mark only for an accepted fix.
-                // A rejected future timestamp must not poison subsequent
-                // valid OEM positions or delay the 7s recovery timer.
-                lastObservedCarPositionMs = candidate.positionAtMs
-                acceptedNewCarPosition = true
-                // Timestamp of the actual OEM measurement, not its delayed
-                // arrival. Clamp tolerated future clock skew to now.
-                val measuredAtMs = candidate.positionAtMs.coerceAtMost(nowMs)
-                val last = lastCarPacketAtMs
-                if (last == null || measuredAtMs < last || measuredAtMs - last > maxRecoveryGapMs) {
-                    stableCarSinceMs = measuredAtMs
-                    carSpeedFilteredKmh = null
-                }
-                lastCarPacketAtMs = measuredAtMs
-                lastCarFix = candidate
-                val speed = candidate.speedKmh?.takeIf { it.isFinite() && it in 0f..300f }
-                if (speed != null) {
-                    // OEM Location.getSpeed was floored to integer m/s;
-                    // smooth only the widget display, never AA wire data.
-                    carSpeedFilteredKmh = carSpeedFilteredKmh?.let {
-                        it * 0.55f + speed * 0.45f
-                    } ?: speed
-                } else {
-                    // A new valid position without a valid speed must not
-                    // reuse a speed measured at an older GPS position.
-                    carSpeedFilteredKmh = null
-                }
-            }
-        }
-
-        val lastCar = lastCarPacketAtMs
-        when (source) {
-            Source.ICCOA ->
-                if (lastCar == null || nowMs - lastCar >= switchAfterMs)
-                    source = Source.PHONE
-            Source.PHONE ->
-                if (acceptedNewCarPosition && lastCar != null && stableCarSinceMs != null &&
-                    nowMs - lastCar <= maxRecoveryGapMs &&
-                    nowMs - stableCarSinceMs!! >= switchAfterMs)
-                    source = Source.ICCOA
-        }
-        if (sourceBefore != source) onTransition(sourceBefore, source, nowMs)
-        // Preserve the defensive PHONE input validation from the newer
-        // source-only branch when restoring FT174's car-primary hysteresis.
-        // A corrupted/stale Android coordinate must not replace a lost OEM fix.
-        val safePhone = phone?.takeIf {
-            // The fallback is valid only if the handset itself has a recent
-            // GNSS measurement. Receiving a cached Location callback now
-            // does not make its old elapsedRealtime fix physically current.
+        val carAgeMs = candidate?.let { nowMs - it.positionAtMs }
+        val carLive = carAgeMs != null && carAgeMs in 0L until signalLossAfterMs
+        val verifiedDr = drFix?.takeIf { it.eligibleForAa(nowMs) }
+        val trustedPhone = phone?.takeIf {
             val callbackAge = nowMs - it.receivedAtMs
-            val fixAge = it.fixAgeNanosAtReceipt
-            val callbackFresh = callbackAge in 0L..switchAfterMs
-            // Age at receipt and age since receipt are cumulative. Checking
-            // each against 7s separately could admit a 12s-old GNSS fix.
-            // Use a remaining nanosecond budget to avoid rounding at the edge.
-            val originalFixFresh = fixAge == null || (callbackFresh &&
-                fixAge >= 0L &&
-                fixAge <= (switchAfterMs - callbackAge) * 1_000_000L)
-            it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
+            val realFixAgeNanos = it.fixAgeNanosAtReceipt
+            val remainingNs = if (callbackAge in 0L until signalLossAfterMs)
+                (signalLossAfterMs - callbackAge) * 1_000_000L else 0L
+            it.provider?.equals("gps", ignoreCase = true) == true &&
+                it.latitude.isFinite() && it.latitude in -90.0..90.0 &&
                 it.longitude.isFinite() && it.longitude in -180.0..180.0 &&
-                // Network-derived or low-quality GNSS in a garage is not
-                // a trustworthy screen coordinate simply because it is recent.
-                (it.provider == null || it.provider.equals("gps", ignoreCase = true)) &&
+                !(it.latitude == 0.0 && it.longitude == 0.0) &&
                 (it.horizontalAccuracyMetres == null ||
                     (it.horizontalAccuracyMetres.isFinite() &&
-                        it.horizontalAccuracyMetres in 0f..75f)) &&
-                callbackFresh && originalFixFresh
+                     it.horizontalAccuracyMetres in 0f..75f)) &&
+                callbackAge in 0L until signalLossAfterMs &&
+                (realFixAgeNanos == null ||
+                    (realFixAgeNanos >= 0L && realFixAgeNanos <= remainingNs))
         }
-        val carChosen = source == Source.ICCOA && lastCarFix != null
-        return if (carChosen) {
-            Reading(Source.ICCOA, lastCarFix, phone,
-                (nowMs - (lastCar ?: nowMs)).coerceAtLeast(0L), carSpeedFilteredKmh)
-        } else {
-            Reading(Source.PHONE, null, safePhone,
-                safePhone?.let { fix ->
-                    val callbackAgeMs = (nowMs - fix.receivedAtMs).coerceAtLeast(0L)
-                    val fixAgeMs = fix.fixAgeNanosAtReceipt?.let { nanos ->
-                        // Round up: never display a sub-millisecond stale fix as newer.
-                        nanos / 1_000_000L + if (nanos % 1_000_000L == 0L) 0L else 1L
-                    } ?: 0L
-                    callbackAgeMs + fixAgeMs
-                } ?: 0L,
-                safePhone?.speedKmh?.takeIf { it.isFinite() && it in 0f..300f })
+        val chosen = when {
+            manualPhoneMode -> Source.PHONE
+            carLive -> Source.ICCOA
+            verifiedDr != null -> Source.DR
+            else -> Source.UNKNOWN
         }
+        if (chosen != lastChosenSource) {
+            onTransition(lastChosenSource, chosen, nowMs)
+            lastChosenSource = chosen
+        }
+        val carSpeed = candidate?.speedKmh?.takeIf {
+            it.isFinite() && it in 0f..300f
+        }
+        val phoneSpeed = trustedPhone?.speedKmh?.takeIf {
+            it.isFinite() && it in 0f..300f
+        }
+        return Reading(
+            source = chosen,
+            car = if (chosen == Source.ICCOA) candidate else null,
+            phone = if (chosen == Source.PHONE) trustedPhone else null,
+            dr = if (chosen == Source.DR) verifiedDr else null,
+            lastPacketAgeMs = carAgeMs?.coerceAtLeast(0L) ?: 0L,
+            speedKmh = when (chosen) {
+                Source.ICCOA -> carSpeed
+                Source.PHONE -> phoneSpeed
+                Source.DR, Source.UNKNOWN -> null
+            }
+        )
     }
 }
