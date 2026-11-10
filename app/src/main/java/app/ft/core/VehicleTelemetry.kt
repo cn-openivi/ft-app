@@ -114,7 +114,8 @@ object VehicleTelemetry {
             // Discard an exact replay of the same OEM packet. Clock age is NOT
             // tested, and a clock correction backwards must not stall navigation.
             val lastStamp = latestPosition?.deviceTimestampRaw
-            if (lastStamp != null && location.deviceTimestampRaw != null &&
+            if (latestPosition != null && lastStamp != null &&
+                location.deviceTimestampRaw != null &&
                 lastStamp == location.deviceTimestampRaw &&
                 latestPosition.latitude == location.latitude &&
                 latestPosition.longitude == location.longitude &&
