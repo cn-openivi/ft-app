@@ -317,6 +317,26 @@ class AaCarGpsTest {
         assertTrue(gate.shouldReportUnavailable(55_000L))
     }
 
+    @Test fun verifiedCarDrCannotDisplaceFreshOemGnssWithinFiveSeconds() {
+        val priority = AaCarDrSwitchGate(startedElapsedMs = 10_000L)
+        assertFalse(priority.canUseVerifiedDr(14_999L))
+        priority.onCarGps(14_500L) // New OEM GNSS takes priority.
+        assertFalse(priority.canUseVerifiedDr(18_999L))
+        assertTrue(priority.canUseVerifiedDr(19_500L))
+    }
+
+    @Test fun newOemGpsImmediatelyRecoversAfterDrWithoutPhone() {
+        val priority = AaCarDrSwitchGate(startedElapsedMs = 10_000L)
+        assertTrue(priority.canUseVerifiedDr(15_000L))
+        priority.onCarGps(15_100L)
+        assertFalse(priority.canUseVerifiedDr(15_101L))
+        assertFalse(priority.canUseVerifiedDr(20_099L))
+        assertTrue(priority.canUseVerifiedDr(20_100L))
+        // A late callback may never move the monotonic five-second deadline backwards.
+        priority.onCarGps(12_000L)
+        assertFalse(priority.canUseVerifiedDr(19_999L))
+    }
+
     @Test fun gpsSensorErrorMatchesAndroidAutoWireSchema() {
         val p = ProtoReader(AaCarGps.sensorError(2))
         assertEquals(1, p.int(1))
