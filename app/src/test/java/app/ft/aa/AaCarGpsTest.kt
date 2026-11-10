@@ -274,40 +274,47 @@ class AaCarGpsTest {
         assertTrue(AaProtocol.SENSOR_DRIVING_STATUS in types)
     }
 
-    @Test fun subscribedAaGpsDoesNotDeclareOemLossBeforeSevenSeconds() {
+    @Test fun subscribedAaGpsDoesNotDeclareOemLossBeforeFiveSeconds() {
         val gate = AaGpsAvailabilityGate(startedElapsedMs = 10_000L)
         assertFalse(gate.shouldReportUnavailable(13_500L))
-        assertFalse(gate.shouldReportUnavailable(16_999L))
-        assertTrue(gate.shouldReportUnavailable(17_000L))
-        assertFalse(gate.shouldReportUnavailable(18_000L))
-        // Existing AA SensorError(LOCATION=1, UNAVAILABLE=2) exact proto body.
+        assertFalse(gate.shouldReportUnavailable(14_999L))
+        assertTrue(gate.shouldReportUnavailable(15_000L))
+        assertFalse(gate.shouldReportUnavailable(16_000L))
+        // No FT-side auto phone switch; AA owns its response to SENSOR_ERROR.
         assertArrayEquals(byteArrayOf(8, 1, 16, 2), AaCarGps.sensorError(2))
     }
 
-    @Test fun lateGearInfoCannotResetAaLossTimerAndFreshOemFixRecoversOnce() {
+    @Test fun lateGearInfoCannotResetFiveSecondLossTimerAndRealFixRecoversOnce() {
         val gate = AaGpsAvailabilityGate(startedElapsedMs = 2_000L)
         assertFalse(gate.onDeliveredLocation(3_000L))
-        // Normal GearInfo updates every 100ms do not call
-        // onDeliveredLocation; AA only counts accepted GPS packets.
-        for (now in 3_100L..9_900L step 100L)
+        // Normal GearInfo updates never call onDeliveredLocation.
+        for (now in 3_100L..7_900L step 100L)
             assertFalse(gate.shouldReportUnavailable(now))
-        assertTrue(gate.shouldReportUnavailable(10_000L))
-        assertFalse(gate.shouldReportUnavailable(10_500L))
-        assertTrue(gate.onDeliveredLocation(11_500L))
+        assertTrue(gate.shouldReportUnavailable(8_000L))
+        assertFalse(gate.shouldReportUnavailable(8_500L))
+        assertTrue(gate.onDeliveredLocation(9_000L))
         assertArrayEquals(byteArrayOf(8, 1, 16, 1), AaCarGps.sensorError(1))
-        assertFalse(gate.onDeliveredLocation(12_000L))
-        // The source remained live and delivered ANOTHER accepted OEM fix
-        // at 12_000ms. Its age, not the first recovery event at 11_500ms,
-        // sets the next loss threshold to 19_000ms.
-        assertFalse(gate.shouldReportUnavailable(18_999L))
-        assertTrue(gate.shouldReportUnavailable(19_000L))
+        assertFalse(gate.onDeliveredLocation(10_000L))
+        assertFalse(gate.shouldReportUnavailable(14_999L))
+        assertTrue(gate.shouldReportUnavailable(15_000L))
     }
 
-    @Test fun backwardWallClockChangeCannotFakeAaGpsLoss() {
+    @Test fun delayedElapsedCallbackCannotRewindFiveSecondLossClock() {
+        val gate = AaGpsAvailabilityGate(startedElapsedMs = 2_000L)
+        assertFalse(gate.onDeliveredLocation(6_000L))
+        assertFalse(gate.onDeliveredLocation(5_500L))
+        assertFalse(gate.shouldReportUnavailable(10_999L))
+        assertTrue(gate.shouldReportUnavailable(11_000L))
+        assertFalse(gate.onDeliveredLocation(5_900L))
+        assertFalse(gate.shouldReportUnavailable(11_500L))
+        assertTrue(gate.onDeliveredLocation(11_600L))
+    }
+
+    @Test fun backwardsMonotonicTimestampCannotFakeAaGpsLoss() {
         val gate = AaGpsAvailabilityGate(startedElapsedMs = 50_000L)
         assertFalse(gate.shouldReportUnavailable(49_000L))
-        assertFalse(gate.shouldReportUnavailable(56_999L))
-        assertTrue(gate.shouldReportUnavailable(57_000L))
+        assertFalse(gate.shouldReportUnavailable(54_999L))
+        assertTrue(gate.shouldReportUnavailable(55_000L))
     }
 
     @Test fun gpsSensorErrorMatchesAndroidAutoWireSchema() {
