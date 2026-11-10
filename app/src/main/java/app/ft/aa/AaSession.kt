@@ -469,7 +469,7 @@ class AaSession(
     /**
      * After real phone LOCATION subscription, send only new ICCOA GPS events.
      * No stale cache replay, no three-fix wait, no 3s or 15s age tolerance.
-     * Keep the independent owner-approved 7s source-loss error/recovery.
+     * Keep the independent owner-approved 5s car-loss error/recovery; never auto-select PHONE.
      */
     private fun startCarGps(requestedMs: Long) {
         carGpsJob?.cancel()
@@ -508,8 +508,8 @@ class AaSession(
                 while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
                     var nextPacket: ByteArray? = null
                     // Wait for a new live ICCOA GPS event, never a cached snapshot.
-                    // Seven seconds is exclusively the fallback timer.
-                    val received = withTimeoutOrNull(7_000L) {
+                    // Five seconds is a car-signal outage timer, NOT a PHONE fallback.
+                    val received = withTimeoutOrNull(5_000L) {
                         VehicleTelemetry.gpsUpdates.first { sample ->
                             nextPacket = gate.accept(sample, System.currentTimeMillis())
                             nextPacket != null
@@ -532,7 +532,7 @@ class AaSession(
                             android.os.SystemClock.elapsedRealtime())) {
                         sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGps.sensorError(2))
-                        DiagLog.w(tag, "car LOCATION to AA: no new accepted GPS for 7s")
+                        DiagLog.w(tag, "car LOCATION to AA: no new accepted car GPS for 5s (no FT phone switch)")
                     }
                 }
             }
