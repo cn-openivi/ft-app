@@ -149,7 +149,8 @@ class AaCarGpsTest {
 
     @Test fun rejectMissingStaleAndUnverifiedCoordinateReference() {
         assertNull(AaCarGps.event(null, 1_500L))
-        assertNull(AaCarGps.event(car(55.75, 37.62), 4_100L))
+        // Wall-clock age is not a reason to reject an authentic new ICCOA event.
+        assertNotNull(AaCarGps.event(car(55.75, 37.62), 4_100L))
         assertNull(AaCarGps.event(car(91.0, 20.0), 1_500L))
         assertNull(AaCarGps.event(car(0.0, 0.0), 1_500L))
         assertNull(AaCarGps.event(car(Double.NaN, 20.0), 1_500L))
@@ -178,7 +179,7 @@ class AaCarGpsTest {
         assertNotNull(gate.accept(next, 1_200L))
     }
 
-    @Test fun simpleGateRejectsOnlyStaleMalformedAndOutOfOrderFixes() {
+    @Test fun simpleGateRejectsMalformedAndOutOfOrderWithoutAgeWindow() {
         val gate = AaGpsGate()
         assertNull(gate.accept(null, 1_000L))
         assertNull(gate.accept(car(91.0, 22.0, 1_000L), 1_000L))
@@ -186,7 +187,8 @@ class AaCarGpsTest {
         // Valid fresh fixes now stream immediately, without a distance/teleport gate.
         assertNotNull(gate.accept(car(55.9, 37.6, 1_100L), 1_100L))
         assertNull(gate.accept(car(55.7, 37.6, 1_050L), 1_200L))
-        assertNull(gate.accept(car(55.9, 37.6, 1_100L), 4_101L))
+        assertNotNull(gate.accept(car(55.96, 37.6, 1_300L), 4_101L))
+        assertNull(gate.accept(car(55.96, 37.6, 1_300L), 99_000L))
         gate.reset()
         assertNotNull(gate.accept(car(55.7, 37.6, 2_000L), 2_000L))
     }
@@ -198,6 +200,15 @@ class AaCarGpsTest {
         val gearOnly = first.copy(receivedAtMs = 9_000L,
             gearSpeedRaw = 10L, gearAtMs = 9_000L)
         assertNull(gate.accept(gearOnly, 9_000L))
+    }
+
+    @Test fun iccoaSequenceNotElapsedTimeDeterminesNewGpsEvent() {
+        val gate = AaGpsGate()
+        val first = car(55.7, 37.6, 1_000L).copy(gpsPacketSequence = 31L)
+        assertNotNull(gate.accept(first, 25_000L))
+        assertNull(gate.accept(first, 25_001L))
+        assertNull(gate.accept(first.copy(gpsPacketSequence = 30L), 25_002L))
+        assertNotNull(gate.accept(first.copy(gpsPacketSequence = 32L), 25_003L))
     }
 
     @Test fun oemAltitudeAndSatelliteCountsUseCorrectAaFields() {
@@ -232,7 +243,7 @@ class AaCarGpsTest {
     @Test fun unverifiedAltitudeCannotBeForwardedAsAaAltitude() {
         val sample = car(55.7, 37.6).copy(altitudeMeters = 112.5, altitudeUnit = "UNKNOWN")
         assertFalse(ProtoReader(AaCarGps.event(sample, 1_500L)!!).message(1)!!.has(5))
-        assertNull(AaCarGps.satellitesEvent(sample, 4_100L))
+        assertNotNull(AaCarGps.satellitesEvent(sample, 4_100L))
     }
 
     @Test fun aaSdpHasPersistentVehicleIdentityAndSatelliteSensor() {

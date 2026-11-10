@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import java.io.InputStream
 import java.io.OutputStream
 
@@ -464,76 +467,99 @@ class AaSession(
     }
 
     /**
-     * Feed Android Auto only new, still-current ICCOA fixes. If the source disappears,
-     * send a transient SensorError so the phone can revert to its local GNSS.
+     * After real phone LOCATION subscription, send only new ICCOA GPS events.
+     * No stale cache replay, no three-fix wait, no 3s or 15s age tolerance.
+     * Keep the independent owner-approved 7s source-loss error/recovery.
      */
     private fun startCarGps(requestedMs: Long) {
         carGpsJob?.cancel()
         carGpsSubscribed = true
-        val interval = requestedMs.coerceIn(100L, 1_000L)
         carGpsJob = scope.launch(Dispatchers.IO) {
-            val gpsGate = AaGpsGate()
-            var lastPositionAt = Long.MIN_VALUE
+            val gate = AaGpsGate()
             val availability = AaGpsAvailabilityGate(android.os.SystemClock.elapsedRealtime())
             var sent = 0L
-            while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
-                val now = System.currentTimeMillis()
-                // Verified DR stream only after the session negotiated
-                // DEAD_RECKONED; otherwise preserve original raw GPS path.
-                val fused = AaLocationCharacterization.permitsEstimatedPosition(
-                    locationCharacterizationAtDiscovery)
-                val dr = if (fused) DrNavigationTelemetry.current.value else null
-                val car = if (fused) null else VehicleTelemetry.current.value
-                val packet = if (fused)
-                    AaCarGps.fusedEvent(dr, now, locationCharacterizationAtDiscovery)
-                else gpsGate.accept(car, now)
-                val positionAt = if (fused) dr?.producedAtMs else car?.positionAtMs
-                if (packet != null && positionAt != null && positionAt != lastPositionAt) {
-                    if (availability.onDeliveredLocation(android.os.SystemClock.elapsedRealtime())) {
+            val fused = AaLocationCharacterization.permitsEstimatedPosition(
+                locationCharacterizationAtDiscovery)
+            if (fused) {
+                // DR has separate eligibility/accuracy policy; do not alter its
+                // proof gate as part of the RAW ICCOA GPS event change.
+                var lastPositionAt = Long.MIN_VALUE
+                val interval = requestedMs.coerceIn(100L, 1_000L)
+                while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
+                    val dr = DrNavigationTelemetry.current.value
+                    val packet = AaCarGps.fusedEvent(
+                        dr, System.currentTimeMillis(), locationCharacterizationAtDiscovery)
+                    val positionAt = dr?.producedAtMs
+                    if (packet != null && positionAt != null && positionAt > lastPositionAt) {
+                        if (availability.onDeliveredLocation(android.os.SystemClock.elapsedRealtime())) {
+                            sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                                AaCarGps.sensorError(1))
+                        }
+                        lastPositionAt = positionAt
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                    } else if (availability.shouldReportUnavailable(
+                            android.os.SystemClock.elapsedRealtime())) {
                         sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
-                            AaCarGps.sensorError(1))
-                        DiagLog.i(tag, "car LOCATION to AA: recovered")
+                            AaCarGps.sensorError(2))
                     }
-                    lastPositionAt = positionAt
-                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                    sent++
-                    if (sent == 1L || sent % 100L == 0L) {
-                        val originLabel = if (fused) "VERIFIED_TINYEKF" else "OEM_RAW_GNSS"
-                        DiagLog.i(tag, "car LOCATION to AA: $sent updates; source=$originLabel")
-                    }
-                } else if (availability.shouldReportUnavailable(
-                        android.os.SystemClock.elapsedRealtime())) {
-                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
-                        AaCarGps.sensorError(2))
-                    DiagLog.w(tag, "car LOCATION to AA: no new accepted OEM position " +
-                        "for 7s; no unverified estimated coordinates transmitted")
+                    delay(interval)
                 }
-                delay(interval)
+            } else {
+                while (isActive && lifecycle.running && carGpsSubscribed && sensorChannelOpened) {
+                    var nextPacket: ByteArray? = null
+                    // Wait for a new live ICCOA GPS event, never a cached snapshot.
+                    // Seven seconds is exclusively the fallback timer.
+                    val received = withTimeoutOrNull(7_000L) {
+                        VehicleTelemetry.gpsUpdates.first { sample ->
+                            nextPacket = gate.accept(sample, System.currentTimeMillis())
+                            nextPacket != null
+                        }
+                    }
+                    if (!isActive || !lifecycle.running || !carGpsSubscribed ||
+                        !sensorChannelOpened) break
+                    val packet = nextPacket
+                    if (received != null && packet != null) {
+                        if (availability.onDeliveredLocation(android.os.SystemClock.elapsedRealtime())) {
+                            sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                                AaCarGps.sensorError(1))
+                            DiagLog.i(tag, "car LOCATION to AA: recovered")
+                        }
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                        sent++
+                        if (sent == 1L || sent % 100L == 0L)
+                            DiagLog.i(tag, "car LOCATION to AA: $sent live ICCOA GPS frames")
+                    } else if (availability.shouldReportUnavailable(
+                            android.os.SystemClock.elapsedRealtime())) {
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
+                            AaCarGps.sensorError(2))
+                        DiagLog.w(tag, "car LOCATION to AA: no new accepted GPS for 7s")
+                    }
+                }
             }
         }
-        DiagLog.i(tag, "AA subscribed to car GPS; interval=${interval}ms, OEM datum requires physical check")
+        DiagLog.i(tag, "AA subscribed to GPS; requestedIntervalMs=$requestedMs, " +
+            "RAW ICCOA forwarding new events immediately without GPS age grace")
     }
 
-    /** Independently subscribed Android Auto GPS_SATELLITES type 21. */
+    /** Satellite counts are equally limited to fresh incoming GPS events. */
     private fun startCarSatellites(requestedMs: Long) {
         carSatellitesJob?.cancel()
         carSatellitesSubscribed = true
-        val interval = requestedMs.coerceIn(100L, 1_000L)
         carSatellitesJob = scope.launch(Dispatchers.IO) {
-            var lastPositionAt = Long.MIN_VALUE
-            while (isActive && lifecycle.running && carSatellitesSubscribed && sensorChannelOpened) {
-                val now = System.currentTimeMillis()
-                val sample = VehicleTelemetry.current.value
-                if (sample != null && sample.positionAtMs > lastPositionAt) {
-                    val packet = AaCarGps.satellitesEvent(sample, now)
-                    if (packet != null) {
-                        lastPositionAt = sample.positionAtMs
-                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                    }
+            var lastSequence = 0L
+            VehicleTelemetry.gpsUpdates.collect { sample ->
+                if (!carSatellitesSubscribed || !lifecycle.running ||
+                    !sensorChannelOpened) return@collect
+                if (sample.gpsPacketSequence <= lastSequence) return@collect
+                val packet = AaCarGps.satellitesEvent(sample)
+                if (packet != null) {
+                    lastSequence = sample.gpsPacketSequence
+                    sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
                 }
-                delay(interval)
             }
         }
+        DiagLog.i(tag, "AA subscribed to satellites; requestedIntervalMs=$requestedMs, " +
+            "new ICCOA events only")
     }
 
     /**

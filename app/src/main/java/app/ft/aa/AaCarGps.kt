@@ -19,9 +19,11 @@ internal object AaCarGps {
     const val LOCATION = AaProtocol.SENSOR_LOCATION
     private const val CRS = "ANDROID_LOCATION_WGS84"
 
+    @Suppress("UNUSED_PARAMETER")
     fun event(location: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
-        if (location == null || location.source != "ICCOA" || location.coordinatesUnit != CRS ||
-            !location.positionFresh(nowMs)) return null
+        // Do not re-interpret an OEM packet timestamp as GPS fix age.
+        // Only called for a genuinely received new frame via gpsUpdates.
+        if (location == null || location.source != "ICCOA" || location.coordinatesUnit != CRS) return null
         val latitude = location.displayLatitude ?: return null
         val longitude = location.displayLongitude ?: return null
         // An uninitialized OEM fix often uses Null Island: never send it to AA Maps.
@@ -111,9 +113,10 @@ internal object AaCarGps {
      * this OEM source. Per-satellite PRN/SNR/azimuth/elevation is NOT present in Carlink Gps.
      * SensorBatch field 21 -> GpsSatelliteData { satellite_count=1; satellites_used=2 }.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun satellitesEvent(location: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
         if (location == null || location.source != "ICCOA" ||
-            location.coordinatesUnit != CRS || !location.positionFresh(nowMs) ||
+            location.coordinatesUnit != CRS ||
             location.displayLatitude == null || location.displayLongitude == null ||
             (location.displayLatitude == 0.0 && location.displayLongitude == 0.0)) return null
         val view = location.satellitesVisible ?: return null
@@ -163,26 +166,25 @@ internal class AaGpsAvailabilityGate(
 }
 
 /**
- * Suppress isolated GNSS jumps (including RF interference) before feeding maps.
- * Require three consecutive consistent distinct car fixes to acquire/reacquire.
- * Output and source selection remain independent of diagnostic 10-second sampling.
+ * Only newly received ICCOA GPS packets are eligible for AA. No 3-second
+ * age window, no 3-fix delay, and no cached last-position replay.
+ * Keep duplicate/out-of-order protection using receive event sequence.
  */
 internal class AaGpsGate {
-    private var lastDeliveredPositionAtMs = Long.MIN_VALUE
+    private var lastSequence = 0L
+    private var lastPositionAtMs = Long.MIN_VALUE
 
-    /**
-     * Match open-headunit's first-fix delivery: the first fresh OEM location is
-     * sent immediately after Android Auto subscribes. Only reject unavailable,
-     * stale or malformed samples and old/duplicate measurements. No 3-fix
-     * acquisition, distance heuristics, synthetic accuracy, or unsolicited AA data.
-     */
-    fun accept(sample: VehicleLocation?, nowMs: Long): ByteArray? {
+    fun accept(sample: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
+        if (sample == null || sample.positionAtMs <= 0L) return null
+        val sequence = sample.gpsPacketSequence
+        if (sequence > 0L) {
+            if (sequence <= lastSequence) return null
+        } else if (sample.positionAtMs <= lastPositionAtMs) return null
         val packet = AaCarGps.event(sample, nowMs) ?: return null
-        val positionAt = sample!!.positionAtMs
-        if (positionAt <= lastDeliveredPositionAtMs) return null
-        lastDeliveredPositionAtMs = positionAt
+        if (sequence > 0L) lastSequence = sequence
+        lastPositionAtMs = sample.positionAtMs
         return packet
     }
 
-    fun reset() { lastDeliveredPositionAtMs = Long.MIN_VALUE }
+    fun reset() { lastSequence = 0L; lastPositionAtMs = Long.MIN_VALUE }
 }
