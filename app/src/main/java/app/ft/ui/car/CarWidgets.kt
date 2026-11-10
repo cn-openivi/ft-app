@@ -34,6 +34,8 @@ import app.ft.core.VehicleLocation
 import app.ft.core.VehicleTelemetry
 import app.ft.FTApp
 import app.ft.core.CarProtocol
+import app.ft.core.GpsSourceMode
+import app.ft.dr.DrNavigationTelemetry
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -58,6 +60,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val inertial by VehicleMotionTelemetry.current.collectAsState()
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
+    val verifiedDr by DrNavigationTelemetry.current.collectAsState()
     val selector = remember {
         CarGpsSourceSelector(onTransition = { before, after, at ->
             app.ft.core.DiagLog.i("VehicleGPS", "UI_SOURCE_CHANGE from=$before to=$after atMs=$at")
@@ -68,7 +71,9 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     }
     // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
     val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps)
-    val reading = selector.select(vehicle, phoneGps, displayNow)
+    val reading = selector.select(vehicle, phoneGps, displayNow,
+        manualPhoneMode = FTApp.instance.prefs.gpsSourceMode == GpsSourceMode.PHONE,
+        drFix = verifiedDr)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
