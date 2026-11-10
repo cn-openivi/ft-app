@@ -150,6 +150,8 @@ internal class AaGpsAvailabilityGate(
 
     /** True exactly when a previously reported source outage has recovered. */
     fun onDeliveredLocation(elapsedMs: Long): Boolean {
+        // A delayed callback must not rewind monotonic loss detection.
+        if (elapsedMs < lastDeliveredElapsedMs) return false
         val recovered = unavailable
         unavailable = false
         lastDeliveredElapsedMs = elapsedMs
