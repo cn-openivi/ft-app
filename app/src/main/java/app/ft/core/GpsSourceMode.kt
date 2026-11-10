@@ -9,9 +9,11 @@ package app.ft.core
  *
  * CAR: accept only verified OEM GNSS to correct TinyEKF and advertise car
  * LOCATION in ICCOA. AA's phone chooses whether to subscribe to LOCATION and
- * remains responsible for its own GNSS fallback; no unsolicited AA events.
- * PHONE: accept handset GNSS for future DR reference; do not advertise OEM
- * LOCATION. Both modes may predict with independently verified vehicle wheel
+ * may independently use phone location after a sensor error; FT NEVER switches
+ * to PHONE automatically. No unsolicited AA events.
+ * PHONE: explicitly user-selected mode for a head unit without car GPS.
+ * Do not advertise OEM LOCATION or silently promote phone network/approximate
+ * fixes to a verified vehicle DR reference. Both modes may predict with verified wheel
  * and yaw data; phone IMU is never silently substituted.
  *
  * Baidu defaults to PHONE until its OEM coordinate scale and CRS are verified.
