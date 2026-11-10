@@ -122,7 +122,7 @@ class VehicleTelemetryTest {
 
     @Test fun iccoaSpeedOnlyPacketDoesNotRefreshGearOrGpsClock() {
         val now = System.currentTimeMillis()
-        val earlier = now - 5_000L
+        val earlier = now - 6_000L
         try {
             VehicleTelemetry.clear("ICCOA")
             VehicleTelemetry.publish(VehicleLocation(
