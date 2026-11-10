@@ -168,6 +168,27 @@ internal class AaGpsAvailabilityGate(
 }
 
 /**
+ * Separate monotonic OEM GNSS-loss gate for DR source priority.
+ * A valid GNSS packet has immediate priority. Five seconds without a NEW
+ * OEM fix permits independently verified vehicle DR; never PHONE.
+ */
+internal class AaCarDrSwitchGate(
+    startedElapsedMs: Long,
+    private val lossAfterMs: Long = 5_000L
+) {
+    init { require(lossAfterMs == 5_000L) }
+    private var lastCarElapsedMs = startedElapsedMs
+
+    fun onCarGps(elapsedMs: Long) {
+        if (elapsedMs >= lastCarElapsedMs) lastCarElapsedMs = elapsedMs
+    }
+
+    fun canUseVerifiedDr(elapsedMs: Long): Boolean =
+        elapsedMs >= lastCarElapsedMs &&
+            elapsedMs - lastCarElapsedMs >= lossAfterMs
+}
+
+/**
  * Only newly received ICCOA GPS packets are eligible for AA. No 3-second
  * age window, no 3-fix delay, and no cached last-position replay.
  * Keep duplicate/out-of-order protection using receive event sequence.
