@@ -33,8 +33,8 @@ class AaSensorAdvertisementTest {
     }
 
     @Test fun carGpsIsAdvertisedFirstWithoutDroppingOtherSensors() {
-        assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_DRIVING_STATUS,
-            AaProtocol.SENSOR_NIGHT_MODE), sensors(true))
+        assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GPS_SATELLITES,
+            AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), sensors(true))
     }
 
     private fun advertisedDpi(width: Int, height: Int, requestedDpi: Int): Int {
@@ -61,8 +61,8 @@ class AaSensorAdvertisementTest {
         assertEquals(256, sensor.int(2)) // RAW_GPS_ONLY (no dead reckoning)
         assertTrue(sensor.has(2))
         val types = sensor.messages(1).map { it.int(1) }
-        assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GEAR,
-            AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), types)
+        assertEquals(listOf(AaProtocol.SENSOR_LOCATION, AaProtocol.SENSOR_GPS_SATELLITES,
+            AaProtocol.SENSOR_GEAR, AaProtocol.SENSOR_DRIVING_STATUS, AaProtocol.SENSOR_NIGHT_MODE), types)
         assertFalse(types.contains(3)) // OEM speed unit unverified, never advertise CAR_SPEED
         assertFalse(types.contains(7)) // No verified parking-brake sensor
     }

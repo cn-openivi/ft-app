@@ -1,9 +1,6 @@
 name: FT177 full unsigned GPS source validation on existing VPS runner
 
 on:
-  push:
-    branches:
-      - openivi/ft177-gps-20261110
   workflow_dispatch:
 
 permissions:
