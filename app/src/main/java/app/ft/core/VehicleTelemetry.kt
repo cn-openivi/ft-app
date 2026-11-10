@@ -44,11 +44,13 @@ data class VehicleLocation(
     /** Monotonic received ICCOA GPS packet sequence, not wall or GNSS fix time. */
     val gpsPacketSequence: Long = 0L
 ) {
+    /** UI/telemetry liveness only; never gate a newly received OEM GNSS event. */
     fun fresh(nowMs: Long = System.currentTimeMillis()) =
-        nowMs >= receivedAtMs && nowMs - receivedAtMs <= 3_000L
+        nowMs >= receivedAtMs && nowMs - receivedAtMs <= 5_000L
 
+    /** Five-second loss-status window, not a GNSS measurement-age rejection gate. */
     fun positionFresh(nowMs: Long = System.currentTimeMillis()) =
-        positionAtMs > 0L && nowMs >= positionAtMs && nowMs - positionAtMs <= 3_000L
+        positionAtMs > 0L && nowMs >= positionAtMs && nowMs - positionAtMs <= 5_000L
 
     /** OEM GearInfo speed, never a GNSS fix or proof of calibrated wheel speed. */
     fun gearSpeedFresh(nowMs: Long = System.currentTimeMillis()) =
