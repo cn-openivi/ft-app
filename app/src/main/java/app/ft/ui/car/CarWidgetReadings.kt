@@ -32,6 +32,7 @@ internal object CarWidgetReadings {
         val physicalSpeedKmh = when (reading.source) {
             CarGpsSourceSelector.Source.ICCOA -> reading.car?.speedKmh
             CarGpsSourceSelector.Source.PHONE -> reading.phone?.speedKmh
+            CarGpsSourceSelector.Source.DR, CarGpsSourceSelector.Source.UNKNOWN -> null
         }
         // The OEM CarLink rounds speed to integral m/s; below 1 m/s its
         // course is not a reliable direction-of-travel measurement.
@@ -40,9 +41,17 @@ internal object CarWidgetReadings {
         return reading.headingDegrees?.takeIf { it.isFinite() && it in 0f..360f }
     }
 
-    /** No STALE=0s labels. A short GPS pause does not switch the source. */
-    fun sourceLabel(reading: CarGpsSourceSelector.Reading): String =
-        if (reading.lastPacketAgeMs >= 2_000L)
-            "${reading.label} · HOLD ${reading.lastPacketAgeMs / 1000L}s"
-        else reading.label
+    /** Provenance is explicit: never label unavailable GNSS as phone fallback. */
+    fun sourceLabel(reading: CarGpsSourceSelector.Reading): String = when (reading.source) {
+        CarGpsSourceSelector.Source.UNKNOWN -> "GPS LOST"
+        CarGpsSourceSelector.Source.PHONE ->
+            if (reading.phone == null) "PHONE · NO FIX" else "PHONE · MANUAL"
+        CarGpsSourceSelector.Source.DR -> reading.dr?.accuracyMetres?.let {
+            "DR estimated ±${kotlin.math.ceil(it).toLong()}m"
+        } ?: "DR estimated"
+        CarGpsSourceSelector.Source.ICCOA ->
+            if (reading.lastPacketAgeMs >= 2_000L)
+                "ICCOA · HOLD ${reading.lastPacketAgeMs / 1000L}s"
+            else "ICCOA"
+    }
 }
