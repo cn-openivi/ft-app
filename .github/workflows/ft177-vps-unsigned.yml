@@ -1,0 +1,76 @@
+name: FT177 full unsigned GPS source validation on existing VPS runner
+
+on:
+  push:
+    branches:
+      - openivi/ft177-gps-20261110
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft177-vps-unsigned
+  cancel-in-progress: false
+
+jobs:
+  verify-unsigned:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Setup JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Setup Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Verify source and version
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 177' app/build.gradle.kts
+          test -f app/src/main/java/app/ft/aa/AaCarGps.kt
+      - name: Compile all code and execute unit tests, assemble complete unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' -Dkotlin.compiler.execution.strategy=in-process :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit
+      - name: Prove real unsigned full APK and SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/unsignedTransit/app-unsignedTransit-unsigned.apk"
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -Z1 "$APK" | grep -Fxq 'classes.dex'
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          AAPT="$(find "$SDK/build-tools" -maxdepth 2 -name aapt -type f | sort -V | tail -n 1)"
+          SIGNER="$(find "$SDK/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$AAPT" && test -x "$SIGNER"
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='177'" apk-badging.txt
+          if "$AAPT" dump badging "$APK" | grep -q '^application-debuggable'; then exit 1; fi
+          if "$SIGNER" verify "$APK"; then echo "REFUSE unexpectedly signed" >&2; exit 1; fi
+          mkdir -p verified
+          cp "$APK" verified/FT177_XA60_FULL_UNSIGNED.apk
+          sha256sum verified/FT177_XA60_FULL_UNSIGNED.apk | tee verified/SHA256SUMS
+          printf 'SOURCE_SHA=%s\nVERSION_CODE=177\nAPPLICATION_ID=app.ft.xa60\nSIGNING=UNSIGNED\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" > verified/PROVENANCE.txt
+          cp apk-badging.txt verified/
+      - name: Upload FT177 unsigned APK proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ft177-full-unsigned-${{ github.sha }}
+          path: verified/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
