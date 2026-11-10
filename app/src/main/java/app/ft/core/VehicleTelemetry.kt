@@ -2,6 +2,9 @@ package app.ft.core
 
 import app.ft.FTApp
 
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -37,7 +40,9 @@ data class VehicleLocation(
     val altitudeMeters: Double? = null,
     val altitudeUnit: String = "UNKNOWN",
     val antennaStateRaw: Long? = null,
-    val pdopRaw: Long? = null
+    val pdopRaw: Long? = null,
+    /** Monotonic received ICCOA GPS packet sequence, not wall or GNSS fix time. */
+    val gpsPacketSequence: Long = 0L
 ) {
     fun fresh(nowMs: Long = System.currentTimeMillis()) =
         nowMs >= receivedAtMs && nowMs - receivedAtMs <= 3_000L
@@ -58,6 +63,13 @@ data class VehicleLocation(
 object VehicleTelemetry {
     private val _current = MutableStateFlow<VehicleLocation?>(null)
     val current: StateFlow<VehicleLocation?> = _current
+    // Live OEM GPS packet events. No cached coordinate replay to late AA subscribers.
+    // A single pending frame is allowed; older queued frames are dropped without
+    // blocking the ICCOA sensor RX thread.
+    private val _gpsUpdates = MutableSharedFlow<VehicleLocation>(
+        replay = 0, extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val gpsUpdates: SharedFlow<VehicleLocation> = _gpsUpdates
+    private var iccoaGpsSequence = 0L
     private val logSampler = VehicleLogSampler()
 
     /**
@@ -98,15 +110,28 @@ object VehicleTelemetry {
             location.positionAtMs > location.receivedAtMs &&
             location.positionAtMs - location.receivedAtMs > 1_000L) return
         val latestPosition = _current.value?.takeIf { it.source == location.source }
-        if (latestPosition != null && latestPosition.positionAtMs > 0L &&
+        if (location.source == "ICCOA") {
+            // Discard an exact replay of the same OEM packet. Clock age is NOT
+            // tested, and a clock correction backwards must not stall navigation.
+            val lastStamp = latestPosition?.deviceTimestampRaw
+            if (lastStamp != null && location.deviceTimestampRaw != null &&
+                lastStamp == location.deviceTimestampRaw &&
+                latestPosition.latitude == location.latitude &&
+                latestPosition.longitude == location.longitude &&
+                latestPosition.speedRaw == location.speedRaw &&
+                latestPosition.headingRaw == location.headingRaw) return
+        } else if (latestPosition != null && latestPosition.positionAtMs > 0L &&
             (location.positionAtMs <= 0L ||
                 latestPosition.positionAtMs >= location.positionAtMs)) return
-        // A new GPS frame must not erase a recent, separately sourced GearInfo frame.
+        val next = if (location.source == "ICCOA")
+            location.copy(gpsPacketSequence = ++iccoaGpsSequence) else location
+        // GearInfo update is never synthesized into a GPS position event.
         val preserved = if (location.source == "ICCOA" && previous != null)
-            location.copy(gearSpeedRaw = previous.gearSpeedRaw,
+            next.copy(gearSpeedRaw = previous.gearSpeedRaw,
                 gearRaw = previous.gearRaw, gearAtMs = previous.gearAtMs,
-                gearSpeedAtMs = previous.gearSpeedAtMs) else location
+                gearSpeedAtMs = previous.gearSpeedAtMs) else next
         _current.value = preserved
+        if (preserved.source == "ICCOA") _gpsUpdates.tryEmit(preserved)
         note(preserved)
     }
 

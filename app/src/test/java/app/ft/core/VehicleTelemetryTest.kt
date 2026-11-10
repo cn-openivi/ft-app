@@ -188,6 +188,28 @@ class VehicleTelemetryTest {
         }
     }
 
+    @Test fun onlyIncomingIccoaGpsFramesIncrementReceiveSequence() {
+        val now = System.currentTimeMillis()
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            fun fix(stamp: Long) = VehicleLocation(
+                source = "ICCOA", receivedAtMs = now, positionAtMs = now,
+                latitude = 55.7, longitude = 37.6,
+                coordinatesUnit = "ANDROID_LOCATION_WGS84", deviceTimestampRaw = stamp)
+            VehicleTelemetry.publish(fix(now))
+            val n = VehicleTelemetry.current.value!!.gpsPacketSequence
+            assertTrue(n > 0L)
+            VehicleTelemetry.updateIccoaSpeed(3L)
+            assertEquals(n, VehicleTelemetry.current.value!!.gpsPacketSequence)
+            VehicleTelemetry.publish(fix(now)) // same packet is not a new GPS sample
+            assertEquals(n, VehicleTelemetry.current.value!!.gpsPacketSequence)
+            VehicleTelemetry.publish(fix(now + 1L))
+            assertEquals(n + 1L, VehicleTelemetry.current.value!!.gpsPacketSequence)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun gearFramesRetainLastKnownGpsButDoNotMakeItFresh() {
         val now = System.currentTimeMillis()
         val stalePosition = now - 10_000L

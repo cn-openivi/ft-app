@@ -218,17 +218,17 @@ class IccoaService : Service() {
         if (method != IccoaGpsWire.GPS_METHOD) return
         val fix = IccoaGpsWire.decode(body)
         val receivedAtMs = System.currentTimeMillis()
-        val measuredAtMs = fix?.let {
-            IccoaGpsTimestampGate.measuredAtMs(it.timestampRaw, receivedAtMs)
-        }
-        sensorLiveness.onGps(measuredAtMs != null)
+        // Each valid newly received ICCOA GPS frame is an event. Carlink's
+        // own timestamp marks serialization, not GNSS acquisition time.
+        val frameReceivedAtMs = if (fix != null)
+            IccoaGpsTimestampGate.observedAtReceiveMs(receivedAtMs) else null
+        sensorLiveness.onGps(frameReceivedAtMs != null)
         if (fix != null) {
             lastCarGps = fix
-            // Always preserve the raw received frame in the opt-in trace, even
-            // when its measurement age is unacceptable for UI/AA/DR.
-            if (measuredAtMs != null) VehicleTelemetry.publish(VehicleLocation(
+            // Original raw device timestamp retained in deviceTimestampRaw.
+            if (frameReceivedAtMs != null) VehicleTelemetry.publish(VehicleLocation(
                 source = "ICCOA", receivedAtMs = receivedAtMs,
-                positionAtMs = measuredAtMs,
+                positionAtMs = frameReceivedAtMs,
                 latitude = fix.latitude, longitude = fix.longitude,
                 // OEM CarLinkSensorMgr reads Android Location.getLatitude/Longitude.
                 // WGS84 is the Android API contract; confirm actual HU values on-road.
@@ -247,7 +247,7 @@ class IccoaService : Service() {
                 antennaStateRaw = fix.antennaState.takeIf { fix.antennaStatePresent },
                 pdopRaw = fix.pdop.takeIf { fix.pdopPresent },
                 deviceTimestampRaw = fix.timestampRaw.takeIf { fix.timestampPresent }
-            )) else DiagLog.w("ICCOA", "OEM GPS measurement rejected: unverified/stale/future timestamp; " +
+            )) else DiagLog.w("ICCOA", "OEM GPS rejected: invalid local receipt clock; " +
                 "received=$receivedAtMs rawTs=${fix.timestampRaw} (coordinates omitted)")
             if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                 VehicleTraceRecorder.gps(
