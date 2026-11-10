@@ -484,7 +484,7 @@ class AaSession(
             val gate = AaGpsGate()
             val startedElapsed = android.os.SystemClock.elapsedRealtime()
             val availability = AaGpsAvailabilityGate(startedElapsed)
-            var lastCarEventElapsed = startedElapsed
+            val drSwitch = AaCarDrSwitchGate(startedElapsed)
             var lastDrPositionAt = Long.MIN_VALUE
             var sentCar = 0L
             var sentDr = 0L
@@ -507,7 +507,7 @@ class AaSession(
                 val nowElapsed = android.os.SystemClock.elapsedRealtime()
                 val carPacket = nextCarPacket
                 if (received != null && carPacket != null) {
-                    lastCarEventElapsed = nowElapsed
+                    drSwitch.onCarGps(nowElapsed)
                     if (availability.onDeliveredLocation(nowElapsed)) {
                         sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
                             AaCarGps.sensorError(1))
@@ -524,8 +524,7 @@ class AaSession(
                 // Switch to DR only after a true five-second OEM GPS gap, never
                 // because a GPS coordinate exceeds a three-second age threshold.
                 // A DR sample is never reused: producedAtMs must be strictly newer.
-                if (drAdvertised && nowElapsed >= lastCarEventElapsed &&
-                    nowElapsed - lastCarEventElapsed >= 5_000L) {
+                if (drAdvertised && drSwitch.canUseVerifiedDr(nowElapsed)) {
                     val estimate = DrNavigationTelemetry.current.value
                     val drPacket = AaCarGps.fusedEvent(estimate,
                         System.currentTimeMillis(), locationCharacterizationAtDiscovery)
