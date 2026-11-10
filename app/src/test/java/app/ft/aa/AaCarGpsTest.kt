@@ -115,10 +115,6 @@ class AaCarGpsTest {
         // same exact AA payload as any other fresh coordinate. The counters
         // must not silently erase valid OEM positions or imply actual DR.
         val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.755800, 37.617200, 1_000L)
-            .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_000L))
-        assertNull(gate.accept(car(55.755810, 37.617210, 1_100L)
-            .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_100L))
         val packet = gate.accept(car(55.755826, 37.617299, 1_200L)
             .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_200L)
         assertArrayEquals(byteArrayOf(
@@ -173,141 +169,78 @@ class AaCarGpsTest {
         assertTrue(AaProtocol.SENSOR_DRIVING_STATUS in types)
     }
 
-    @Test fun gateRequiresThreeDistinctConsistentFixes() {
+    @Test fun firstSubscribedFixIsImmediateWithoutThreeSampleDelay() {
         val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.7558, 37.6172, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        assertNull(gate.accept(car(55.75582, 37.61722, 1200), 1300))
-        assertNotNull(gate.accept(car(55.75583, 37.61723, 1400), 1400))
+        val first = car(55.7558, 37.6172, 1_000L)
+        assertArrayEquals(AaCarGps.event(first, 1_000L), gate.accept(first, 1_000L))
+        assertNull(gate.accept(first, 1_100L))
+        val next = car(55.7559, 37.6173, 1_200L)
+        assertNotNull(gate.accept(next, 1_200L))
     }
 
-    @Test fun unchangedHighFrequencyPollingNeverResendsAndStillExpires() {
+    @Test fun simpleGateRejectsOnlyStaleMalformedAndOutOfOrderFixes() {
         val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        val sameFix = car(55.75582, 37.61722, 1200)
-        // A receiver can poll at 10 Hz while OEM updates GNSS once a second.
-        for (now in 1300L..4100L step 100L)
-            assertNull("duplicate car GNSS packet at $now", gate.accept(sameFix, now))
-        // Optimized fast path must never keep a stale position alive.
-        assertNull(gate.accept(sameFix, 4300))
-        assertNull(gate.accept(car(55.75583, 37.61723, 5000), 5000))
-        assertNull(gate.accept(car(55.75584, 37.61724, 5100), 5100))
-        assertNotNull(gate.accept(car(55.75585, 37.61725, 5200), 5200))
+        assertNull(gate.accept(null, 1_000L))
+        assertNull(gate.accept(car(91.0, 22.0, 1_000L), 1_000L))
+        assertNotNull(gate.accept(car(55.7, 37.6, 1_000L), 1_000L))
+        // Valid fresh fixes now stream immediately, without a distance/teleport gate.
+        assertNotNull(gate.accept(car(55.9, 37.6, 1_100L), 1_100L))
+        assertNull(gate.accept(car(55.7, 37.6, 1_050L), 1_200L))
+        assertNull(gate.accept(car(55.9, 37.6, 1_100L), 4_101L))
+        gate.reset()
+        assertNotNull(gate.accept(car(55.7, 37.6, 2_000L), 2_000L))
     }
 
-    @Test fun gateRejectsTeleportAndReacquires() {
+    @Test fun gearInfoDoesNotRefreshStaleCarGps() {
         val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        // A 20 km teleport in 100 ms is impossible for the car.
-        assertNull(gate.accept(car(55.9300, 37.6173, 1300), 1300))
-        assertNull(gate.accept(car(55.93001, 37.61731, 1400), 1400))
-        // Three wrong fixes in the same distant location remain a teleport.
-        assertNull(gate.accept(car(55.93002, 37.61732, 1500), 1500))
-        // Losing the OEM fix cannot by itself make a distant fake trustworthy.
-        assertNull(gate.accept(null, 5_000))
-        assertNull(gate.accept(car(55.93003, 37.61733, 5_100), 5_100))
-        assertNull(gate.accept(car(55.93004, 37.61734, 5_200), 5_200))
-        assertNull(gate.accept(car(55.93005, 37.61735, 5_300), 5_300))
-        // A plausible real fix near the trusted location can still recover.
-        assertNull(gate.accept(car(55.75583, 37.61723, 5_400), 5_400))
-        assertNull(gate.accept(car(55.75584, 37.61724, 5_500), 5_500))
-        assertNotNull(gate.accept(car(55.75585, 37.61725, 5_600), 5_600))
+        val first = car(55.7, 37.6, 1_000L)
+        assertNotNull(gate.accept(first, 1_000L))
+        val gearOnly = first.copy(receivedAtMs = 9_000L,
+            gearSpeedRaw = 10L, gearAtMs = 9_000L)
+        assertNull(gate.accept(gearOnly, 9_000L))
     }
 
-    @Test fun genuineSensorGapAllowsOnlyPhysicallyPlausibleReacquisition() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        // A 4.8-second tunnel exit plausibly moved ~90 metres, not 19 km.
-        assertNull(gate.accept(car(55.75660, 37.6173, 6000), 6000))
-        assertNull(gate.accept(car(55.75661, 37.61731, 6100), 6100))
-        assertNotNull(gate.accept(car(55.75662, 37.61732, 6200), 6200))
+    @Test fun oemAltitudeAndSatelliteCountsUseCorrectAaFields() {
+        val sample = car(55.755826, 37.617299).copy(
+            altitudeMeters = 112.5,
+            altitudeUnit = "ANDROID_LOCATION_METRES",
+            satellitesVisible = 16L,
+            satellitesUsed = 12L,
+            antennaStateRaw = 3L,
+            pdopRaw = 7L)
+        val location = ProtoReader(AaCarGps.event(sample, 1_500L)!!).message(1)!!
+        assertEquals(11_250, location.int(5))
+        assertFalse(location.has(4)) // PDOP is not an accuracy measurement in metres.
+        val gpsSatellites = ProtoReader(AaCarGps.satellitesEvent(sample, 1_500L)!!).message(21)!!
+        assertEquals(16, gpsSatellites.int(1))
+        assertEquals(12, gpsSatellites.int(2))
+        assertEquals(setOf(1, 2), gpsSatellites.fields.keys)
+        // Antenna state/PDOP have no equivalent fields in AA LOCATION or GPS_SATELLITES.
     }
 
-    @Test fun postBlackoutStableSpoofClusterNeverClearsLastTrustedLocation() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1_200), 1_200))
-        // No car GPS for 60 seconds; this is not evidence that a sudden
-        // ~19 km new position can be trusted (under any normal car speed).
-        assertNull(gate.accept(null, 61_200))
-        for (i in 0..12) {
-            val time = 61_300L + i * 100L
-            assertNull("AA accepted spoofed post-gap location at $time",
-                gate.accept(car(55.930 + i * 0.000001, 37.6173, time), time))
-        }
-        // Previously delivered near-location is still the comparison anchor.
-        assertNull(gate.accept(car(55.75583, 37.61723, 62_700), 62_700))
-        assertNull(gate.accept(car(55.75584, 37.61724, 62_800), 62_800))
-        assertNotNull(gate.accept(car(55.75585, 37.61725, 62_900), 62_900))
+    @Test fun unverifiedAltitudeCannotBeForwardedAsAaAltitude() {
+        val sample = car(55.7, 37.6).copy(altitudeMeters = 112.5, altitudeUnit = "UNKNOWN")
+        assertFalse(ProtoReader(AaCarGps.event(sample, 1_500L)!!).message(1)!!.has(5))
+        assertNull(AaCarGps.satellitesEvent(sample, 4_100L))
     }
 
-    @Test fun explicitNewSensorSessionResetDoesNotReuseAnOldCarAnchor() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1_200), 1_200))
-        gate.reset() // Explicit new session; not an ordinary GNSS blackout.
-        assertNull(gate.accept(car(55.930, 37.6173, 2_000), 2_000))
-        assertNull(gate.accept(car(55.93001, 37.61731, 2_100), 2_100))
-        assertNotNull(gate.accept(car(55.93002, 37.61732, 2_200), 2_200))
-    }
-
-    @Test fun returnsToTrustedPositionAfterLongQuarantinedStream() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        // Sustained false cluster for >3 seconds: the trusted anchor must survive.
-        for (t in 1300L..4800L step 100L)
-            assertNull(gate.accept(car(55.9300, 37.6173, t), t))
-        // Three fresh, mutually plausible fixes return near the trusted point.
-        assertNull(gate.accept(car(55.75583, 37.61723, 4900), 4900))
-        assertNull(gate.accept(car(55.75584, 37.61724, 5000), 5000))
-        assertNotNull(gate.accept(car(55.75585, 37.61725, 5100), 5100))
-    }
-
-    @Test fun prolongedFalseCoordinateClusterNeverPassesWithoutActualLoss() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1000), 1000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1100), 1100))
-        assertNotNull(gate.accept(car(55.75582, 37.61722, 1200), 1200))
-        // 2 km false offset is stable for multiple seconds but remains implausible.
-        for (t in 1300L..3300L step 100L) {
-            val sample = car(55.77382, 37.61722, t)
-            assertNull("unsafe coordinate released at $t", gate.accept(sample, t))
-        }
-    }
-
-    @Test fun gearInfoPacketsCannotRepairStaleGpsOrDiscardTrustedAnchor() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(car(55.75580, 37.61720, 1_000), 1_000))
-        assertNull(gate.accept(car(55.75581, 37.61721, 1_100), 1_100))
-        val last = car(55.75582, 37.61722, 1_200)
-        assertNotNull(gate.accept(last, 1_200))
-        // GearInfo traffic keeps receivedAtMs fresh, but OEM GPS
-        // positionAtMs remains stale during an underground blackout.
-        for (now in 5_000L..12_000L step 1_000L) {
-            val gearOnly = last.copy(
-                receivedAtMs = now, positionAtMs = 1_200L,
-                gearSpeedRaw = (now / 1_000L), gearAtMs = now)
-            assertNull(gate.accept(gearOnly, now))
-        }
-        // Three internally consistent but impossible GPS fixes must not
-        // acquire AA merely because GearInfo has been flowing all along.
-        assertNull(gate.accept(car(55.93000, 37.61730, 12_100), 12_100))
-        assertNull(gate.accept(car(55.93001, 37.61731, 12_200), 12_200))
-        assertNull(gate.accept(car(55.93002, 37.61732, 12_300), 12_300))
-        assertNull(gate.accept(car(55.75583, 37.61723, 12_400), 12_400))
-        assertNull(gate.accept(car(55.75584, 37.61724, 12_500), 12_500))
-        assertNotNull(gate.accept(car(55.75585, 37.61725, 12_600), 12_600))
+    @Test fun aaSdpHasPersistentVehicleIdentityAndSatelliteSensor() {
+        val packet = AaMessages.serviceDiscoveryResponse(
+            1280, 720, 30, 240, true, "Toyota RAV4", true,
+            advertiseCarLocation = true, advertiseCarGear = true,
+            vehicleId = "FT-persistent-identity-1",
+            vehicleMake = "FAW Toyota", vehicleModel = "RAV4", vehicleYear = "2026")
+        val meta = ProtoReader(packet)
+        assertEquals("FT-persistent-identity-1", meta.string(5))
+        assertEquals("FAW Toyota", meta.string(3))
+        assertEquals("2026", meta.string(4))
+        val huInfo = meta.message(17)!!
+        assertEquals("FT-persistent-identity-1", huInfo.string(4))
+        assertEquals(1, huInfo.int(9))
+        val types = meta.messages(1).first { it.int(1) == AaProtocol.CH_SENSOR }
+            .message(2)!!.messages(1).map { it.int(1) }.toSet()
+        assertTrue(AaProtocol.SENSOR_LOCATION in types)
+        assertTrue(AaProtocol.SENSOR_GPS_SATELLITES in types)
     }
 
     @Test fun baiduModeMustNotAdvertiseUnusableGps() {

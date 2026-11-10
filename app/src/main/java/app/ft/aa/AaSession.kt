@@ -41,8 +41,10 @@ class AaSession(
     private var job: Job? = null
     private var carGpsJob: Job? = null
     private var carGearJob: Job? = null
+    private var carSatellitesJob: Job? = null
     @Volatile private var carGpsSubscribed = false
     @Volatile private var carGearSubscribed = false
+    @Volatile private var carSatellitesSubscribed = false
     private val sensorSubscriptions = AaSensorSubscriptions()
     private var locationCharacterizationAtDiscovery =
         AaLocationCharacterization.RAW_GNSS_ONLY
@@ -53,8 +55,10 @@ class AaSession(
     private fun stopCarSensorStreams() {
         carGpsSubscribed = false
         carGearSubscribed = false
+        carSatellitesSubscribed = false
         carGpsJob?.cancel(); carGpsJob = null
         carGearJob?.cancel(); carGearJob = null
+        carSatellitesJob?.cancel(); carSatellitesJob = null
     }
 
     private val lifecycle = AaSessionLifecycle(
@@ -231,7 +235,11 @@ class AaSession(
                     true, prefs.carName, prefs.aaControlsLeft,
                     advertiseCarLocation = prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol),
                     advertiseCarGear = prefs.carProtocol == CarProtocol.ICCOA,
-                    locationCharacterization = locationCharacterizationAtDiscovery
+                    locationCharacterization = locationCharacterizationAtDiscovery,
+                    vehicleId = prefs.aaVehicleId,
+                    vehicleMake = if (prefs.carProtocol == CarProtocol.ICCOA) "FAW Toyota" else "Universal",
+                    vehicleModel = if (prefs.carProtocol == CarProtocol.ICCOA) "RAV4" else prefs.carName,
+                    vehicleYear = if (prefs.carProtocol == CarProtocol.ICCOA) "2026" else "2024"
                 )
                 // Audit actual serialized descriptor, rather than the setting
                 // supplied to the encoder. No coordinates or device identity.
@@ -437,14 +445,15 @@ class AaSession(
                             AaCarGear.sensorError(3))
                     }
                     AaProtocol.SENSOR_LOCATION -> {
-                        if (prefs.gpsSourceMode.advertisesCarLocation(prefs.carProtocol)) {
-                            val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
-                            DiagLog.i(tag, "AA phone requested car LOCATION " +
-                                "refreshIntervalMs=$requestedIntervalMs")
-                            startCarGps(requestedIntervalMs)
-                        }
-                        else sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_ERROR,
-                            AaCarGps.sensorError(3))
+                        val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
+                        DiagLog.i(tag, "AA phone requested car LOCATION " +
+                            "refreshIntervalMs=$requestedIntervalMs")
+                        startCarGps(requestedIntervalMs)
+                    }
+                    AaProtocol.SENSOR_GPS_SATELLITES -> {
+                        val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
+                        DiagLog.i(tag, "AA phone requested OEM satellite counts")
+                        startCarSatellites(requestedIntervalMs)
                     }
                     else -> Unit
                 }
@@ -503,6 +512,28 @@ class AaSession(
             }
         }
         DiagLog.i(tag, "AA subscribed to car GPS; interval=${interval}ms, OEM datum requires physical check")
+    }
+
+    /** Independently subscribed Android Auto GPS_SATELLITES type 21. */
+    private fun startCarSatellites(requestedMs: Long) {
+        carSatellitesJob?.cancel()
+        carSatellitesSubscribed = true
+        val interval = requestedMs.coerceIn(100L, 1_000L)
+        carSatellitesJob = scope.launch(Dispatchers.IO) {
+            var lastPositionAt = Long.MIN_VALUE
+            while (isActive && lifecycle.running && carSatellitesSubscribed && sensorChannelOpened) {
+                val now = System.currentTimeMillis()
+                val sample = VehicleTelemetry.current.value
+                if (sample != null && sample.positionAtMs > lastPositionAt) {
+                    val packet = AaCarGps.satellitesEvent(sample, now)
+                    if (packet != null) {
+                        lastPositionAt = sample.positionAtMs
+                        sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                    }
+                }
+                delay(interval)
+            }
+        }
     }
 
     /**

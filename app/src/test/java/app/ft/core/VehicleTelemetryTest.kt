@@ -159,6 +159,35 @@ class VehicleTelemetryTest {
         }
     }
 
+    @Test fun allOemCarlinkGpsMetadataSurvivesVehicleTelemetryUpdates() {
+        val now = System.currentTimeMillis()
+        try {
+            VehicleTelemetry.clear("ICCOA")
+            VehicleTelemetry.publish(VehicleLocation(
+                source = "ICCOA", receivedAtMs = now, positionAtMs = now,
+                latitude = 55.7, longitude = 37.6, coordinatesUnit = "ANDROID_LOCATION_WGS84",
+                altitudeMeters = 112.5, altitudeUnit = "ANDROID_LOCATION_METRES",
+                antennaStateRaw = 3L, pdopRaw = 7L, satellitesUsed = 12L,
+                satellitesVisible = 16L, deviceTimestampRaw = now,
+                speedRaw = 3L, headingRaw = 90L
+            ))
+            VehicleTelemetry.updateIccoaSpeed(15L, gearRaw = 2L)
+            val fix = VehicleTelemetry.current.value!!
+            assertEquals(112.5, fix.altitudeMeters!!, 0.001)
+            assertEquals("ANDROID_LOCATION_METRES", fix.altitudeUnit)
+            assertEquals(3L, fix.antennaStateRaw)
+            assertEquals(7L, fix.pdopRaw)
+            assertEquals(12L, fix.satellitesUsed)
+            assertEquals(16L, fix.satellitesVisible)
+            assertEquals(now, fix.deviceTimestampRaw)
+            assertEquals(3L, fix.speedRaw)
+            assertEquals(90L, fix.headingRaw)
+            assertEquals(15L, fix.gearSpeedRaw)
+        } finally {
+            VehicleTelemetry.clear("ICCOA")
+        }
+    }
+
     @Test fun gearFramesRetainLastKnownGpsButDoNotMakeItFresh() {
         val now = System.currentTimeMillis()
         val stalePosition = now - 10_000L

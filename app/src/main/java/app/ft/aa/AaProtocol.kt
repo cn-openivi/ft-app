@@ -101,6 +101,7 @@ object AaProtocol {
     const val AUDIO_REQUEST_RELEASE = 4
     const val NAV_FOCUS_PROJECTED = 2
     const val SENSOR_LOCATION = 1
+    const val SENSOR_GPS_SATELLITES = 21
     const val SENSOR_GEAR = 8
     const val SENSOR_NIGHT_MODE = 10
     const val SENSOR_DRIVING_STATUS = 13
@@ -137,7 +138,7 @@ object AaProtocol {
         SENSOR_DRIVING_STATUS, SENSOR_NIGHT_MODE -> true
         // An optional GNSS-origin policy must never suppress truthful OEM
         // GEAR subscription after GEAR was independently advertised in SDP.
-        SENSOR_LOCATION -> isIccoa && carLocationOffered
+        SENSOR_LOCATION, SENSOR_GPS_SATELLITES -> isIccoa && carLocationOffered
         SENSOR_GEAR -> isIccoa
         else -> false
     }

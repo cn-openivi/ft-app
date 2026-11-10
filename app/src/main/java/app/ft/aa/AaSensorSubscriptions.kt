@@ -23,6 +23,7 @@ internal class AaSensorSubscriptions {
 
     private fun name(type: Int): String = when (type) {
         AaProtocol.SENSOR_LOCATION -> "LOCATION"
+        AaProtocol.SENSOR_GPS_SATELLITES -> "GPS_SATELLITES"
         3 -> "CAR_SPEED"
         7 -> "PARKING_BRAKE"
         8 -> "GEAR"

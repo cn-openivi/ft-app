@@ -239,6 +239,9 @@ class IccoaService : Service() {
                 speedUnit = "ANDROID_LOCATION_MPS_FLOORED",
                 headingUnit = "ANDROID_LOCATION_DEGREES_FLOORED",
                 satellitesUsed = fix.satellitesUsed, satellitesVisible = fix.satellitesVisible,
+                altitudeMeters = fix.altitude.takeIf { fix.altitudePresent },
+                altitudeUnit = if (fix.altitudePresent) "ANDROID_LOCATION_METRES" else "UNKNOWN",
+                antennaStateRaw = fix.antennaState, pdopRaw = fix.pdop,
                 deviceTimestampRaw = fix.timestampRaw
             )) else DiagLog.w("ICCOA", "OEM GPS measurement rejected: unverified/stale/future timestamp; " +
                 "received=$receivedAtMs rawTs=${fix.timestampRaw} (coordinates omitted)")

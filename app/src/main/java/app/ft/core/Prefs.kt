@@ -131,6 +131,19 @@ class Prefs(context: Context) {
     var themeMode: Int get() = int("themeMode", 0); set(v) = set("themeMode", v)
 
     var carName: String get() = str("carName", "FT"); set(v) = set("carName", v)
+    /** Persist one virtual-HU ID for the lifetime of this app install/upgrade. */
+    val aaVehicleId: String
+        get() = synchronized(sp) {
+            val existing = str("aaVehicleId", "")
+            if (existing.isNotBlank()) existing else {
+                val created = "FT-" + java.util.UUID.randomUUID().toString()
+                // If storage fails, don't silently rotate the identity every session.
+                check(sp.edit().putString("aaVehicleId", created).commit()) {
+                    "Cannot persist Android Auto vehicle identity"
+                }
+                created
+            }
+        }
     var autoConnect: Boolean get() = bool("autoConnect", false); set(v) = set("autoConnect", v)
     var carProtocol: CarProtocol get() = CarProtocol.fromId(str("carProtocol", "carlife")); set(v) = set("carProtocol", v.id)
     /** Explicit GPS origin: CAR for ICCOA by default, PHONE for Baidu by default. */

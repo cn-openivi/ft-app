@@ -21,7 +21,11 @@ object AaMessages {
     fun authComplete(): ByteArray = ProtoWriter().enum(1, AaProtocol.STATUS_OK).toByteArray()
 
     fun serviceDiscoveryResponse(width: Int, height: Int, fps: Int, density: Int, advertiseAudio: Boolean, name: String, controlsLeft: Boolean = true, advertiseCarLocation: Boolean = false, advertiseCarGear: Boolean = false,
-        locationCharacterization: Int = AaLocationCharacterization.RAW_GNSS_ONLY): ByteArray {
+        locationCharacterization: Int = AaLocationCharacterization.RAW_GNSS_ONLY,
+        vehicleId: String = "0001",
+        vehicleMake: String = "Universal",
+        vehicleModel: String = name,
+        vehicleYear: String = "2024"): ByteArray {
         val (fullW, fullH) = AaProtocol.standardSize(width, height)
         val resolution = when (fullW) {
             1920 -> AaProtocol.RES_1920x1080
@@ -57,8 +61,11 @@ object AaMessages {
         // Advertise supported sensor types; Android Auto chooses subscriptions.
         // Repeated field order is not a mechanism to force car GPS selection.
         val sensorTypes = ProtoWriter()
-        if (advertiseCarLocation)
+        if (advertiseCarLocation) {
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_LOCATION))
+            // OEM ICCOA GPS already supplies in-use and in-view satellite counts.
+            sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_GPS_SATELLITES))
+        }
         if (advertiseCarGear)
             sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_GEAR))
         sensorTypes.message(1, ProtoWriter().enum(1, AaProtocol.SENSOR_DRIVING_STATUS))
@@ -113,10 +120,10 @@ object AaMessages {
                     )
             )
         }
-        w.string(2, name)
-            .string(3, "Universal")
-            .string(4, "2024")
-            .string(5, "0001")
+        w.string(2, vehicleModel)
+            .string(3, vehicleMake)
+            .string(4, vehicleYear)
+            .string(5, vehicleId)
             .varint(6, if (controlsLeft) 0L else 1L)
             .string(7, "FT")
             .string(8, "FT")
@@ -127,14 +134,15 @@ object AaMessages {
             .string(14, name)
             .message(
                 17, ProtoWriter()
-                    .string(1, name)
-                    .string(2, "Universal")
-                    .string(3, "2024")
-                    .string(4, "0001")
+                    .string(1, vehicleModel)
+                    .string(2, vehicleMake)
+                    .string(3, vehicleYear)
+                    .string(4, vehicleId)
                     .string(5, "FT")
                     .string(6, "FT")
                     .string(7, "1")
                     .string(8, "1.0")
+                    .int32(9, 1) // Explicit vehicle type CAR, not motorcycle.
             )
         return w.toByteArray()
     }

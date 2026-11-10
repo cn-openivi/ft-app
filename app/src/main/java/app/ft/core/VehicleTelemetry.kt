@@ -32,7 +32,12 @@ data class VehicleLocation(
     val deviceTimestampRaw: Long? = null,
     val coordinatesUnit: String = "UNKNOWN",
     val speedUnit: String = "UNKNOWN",
-    val headingUnit: String = "UNKNOWN"
+    val headingUnit: String = "UNKNOWN",
+    // Exact GPS metadata provided by FAW Carlink/ICCOA; do not invent units for PDOP/antenna.
+    val altitudeMeters: Double? = null,
+    val altitudeUnit: String = "UNKNOWN",
+    val antennaStateRaw: Long? = null,
+    val pdopRaw: Long? = null
 ) {
     fun fresh(nowMs: Long = System.currentTimeMillis()) =
         nowMs >= receivedAtMs && nowMs - receivedAtMs <= 3_000L

@@ -11,7 +11,9 @@ import kotlin.math.roundToInt
  *
  * The source must explicitly declare Android Location API / WGS84 provenance.
  * Baidu integer GPS is NOT forwarded until its scale/CRS is verified.
- * Only independently evidenced OEM speed/bearing are optional; no guessed accuracy, altitude or DR.
+ * Transfer all fields that the AA LOCATION schema supports, but never fabricate accuracy or DR.
+ * Preserve other OEM metadata (antenna/PDOP/satellite counts) in VehicleTelemetry; GPS
+ * satellite counts are a separate opt-in AA sensor, not fields of LOCATION.
  */
 internal object AaCarGps {
     const val LOCATION = AaProtocol.SENSOR_LOCATION
@@ -43,6 +45,15 @@ internal object AaCarGps {
         // and bearing_e6 field 7 (clockwise degrees * 1e6). Only publish
         // original OEM GPS metadata with explicitly verified provenance:
         // GearInfo speed, phone GNSS and guessed heading are never mixed in.
+        val altitude = location.altitudeMeters
+        if (location.altitudeUnit == "ANDROID_LOCATION_METRES" &&
+            altitude != null && altitude.isFinite()) {
+            val altitudeE2 = altitude * 100.0
+            if (altitudeE2.isFinite() && altitudeE2 >= Int.MIN_VALUE &&
+                altitudeE2 <= Int.MAX_VALUE) {
+                gps.int32(5, altitudeE2.roundToInt())
+            }
+        }
         val speed = location.speedRaw
         if (location.speedUnit == "ANDROID_LOCATION_MPS_FLOORED" &&
             speed != null && speed in 0L..125L) {
@@ -94,6 +105,22 @@ internal object AaCarGps {
         ).toByteArray()
     }
 
+    /**
+     * Android Auto sensor 21 (GPS_SATELLITES) supports aggregate counts only from
+     * this OEM source. Per-satellite PRN/SNR/azimuth/elevation is NOT present in Carlink Gps.
+     * SensorBatch field 21 -> GpsSatelliteData { satellite_count=1; satellites_used=2 }.
+     */
+    fun satellitesEvent(location: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
+        if (location == null || location.source != "ICCOA" ||
+            location.coordinatesUnit != CRS || !location.positionFresh(nowMs) ||
+            location.displayLatitude == null || location.displayLongitude == null) return null
+        val view = location.satellitesVisible ?: return null
+        val used = location.satellitesUsed ?: return null
+        if (view !in 0L..255L || used !in 0L..255L) return null
+        return ProtoWriter().message(21,
+            ProtoWriter().int32(1, view.toInt()).int32(2, used.toInt())).toByteArray()
+    }
+
     fun sensorError(status: Int): ByteArray =
         ProtoWriter().enum(1, LOCATION).enum(2, status).toByteArray()
 }
@@ -139,96 +166,21 @@ internal class AaGpsAvailabilityGate(
  * Output and source selection remain independent of diagnostic 10-second sampling.
  */
 internal class AaGpsGate {
-    private var previous: VehicleLocation? = null
-    // The last fix actually delivered to AA is the trusted movement anchor.
-    // A self-consistent cluster of erroneous fixes must not move this anchor.
-    private var lastDelivered: VehicleLocation? = null
-    private var lastObservedAt = Long.MIN_VALUE
-    private var consecutive = 0
+    private var lastDeliveredPositionAtMs = Long.MIN_VALUE
 
+    /**
+     * Match open-headunit's first-fix delivery: the first fresh OEM location is
+     * sent immediately after Android Auto subscribes. Only reject unavailable,
+     * stale or malformed samples and old/duplicate measurements. No 3-fix
+     * acquisition, distance heuristics, synthetic accuracy, or unsolicited AA data.
+     */
     fun accept(sample: VehicleLocation?, nowMs: Long): ByteArray? {
-        val preceding = previous
-        // Polling may run at 100 ms while the OEM GNSS source updates only
-        // once per second. Skip unchanged, still-fresh fixes BEFORE allocating
-        // the nested LOCATION protobuf. Preserve the existing stale/reset path.
-        if (preceding != null && sample != null &&
-            sample.positionAtMs == preceding.positionAtMs &&
-            sample.source == preceding.source &&
-            sample.coordinatesUnit == preceding.coordinatesUnit &&
-            sample.latitude == preceding.latitude &&
-            sample.longitude == preceding.longitude &&
-            sample.positionFresh(nowMs)) return null
-        val encoded = AaCarGps.event(sample, nowMs)
-        if (encoded == null || sample == null) {
-            if (previous != null && nowMs - lastObservedAt > 3_000L) {
-                // An RF outage is not consent to discard our last *delivered*
-                // trusted location. Otherwise a spoofed post-tunnel cluster
-                // can re-anchor AA merely by sending three consistent fixes.
-                restartCandidateStream()
-            }
-            return null
-        }
-        if (preceding != null && preceding.positionAtMs == sample.positionAtMs) return null
-        if (preceding != null) {
-            val elapsedMs = sample.positionAtMs - preceding.positionAtMs
-            val lat1 = preceding.displayLatitude
-            val lon1 = preceding.displayLongitude
-            val lat2 = sample.displayLatitude
-            val lon2 = sample.displayLongitude
-            if (elapsedMs !in 1L..3_000L || lat1 == null || lon1 == null || lat2 == null || lon2 == null ||
-                unreasonableJump(lat1, lon1, lat2, lon2, elapsedMs)) {
-                // A real gap resets the *candidate stream*, not the
-                // last trusted position. Reacquisition must still satisfy
-                // the plausible displacement bound from lastDelivered.
-                previous = sample
-                consecutive = 1
-                lastObservedAt = nowMs
-                return null
-            }
-        }
-        previous = sample
-        lastObservedAt = nowMs
-        consecutive++
-        if (consecutive < 3) return null
-        val anchor = lastDelivered
-        if (anchor != null) {
-            val elapsedMs = sample.positionAtMs - anchor.positionAtMs
-            val lat1 = anchor.displayLatitude ?: return null
-            val lon1 = anchor.displayLongitude ?: return null
-            val lat2 = sample.displayLatitude ?: return null
-            val lon2 = sample.displayLongitude ?: return null
-            // Guard against a sustained false GPS cluster, not just a single spike.
-            // The stream must genuinely go stale before a far-away fix can reacquire.
-            // The preceding-sample check already handles a genuine >3s source
-            // gap. Do not permanently freeze AA after >3s of quarantined fixes:
-            // compare distance to the last trusted fix over the real elapsed time.
-            if (elapsedMs <= 0L ||
-                unreasonableJump(lat1, lon1, lat2, lon2, elapsedMs)) return null
-        }
-        lastDelivered = sample
-        return encoded
+        val packet = AaCarGps.event(sample, nowMs) ?: return null
+        val positionAt = sample!!.positionAtMs
+        if (positionAt <= lastDeliveredPositionAtMs) return null
+        lastDeliveredPositionAtMs = positionAt
+        return packet
     }
 
-    private fun restartCandidateStream() {
-        previous = null
-        consecutive = 0
-        lastObservedAt = Long.MIN_VALUE
-        // Deliberately preserve lastDelivered across GNSS outages.
-    }
-
-    fun reset() {
-        restartCandidateStream()
-        lastDelivered = null
-    }
-
-    private fun unreasonableJump(lat1: Double, lon1: Double, lat2: Double, lon2: Double, ms: Long): Boolean {
-        val dy = Math.toRadians(lat2 - lat1)
-        val dx = Math.toRadians(lon2 - lon1)
-        val a = kotlin.math.sin(dy / 2) * kotlin.math.sin(dy / 2) +
-            kotlin.math.cos(Math.toRadians(lat1)) * kotlin.math.cos(Math.toRadians(lat2)) *
-            kotlin.math.sin(dx / 2) * kotlin.math.sin(dx / 2)
-        val meters = 2.0 * 6_371_000.0 * kotlin.math.asin(kotlin.math.sqrt(a.coerceIn(0.0, 1.0)))
-        // Allow up to 300 km/h plus 30 m of GNSS jitter between readings.
-        return meters > 30.0 + (ms / 1_000.0) * (300.0 / 3.6)
-    }
+    fun reset() { lastDeliveredPositionAtMs = Long.MIN_VALUE }
 }
