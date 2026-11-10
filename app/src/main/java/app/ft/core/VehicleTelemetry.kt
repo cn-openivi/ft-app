@@ -113,6 +113,13 @@ object VehicleTelemetry {
             location.positionAtMs - location.receivedAtMs > 1_000L) return
         val latestPosition = _current.value?.takeIf { it.source == location.source }
         if (location.source == "ICCOA") {
+            // Local monotonic RX ordering: an older or same-position timestamp
+            // may not roll back the last genuine GPS fix. Same-millisecond
+            // distinct OEM frames remain valid if their raw stamps differ.
+            if (latestPosition != null &&
+                (location.positionAtMs < latestPosition.positionAtMs ||
+                 (location.positionAtMs == latestPosition.positionAtMs &&
+                  location.deviceTimestampRaw == latestPosition.deviceTimestampRaw))) return
             // Discard an exact replay of the same OEM packet. Clock age is NOT
             // tested, and a clock correction backwards must not stall navigation.
             val lastStamp = latestPosition?.deviceTimestampRaw
