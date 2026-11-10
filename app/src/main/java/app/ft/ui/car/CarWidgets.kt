@@ -36,6 +36,8 @@ import app.ft.FTApp
 import app.ft.core.CarProtocol
 import app.ft.core.GpsSourceMode
 import app.ft.dr.DrNavigationTelemetry
+import app.ft.core.GpsSourceMode
+import app.ft.dr.DrNavigationTelemetry
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -60,6 +62,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val inertial by VehicleMotionTelemetry.current.collectAsState()
     val vehicle by VehicleTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
+    val verifiedDr by DrNavigationTelemetry.current.collectAsState()
     val verifiedDr by DrNavigationTelemetry.current.collectAsState()
     val selector = remember {
         CarGpsSourceSelector(onTransition = { before, after, at ->
