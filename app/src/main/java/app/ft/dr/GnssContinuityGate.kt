@@ -141,7 +141,7 @@ internal class GnssContinuityGate {
 
     private companion object {
         const val HISTORY_REQUIRED = 5
-        const val GPS_GAP_MS = 3_000L
+        const val GPS_GAP_MS = 5_000L
         const val BASE_TOLERANCE_METRES = 4.0
         const val MAX_TOLERANCE_METRES = 15.0
     }
