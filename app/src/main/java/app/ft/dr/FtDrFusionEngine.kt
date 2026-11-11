@@ -105,18 +105,25 @@ internal class FtDrFusionEngine(
     fun onGnss(input: Gnss): Boolean {
         if (input.source != GpsSourceMode.CAR ||
             !input.genuineCarFix || !input.accuracyVerified ||
-            !input.courseVerified || !input.fixTimeVerified ||
+            !input.fixTimeVerified ||
             !input.latitude.isFinite() || input.latitude !in -85.0..85.0 ||
             !input.longitude.isFinite() || input.longitude !in -180.0..180.0 ||
             !input.horizontalAccuracyMetres.isFinite() ||
             input.horizontalAccuracyMetres !in 0.5..30.0 ||
-            !input.courseDegrees.isFinite() ||
             input.fixMonotonicMs <= 0L || input.emittedAtMs <= 0L ||
             (lastGnssFixMs != null && input.fixMonotonicMs <= lastGnssFixMs!!)) return false
 
         val initialLatitude = originLat
         val initialLongitude = originLon
         if (initialLatitude == null || initialLongitude == null) {
+            // Valid latitude/longitude and uncertainty are usable without
+            // GNSS bearing, including parked vehicles. Until a genuine course
+            // becomes available, native FT keeps its RAW_UNFILTERED GPS fix.
+            // No guessed north heading and no fake EKF initialization.
+            if (!input.courseVerified || !input.courseDegrees.isFinite()) {
+                lastGnssFixMs = input.fixMonotonicMs
+                return true
+            }
             if (!ekf.anchor(
                 eastMetres = 0.0,
                 northMetres = 0.0,

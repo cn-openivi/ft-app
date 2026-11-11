@@ -122,4 +122,31 @@ class FtDrFusionEngineTest {
         assertTrue(engine.onMotion(motion(1400L), 101_400L))
         assertTrue(output.last().eastMetres > before)
     }
+
+    @Test fun validStationaryGnssWithoutCourseDoesNotRequireMovementOrInventHeading() {
+        var publishes = 0
+        val engine = FtDrFusionEngine { _, _, _, _ -> publishes++; true }
+        val missingCourse = gnss(1000L).copy(
+            courseVerified = false, courseDegrees = Double.NaN)
+        assertTrue(engine.onGnss(missingCourse))
+        assertEquals(0, publishes)
+        assertTrue(engine.onGnss(gnss(1100L)))
+        assertEquals(0, publishes)
+        assertFalse(engine.onMotion(motion(1100L), 101_100L))
+        assertTrue(engine.onMotion(motion(1200L), 101_200L))
+        assertEquals(1, publishes)
+    }
+
+    @Test fun verifiedGnssPositionCanCorrectAnchoredEkfWithoutNewBearing() {
+        val positions = mutableListOf<DeadReckoningEkf.Estimate>()
+        val engine = FtDrFusionEngine { _, _, estimate, _ ->
+            positions.add(estimate); true
+        }
+        assertTrue(engine.onGnss(gnss(1000L)))
+        assertFalse(engine.onMotion(motion(1000L), 101_000L))
+        assertTrue(engine.onMotion(motion(1100L), 101_100L))
+        assertTrue(engine.onGnss(gnss(1200L).copy(
+            courseVerified = false, courseDegrees = Double.NaN)))
+        assertTrue(positions.size >= 2)
+    }
 }
