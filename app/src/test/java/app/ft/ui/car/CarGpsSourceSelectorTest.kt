@@ -68,16 +68,23 @@ class CarGpsSourceSelectorTest {
         assertNull(next.speedKmh)
     }
 
-    @Test fun unverifiedPhoneDrOrOldDrNeverReplacesAuthenticOem() {
+    @Test fun unverifiedOrPhoneDrNeverReplacesAuthenticOem() {
         val oem = car(10_000L)
         val cases = listOf(verifiedDr(10_080L, false),
-            verifiedDr(10_080L, mode = GpsSourceMode.PHONE),
-            verifiedDr(8_000L))
+            verifiedDr(10_080L, mode = GpsSourceMode.PHONE))
         for (dr in cases) {
             assertEquals(CarGpsSourceSelector.Source.ICCOA,
                 CarGpsSourceSelector().select(oem, phone(10_080L),
                     10_080L, drFix = dr).source)
         }
+    }
+
+    @Test fun elapsedWallClockDoesNotArbitrarilyRevokeVerifiedDr() {
+        val reading = CarGpsSourceSelector().select(
+            car(10_000L), phone(10_080L), 10_080L,
+            drFix = verifiedDr(8_000L))
+        assertEquals(CarGpsSourceSelector.Source.DR, reading.source)
+        assertEquals(2_080L, reading.lastPacketAgeMs)
     }
 
     @Test fun gearInfoCannotRefreshOemGpsOrTriggerPhoneFallback() {

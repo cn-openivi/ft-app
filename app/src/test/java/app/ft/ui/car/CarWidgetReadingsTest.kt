@@ -38,7 +38,7 @@ class CarWidgetReadingsTest {
         val reading = selector.select(car(10_000L), phone(10_080L),
             10_080L, drFix = dr(10_080L))
         assertEquals(CarGpsSourceSelector.Source.DR, reading.source)
-        assertEquals("DR estimated ±15m", CarWidgetReadings.sourceLabel(reading))
+        assertEquals("DR · last estimate 0ms ago · ±15m", CarWidgetReadings.sourceLabel(reading))
         assertNull(CarWidgetReadings.speedKmh(reading, false))
     }
 
