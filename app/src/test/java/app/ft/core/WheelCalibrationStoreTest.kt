@@ -54,4 +54,44 @@ class WheelCalibrationStoreTest {
         assertFalse(store.persistIfPending(c, "verified-car-A"))
         assertTrue(backing.values.isEmpty())
     }
+
+    @Test fun completedThreeSegmentsAreDurableOnlyAfterSuccessfulCommit() {
+        val backing = MemoryStorage()
+        val store = WheelCalibrationStore(backing)
+        val c = WheelSpeedAutoCalibration()
+        assertTrue(c.bindVehicle("car-verified-129"))
+        for (segment in 1..3) {
+            val startMs = segment * 100_000L
+            for (step in 0..600) {
+                val time = startMs + step * 100L
+                c.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
+                    monotonicMs = time, forwardSpeedMps = 20.0,
+                    yawRateRadPerSecond = 0.0,
+                    longitudinalAccelerationMps2 = 0.0,
+                    verifiedWheelAndYawUnits = true, verifiedForwardGear = true
+                ))
+                if (step % 10 == 0) {
+                    c.observeGnss(WheelSpeedAutoCalibration.IndependentGnss(
+                        fixMonotonicMs = time,
+                        latitude = 55.0 + (step * 2.0 * 1.00333) / 111195.080233,
+                        longitude = 37.0, horizontalAccuracyMetres = 1.0,
+                        independentCarGnssVerified = true,
+                        monotonicFixEpochVerified = true
+                    ))
+                }
+            }
+        }
+        assertTrue(c.estimate().confident)
+        assertTrue(c.estimate().pendingPersistence)
+        backing.writeSucceeds = false
+        assertFalse(store.persistIfPending(c, "car-verified-129"))
+        assertTrue(c.estimate().pendingPersistence)
+        backing.writeSucceeds = true
+        assertTrue(store.persistIfPending(c, "car-verified-129"))
+        assertFalse(c.estimate().pendingPersistence)
+        val persisted = requireNotNull(store.restore("car-verified-129"))
+        assertEquals(c.estimate().multiplier, persisted.multiplier, 0.0)
+        assertNull(store.restore("other-verified-car"))
+        assertFalse(backing.values.keys.any { it.contains("car-verified-129") })
+    }
 }

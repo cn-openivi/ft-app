@@ -38,7 +38,11 @@ internal object FtDrRuntime {
         if (!independentlyVerifiedIdentity || vehicleId.isBlank() ||
             vehicleId.length > 256) return false
         if (verifiedVehicleId == vehicleId) return true
+        val changingCar = verifiedVehicleId != null
         reset()
+        // A different authenticated vehicle is an explicit authority reset.
+        // Never show the previous car's filtered coordinates for the next car.
+        if (changingCar) FtPositionTelemetry.clear()
         val store = WheelCalibrationStore(AndroidWheelCalibrationStorage(context))
         val calibration = WheelSpeedAutoCalibration()
         if (!calibration.bindVehicle(vehicleId, store.restore(vehicleId))) return false
