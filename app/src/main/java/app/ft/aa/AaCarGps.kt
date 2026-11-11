@@ -101,11 +101,24 @@ internal object AaCarGps {
         if (estimate.latitude == 0.0 && estimate.longitude == 0.0) return null
         val lat = (estimate.latitude * 10_000_000.0).roundToInt()
         val lon = (estimate.longitude * 10_000_000.0).roundToInt()
-        return ProtoWriter().message(1, ProtoWriter()
+        val gps = ProtoWriter()
             .varint(2, lat.toLong())
             .varint(3, lon.toLong())
             .uint32(4, accuracyE3.toInt())
-        ).toByteArray()
+        // Unlike OEM floored speed, this is the measured verified wheel speed.
+        // Vehicle heading during REVERSE points opposite the course of travel.
+        val signedSpeed = estimate.signedWheelSpeedMps
+        if (signedSpeed != null && signedSpeed.isFinite() &&
+            kotlin.math.abs(signedSpeed) <= 65.0) {
+            gps.int32(6, (kotlin.math.abs(signedSpeed) * 1_000.0).roundToInt())
+            if (kotlin.math.abs(signedSpeed) >= 1.0 &&
+                estimate.headingDegrees.isFinite()) {
+                val course = (estimate.headingDegrees +
+                    if (signedSpeed < 0.0) 180.0 else 0.0) % 360.0
+                gps.int32(7, (course * 1_000_000.0).roundToInt())
+            }
+        }
+        return ProtoWriter().message(1, gps).toByteArray()
     }
 
     /**

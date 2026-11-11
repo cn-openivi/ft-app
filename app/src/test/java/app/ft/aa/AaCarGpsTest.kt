@@ -243,6 +243,42 @@ class AaCarGpsTest {
             verifiedVehicleMotion = trusted
         )
 
+    @Test fun verifiedFusedWheelSpeedAndForwardCourseReachAa() {
+        val dr = verifiedDr(10_102L).copy(
+            speedKmh = 36f, signedWheelSpeedMps = 10.0,
+            headingDegrees = 90.0)
+        val gps = ProtoReader(AaCarGps.fusedEvent(dr, 10_103L,
+            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)!!).message(1)!!
+        assertEquals(10_000, gps.int(6))
+        assertEquals(90_000_000, gps.int(7))
+        assertTrue(gps.has(4))
+    }
+
+    @Test fun verifiedReverseReportsCourseOppositeVehicleNose() {
+        val dr = verifiedDr(10_102L).copy(
+            speedKmh = 18f, signedWheelSpeedMps = -5.0,
+            headingDegrees = 90.0)
+        val gps = ProtoReader(AaCarGps.fusedEvent(dr, 10_103L,
+            AaLocationCharacterization.RAW_GNSS_ONLY)!!).message(1)!!
+        assertEquals(5_000, gps.int(6))
+        assertEquals(270_000_000, gps.int(7))
+    }
+
+    @Test fun stationaryAndUnverifiedFusedSpeedMustNotInventCourse() {
+        val stopped = verifiedDr(10_102L).copy(
+            signedWheelSpeedMps = 0.0, speedKmh = 0f)
+        val stoppedGps = ProtoReader(AaCarGps.fusedEvent(stopped, 10_103L,
+            AaLocationCharacterization.RAW_GNSS_ONLY)!!).message(1)!!
+        assertEquals(0, stoppedGps.int(6))
+        assertFalse(stoppedGps.has(7))
+        val withoutWheel = verifiedDr(10_102L).copy(
+            signedWheelSpeedMps = null, speedKmh = null)
+        val unknown = ProtoReader(AaCarGps.fusedEvent(withoutWheel, 10_103L,
+            AaLocationCharacterization.RAW_GNSS_ONLY)!!).message(1)!!
+        assertFalse(unknown.has(6))
+        assertFalse(unknown.has(7))
+    }
+
     @Test fun fusionOwnsAaStreamAfterPromotionWithoutOemRawLeak() {
         val policy = AaLocationFeedPolicy(
             AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR, 10_000L)

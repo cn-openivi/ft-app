@@ -41,7 +41,11 @@ internal class CarGpsSourceSelector(
         }
         val headingDegrees: Float? get() = (when (source) {
             Source.ICCOA -> car?.headingDegrees
-            Source.DR -> dr?.headingDegrees?.toFloat()
+            Source.DR -> dr?.let {
+                val course = it.headingDegrees +
+                    if ((it.signedWheelSpeedMps ?: 0.0) < 0.0) 180.0 else 0.0
+                (course % 360.0).toFloat()
+            }
             Source.PHONE -> phone?.bearingDegrees
             Source.UNKNOWN -> null
         })?.takeIf { it.isFinite() && it in 0f..360f }

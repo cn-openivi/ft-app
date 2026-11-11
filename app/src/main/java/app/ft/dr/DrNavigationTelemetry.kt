@@ -26,7 +26,9 @@ internal data class DrNavigationFix(
     val producedAtMs: Long,
     val estimated: Boolean,
     val verifiedVehicleMotion: Boolean,
-    val speedKmh: Float? = null
+    val speedKmh: Float? = null,
+    // Signed verified wheel velocity: reverse vehicle heading is NOT course.
+    val signedWheelSpeedMps: Double? = null
 ) {
     // This object represents one actual EKF event. Accept by its verified
     // source and finite physical fields, never by the handset wall clock.
@@ -96,7 +98,10 @@ internal object DrNavigationTelemetry {
             verifiedVehicleMotion = true,
             speedKmh = estimate.wheelSpeedMps?.takeIf { it.isFinite() }
                 ?.let { kotlin.math.abs(it) * 3.6 }
-                ?.takeIf { it in 0.0..300.0 }?.toFloat()
+                ?.takeIf { it in 0.0..300.0 }?.toFloat(),
+            signedWheelSpeedMps = estimate.wheelSpeedMps?.takeIf {
+                it.isFinite() && kotlin.math.abs(it) <= 65.0
+            }
         )
         _current.value = next
         _updates.tryEmit(next)

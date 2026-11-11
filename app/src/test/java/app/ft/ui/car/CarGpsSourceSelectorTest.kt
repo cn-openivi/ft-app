@@ -27,6 +27,16 @@ class CarGpsSourceSelectorTest {
         fromSelectedGps = mode, producedAtMs = at,
         estimated = true, verifiedVehicleMotion = trusted)
 
+    @Test fun nativeReverseCourseUsesSignedWheelVelocityNotVehicleHeading() {
+        val reverse = verifiedDr(10_100L).copy(
+            signedWheelSpeedMps = -5.0, speedKmh = 18f,
+            headingDegrees = 90.0)
+        val reading = CarGpsSourceSelector().select(
+            vehicle = null, phone = null, nowMs = 10_100L, drFix = reverse)
+        assertEquals(CarGpsSourceSelector.Source.DR, reading.source)
+        assertEquals(270f, reading.headingDegrees!!, 0.01f)
+    }
+
     @Test fun onlyManualModeSelectsPhoneEvenIfNoCarGpsExists() {
         val selector = CarGpsSourceSelector()
         assertEquals(CarGpsSourceSelector.Source.UNKNOWN,
