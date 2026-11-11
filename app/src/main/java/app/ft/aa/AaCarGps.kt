@@ -126,66 +126,66 @@ internal object AaCarGps {
             ProtoWriter().int32(1, view.toInt()).int32(2, used.toInt())).toByteArray()
     }
 
-    fun sensorError(status: Int): ByteArray =
-        ProtoWriter().enum(1, LOCATION).enum(2, status).toByteArray()
 }
 
-
 /**
- * Owner-approved 5-second AA OEM GNSS loss window.
- *
- * This tracks actual accepted location-event delivery, not GearInfo receipt,
- * satellite counters, polling frequency or an inferred phone subscription.
- * Its clock is Android elapsedRealtime, independent of wall-clock changes.
- * FT never switches to phone automatically; AA itself may choose local positioning after a sensor error.
+ * Only an INTERNAL GNSS-health monitor. It does not control DR prediction
+ * or notify AA with LOCATION SENSOR_ERROR. It uses a monotonic clock and
+ * last NEW accepted OEM GNSS packet, not stale gear or satellite counters.
  */
-internal class AaGpsAvailabilityGate(
+internal class AaCarGnssHealthGate(
     startedElapsedMs: Long,
     private val lossAfterMs: Long = 5_000L
 ) {
-    init { require(lossAfterMs in 5_000L..10_000L) }
+    init { require(lossAfterMs == 5_000L) }
+    private var lastGnssElapsedMs = startedElapsedMs
+    private var outage = false
 
-    private var lastDeliveredElapsedMs = startedElapsedMs
-    private var unavailable = false
-
-    /** True exactly when a previously reported source outage has recovered. */
-    fun onDeliveredLocation(elapsedMs: Long): Boolean {
-        // A delayed callback must not rewind monotonic loss detection.
-        if (elapsedMs < lastDeliveredElapsedMs) return false
-        val recovered = unavailable
-        unavailable = false
-        lastDeliveredElapsedMs = elapsedMs
+    /** Returns true only when a previously logged internal outage recovered. */
+    fun onGnss(elapsedMs: Long): Boolean {
+        if (elapsedMs < lastGnssElapsedMs) return false
+        val recovered = outage
+        outage = false
+        lastGnssElapsedMs = elapsedMs
         return recovered
     }
 
-    /** Report one outage only after a full 5s without accepted OEM GPS or verified DR. */
-    fun shouldReportUnavailable(elapsedMs: Long): Boolean {
-        if (unavailable || elapsedMs < lastDeliveredElapsedMs ||
-            elapsedMs - lastDeliveredElapsedMs < lossAfterMs) return false
-        unavailable = true
+    /** Emits a one-shot INTERNAL diagnostic, not an AA wire message. */
+    fun onCheck(elapsedMs: Long): Boolean {
+        if (outage || elapsedMs < lastGnssElapsedMs ||
+            elapsedMs - lastGnssElapsedMs < lossAfterMs) return false
+        outage = true
         return true
     }
 }
 
 /**
- * Separate monotonic OEM GNSS-loss gate for DR source priority.
- * A valid GNSS packet has immediate priority. Five seconds without a NEW
- * OEM fix permits independently verified vehicle DR; never PHONE.
+ * Continuous already-running vehicle DR: NO GNSS-loss timer gating.
+ * A new verified prediction is eligible at any time after AA subscription,
+ * including between normal 10Hz GNSS observations and the first missed fix.
+ * No replay of previously emitted estimates and no pre-subscription DR cache.
  */
-internal class AaCarDrSwitchGate(
-    startedElapsedMs: Long,
-    private val lossAfterMs: Long = 5_000L
-) {
-    init { require(lossAfterMs == 5_000L) }
-    private var lastCarElapsedMs = startedElapsedMs
+internal class AaContinuousDrGate(private val subscribedWallMs: Long) {
+    private var lastDrProducedAtMs = subscribedWallMs
+    private var newestCarProducedAtMs = Long.MIN_VALUE
 
-    fun onCarGps(elapsedMs: Long) {
-        if (elapsedMs >= lastCarElapsedMs) lastCarElapsedMs = elapsedMs
+    fun noteCarFix(positionAtMs: Long) {
+        if (positionAtMs > newestCarProducedAtMs) newestCarProducedAtMs = positionAtMs
     }
 
-    fun canUseVerifiedDr(elapsedMs: Long): Boolean =
-        elapsedMs >= lastCarElapsedMs &&
-            elapsedMs - lastCarElapsedMs >= lossAfterMs
+    fun accept(
+        estimate: DrNavigationFix?,
+        nowMs: Long,
+        sessionCharacterization: Int
+    ): Boolean {
+        if (estimate == null ||
+            !AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization) ||
+            !estimate.eligibleForAa(nowMs) ||
+            estimate.producedAtMs <= lastDrProducedAtMs ||
+            estimate.producedAtMs <= newestCarProducedAtMs) return false
+        lastDrProducedAtMs = estimate.producedAtMs
+        return true
+    }
 }
 
 /**
