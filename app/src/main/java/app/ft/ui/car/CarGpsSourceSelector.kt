@@ -86,13 +86,13 @@ internal class CarGpsSourceSelector(
                 it.coordinatesUnit == "ANDROID_LOCATION_WGS84" &&
                 it.displayLatitude != null && it.displayLongitude != null &&
                 !(it.displayLatitude == 0.0 && it.displayLongitude == 0.0) &&
-                it.positionAtMs <= nowMs
+                it.receivedAtMs > 0L
         }
         val carAgeMs = candidate?.let { nowMs - it.positionAtMs }
         val verifiedDr = drFix?.takeIf { it.eligibleForAa(nowMs) }
-        val newerDr = verifiedDr?.takeIf { fix ->
-            candidate == null || fix.producedAtMs > candidate.positionAtMs
-        }
+        // Single FT authority chooses FUSED; do not compare it to previous
+        // raw GPS timestamps or demote to raw after a new packet.
+        val newerDr = verifiedDr
         val trustedPhone = phone?.takeIf {
             val callbackAge = nowMs - it.receivedAtMs
             val realFixAgeNanos = it.fixAgeNanosAtReceipt
@@ -131,7 +131,8 @@ internal class CarGpsSourceSelector(
             speedKmh = when (chosen) {
                 Source.ICCOA -> carSpeed
                 Source.PHONE -> phoneSpeed
-                Source.DR, Source.UNKNOWN -> null
+                Source.DR -> newerDr?.speedKmh
+                Source.UNKNOWN -> null
             }
         )
     }

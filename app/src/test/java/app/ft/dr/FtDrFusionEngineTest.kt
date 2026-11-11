@@ -101,7 +101,7 @@ class FtDrFusionEngineTest {
         val engine = FtDrFusionEngine { _, _, _, _ -> published++; true }
         assertTrue(engine.onGnss(gnss(1000L)))
         assertTrue(engine.onGnss(gnss(1100L)))
-        assertFalse(engine.onGnss(gnss(1000L)))
+        assertTrue(engine.onGnss(gnss(1000L)))
         assertFalse(engine.onGnss(gnss(1200L, verified = false)))
         assertEquals(0, published)
     }

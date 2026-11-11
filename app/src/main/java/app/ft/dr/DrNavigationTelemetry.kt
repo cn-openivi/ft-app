@@ -25,7 +25,8 @@ internal data class DrNavigationFix(
     val fromSelectedGps: GpsSourceMode,
     val producedAtMs: Long,
     val estimated: Boolean,
-    val verifiedVehicleMotion: Boolean
+    val verifiedVehicleMotion: Boolean,
+    val speedKmh: Float? = null
 ) {
     // FT is the positioning owner. AA inherits these validity requirements,
     // never the reverse. This bounded frame-age rejects cached/replayed DR,
@@ -93,7 +94,10 @@ internal object DrNavigationTelemetry {
             fromSelectedGps = gpsSourceMode,
             producedAtMs = producedAtMs,
             estimated = estimate.estimated,
-            verifiedVehicleMotion = true
+            verifiedVehicleMotion = true,
+            speedKmh = estimate.wheelSpeedMps?.takeIf { it.isFinite() }
+                ?.let { kotlin.math.abs(it) * 3.6 }
+                ?.takeIf { it in 0.0..300.0 }?.toFloat()
         )
         _current.value = next
         _updates.tryEmit(next)

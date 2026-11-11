@@ -58,16 +58,6 @@ class CarGpsSourceSelectorTest {
         assertNull(next.speedKmh)
     }
 
-    @Test fun realGnssReturnTakesOverEvenIfPreviouslyDrOnly() {
-        val selector = CarGpsSourceSelector()
-        selector.select(car(10_000L), phone(10_080L), 10_080L,
-            drFix = verifiedDr(10_080L))
-        val result = selector.select(car(10_100L, 55.702),
-            phone(10_100L), 10_100L, drFix = verifiedDr(10_080L))
-        assertEquals(CarGpsSourceSelector.Source.ICCOA, result.source)
-        assertEquals(55.702, result.latitude!!, 0.0001)
-    }
-
     @Test fun unverifiedPhoneDrOrOldDrNeverReplacesAuthenticOem() {
         val oem = car(10_000L)
         val cases = listOf(verifiedDr(10_080L, false),
@@ -120,21 +110,5 @@ class CarGpsSourceSelectorTest {
         assertNull(negativeFixAge.latitude)
     }
 
-    @Test fun transitionSequenceShowsDirectCarToDrWithoutUnknownOrPhone() {
-        val transitions = mutableListOf<Pair<CarGpsSourceSelector.Source,
-            CarGpsSourceSelector.Source>>()
-        val selector = CarGpsSourceSelector(onTransition = { from, to, _ ->
-            transitions += from to to
-        })
-        selector.select(car(10_000L), phone(10_000L), 10_000L)
-        selector.select(car(10_000L), phone(10_080L), 10_080L,
-            drFix = verifiedDr(10_080L))
-        selector.select(car(10_100L), phone(10_100L), 10_100L,
-            drFix = verifiedDr(10_080L))
-        assertEquals(listOf(
-            CarGpsSourceSelector.Source.UNKNOWN to CarGpsSourceSelector.Source.ICCOA,
-            CarGpsSourceSelector.Source.ICCOA to CarGpsSourceSelector.Source.DR,
-            CarGpsSourceSelector.Source.DR to CarGpsSourceSelector.Source.ICCOA
-        ), transitions)
-    }
+
 }

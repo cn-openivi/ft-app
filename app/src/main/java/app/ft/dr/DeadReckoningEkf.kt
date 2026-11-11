@@ -33,7 +33,8 @@ internal class DeadReckoningEkf {
         val headingDegrees: Double,
         val horizontalUncertaintyMetres: Double,
         val secondsSinceGnss: Double,
-        val estimated: Boolean
+        val estimated: Boolean,
+        val wheelSpeedMps: Double? = null
     )
 
     fun reset() {
@@ -284,7 +285,8 @@ internal class DeadReckoningEkf {
             headingDegrees = degrees,
             horizontalUncertaintyMetres = uncertainty,
             secondsSinceGnss = secondsWithoutGnss,
-            estimated = secondsWithoutGnss > 0.0
+            estimated = secondsWithoutGnss > 0.0,
+            wheelSpeedMps = previousWheelSpeedMetresPerSecond
         )
     }
 

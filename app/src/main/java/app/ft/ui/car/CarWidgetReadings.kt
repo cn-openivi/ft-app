@@ -36,7 +36,8 @@ internal object CarWidgetReadings {
         val physicalSpeedKmh = when (reading.source) {
             CarGpsSourceSelector.Source.ICCOA -> reading.car?.speedKmh
             CarGpsSourceSelector.Source.PHONE -> reading.phone?.speedKmh
-            CarGpsSourceSelector.Source.DR, CarGpsSourceSelector.Source.UNKNOWN -> null
+            CarGpsSourceSelector.Source.DR -> reading.dr?.speedKmh
+            CarGpsSourceSelector.Source.UNKNOWN -> null
         }
         // The OEM CarLink rounds speed to integral m/s; below 1 m/s its
         // course is not a reliable direction-of-travel measurement.
