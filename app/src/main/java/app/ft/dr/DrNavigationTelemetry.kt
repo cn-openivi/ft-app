@@ -27,7 +27,10 @@ internal data class DrNavigationFix(
     val estimated: Boolean,
     val verifiedVehicleMotion: Boolean
 ) {
-    fun eligibleForAa(nowMs: Long): Boolean =
+    // FT is the positioning owner. AA inherits these validity requirements,
+    // never the reverse. This bounded frame-age rejects cached/replayed DR,
+    // it is NOT a 1.5s GNSS-loss timer or a source-switch threshold.
+    fun eligibleForFt(nowMs: Long): Boolean =
         fromSelectedGps == GpsSourceMode.CAR && verifiedVehicleMotion &&
             producedAtMs > 0L && nowMs >= producedAtMs &&
             nowMs - producedAtMs <= 1_500L &&
@@ -35,14 +38,17 @@ internal data class DrNavigationFix(
             longitude.isFinite() && longitude in -180.0..180.0 &&
             accuracyMetres.isFinite() && accuracyMetres >= 0.0 &&
             headingDegrees.isFinite()
+
+    /** AA remains a downstream subscriber of FT's validated DR model. */
+    fun eligibleForAa(nowMs: Long): Boolean = eligibleForFt(nowMs)
 }
 
-/** Only a verified producer may publish a location for the AA session. */
+/** FT's verified EKF prediction/measurement publication, shared by all consumers. */
 internal object DrNavigationTelemetry {
     private val _current = MutableStateFlow<DrNavigationFix?>(null)
     val current: StateFlow<DrNavigationFix?> = _current
-    // SDP reads the current snapshot, while AA sees ONLY newly produced
-    // verified fused coordinates. No replay of a stale GNSS or DR position.
+    // Native FT reads current and new events; AA merely subscribes to FT's
+    // central bus. No replay of a stale GNSS or DR position.
     private val _updates = MutableSharedFlow<DrNavigationFix>(
         replay = 0, extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST
