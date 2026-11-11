@@ -30,14 +30,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ft.R
 import app.ft.core.CarInfo
-import app.ft.core.VehicleLocation
-import app.ft.core.VehicleTelemetry
 import app.ft.FTApp
 import app.ft.core.CarProtocol
 import app.ft.core.GpsSourceMode
-import app.ft.dr.DrNavigationTelemetry
 import app.ft.core.GpsSourceMode
-import app.ft.dr.DrNavigationTelemetry
+import app.ft.dr.FtPositionTelemetry
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -60,10 +57,10 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     }
     if (style.widgets.isEmpty() && !showInertial) return
     val inertial by VehicleMotionTelemetry.current.collectAsState()
-    val vehicle by VehicleTelemetry.current.collectAsState()
+    // FT is the primary location owner, not Android Auto. The native
+    // dashboard receives the same filtered output as the AA serializer.
+    val ftPosition by FtPositionTelemetry.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
-    val verifiedDr by DrNavigationTelemetry.current.collectAsState()
-    val verifiedDr by DrNavigationTelemetry.current.collectAsState()
     val selector = remember {
         CarGpsSourceSelector(onTransition = { before, after, at ->
             app.ft.core.DiagLog.i("VehicleGPS", "UI_SOURCE_CHANGE from=$before to=$after atMs=$at")
@@ -73,10 +70,10 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
     // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
-    val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps, verifiedDr)
-    val reading = selector.select(vehicle, phoneGps, displayNow,
-        manualPhoneMode = FTApp.instance.prefs.gpsSourceMode == GpsSourceMode.PHONE,
-        drFix = verifiedDr)
+    val displayNow = CarWidgetReadings.displayNow(
+        now, ftPosition?.raw, phoneGps, ftPosition?.fused)
+    val reading = selector.selectFt(ftPosition, phoneGps, displayNow,
+        manualPhoneMode = FTApp.instance.prefs.gpsSourceMode == GpsSourceMode.PHONE)
     FlowRow(
         modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
