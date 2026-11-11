@@ -3,6 +3,7 @@ package app.ft.ui.car
 import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
 import app.ft.dr.DrNavigationFix
+import app.ft.dr.FtNavigationPosition
 
 /**
  * Owner policy: CAR GNSS -> verified vehicle DR -> UNKNOWN, NEVER auto PHONE.
@@ -48,6 +49,25 @@ internal class CarGpsSourceSelector(
     }
 
     private var lastChosenSource = Source.UNKNOWN
+
+    /**
+     * All FT-owned widgets and native apps consume the central FT navigation
+     * position; they never independently compare raw GNSS against DR timing.
+     */
+    fun selectFt(
+        position: FtNavigationPosition?,
+        phone: CarInfo.PhoneGpsFix?,
+        nowMs: Long,
+        manualPhoneMode: Boolean = false
+    ): Reading = select(
+        vehicle = if (position?.source == FtNavigationPosition.Source.RAW_UNFILTERED)
+            position.raw else null,
+        phone = phone,
+        nowMs = nowMs,
+        manualPhoneMode = manualPhoneMode,
+        drFix = if (position?.source == FtNavigationPosition.Source.FUSED)
+            position.fused else null
+    )
 
     /**
      * Manual phone selection is an explicit setting, never derived from loss of
