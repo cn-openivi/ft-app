@@ -140,7 +140,9 @@ class VehicleTelemetryTest {
             assertEquals(earlier, updated.gearAtMs)
             assertEquals(2L, updated.gearRaw)
             assertEquals(earlier, updated.positionAtMs)
-            assertFalse(updated.positionFresh())
+            // Historical position is still recorded; this predicate does NOT
+            // declare the GNSS signal live or trigger a loss timer.
+            assertTrue(updated.positionFresh())
             assertFalse(updated.copy(gearSpeedAtMs = earlier).gearSpeedFresh(now))
             // A later genuine GNSS fix may carry forward the *separate*
             // speed clock, but must not make the old transmission gear fresh.
@@ -231,7 +233,10 @@ class VehicleTelemetryTest {
             assertEquals(6L, result.gearSpeedRaw)
             assertEquals(2L, result.gearRaw)
             assertTrue(result.fresh())
-            assertFalse(result.positionFresh())
+            // A stored OEM position is not automatically replayed, and is
+            // distinguished from a new GNSS event by gpsPacketSequence.
+            assertTrue(result.positionFresh())
+            assertEquals(stalePosition, result.positionAtMs)
         } finally {
             VehicleTelemetry.clear("ICCOA")
         }
