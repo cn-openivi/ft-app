@@ -515,16 +515,13 @@ class AaSession(
         carSatellitesJob?.cancel()
         carSatellitesSubscribed = true
         carSatellitesJob = scope.launch(Dispatchers.IO) {
-            var lastSequence = 0L
             VehicleTelemetry.gpsUpdates.collect { sample ->
                 if (!carSatellitesSubscribed || !lifecycle.running ||
                     !sensorChannelOpened) return@collect
-                if (sample.gpsPacketSequence <= lastSequence) return@collect
+                // Actual OEM event stream: never compare it to previous GPS.
                 val packet = AaCarGps.satellitesEvent(sample)
-                if (packet != null) {
-                    lastSequence = sample.gpsPacketSequence
+                if (packet != null)
                     sendEnc(AaProtocol.CH_SENSOR, AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                }
             }
         }
         DiagLog.i(tag, "AA subscribed to satellites; requestedIntervalMs=$requestedMs, " +

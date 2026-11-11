@@ -77,15 +77,15 @@ internal object AaCarGps {
     }
 
     /**
-     * FUSED WGS84 (not RAW_GNSS). Only for sessions that announced
-     * LocationCharacterization.DEAD_RECKONED and received an explicit
-     * SensorRequest(LOCATION). TinyEKF source and wheel/yaw units must be
-     * independently validated before DrNavigationTelemetry can supply it.
+     * FUSED WGS84 (not RAW_GNSS). Requires an explicit
+     * SensorRequest(LOCATION) and validated real wheel/yaw EKF output.
+     * The AA service descriptor is negotiated once; it cannot veto valid
+     * FUSED events that become available after initial RAW capability.
      *
      * Android Auto GPSLocation submessage fields 2,3 are signed int32
      * degrees × 1e7 and optional field 4 is unsigned horizontal accuracy
-     * in millimetres (accuracy_e3). The wire has NO "estimated" flag, so characterization
-     * and conservative accuracy are mandatory.
+     * in millimetres (accuracy_e3). The wire has NO "estimated" flag:
+     * send real EKF uncertainty, never fabricated accuracy.
      */
     fun fusedEvent(
         estimate: DrNavigationFix?,
@@ -129,16 +129,11 @@ internal object AaCarGps {
 }
 
 /**
- * One authoritative AA LOCATION source per session. The service-discovery
- * characterization locks the mode before the phone subscribes:
- *
- * FUSED_ONLY: downstream sees only the validated TinyEKF output, including
- * filtered GNSS corrections and uninterrupted DR predictions. A reflected
- * raw GPS point can NEVER bypass the filter to reach AA.
- *
- * RAW_ONLY: when verified car wheel/yaw DR was unavailable at discovery,
- * pass through only newly accepted OEM WGS84 frames. This baseline does NOT
- * claim multipath suppression. Never synthesize or auto-switch to PHONE.
+ * AA consumes the one FT-authoritative position after LOCATION subscription.
+ * Until verified fusion: actual new RAW OEM GNSS events.
+ * When FT promotes verified EKF: FUSED WGS84 plus actual uncertainty, even if
+ * the phone joined before the car and SDP announced RAW capability.
+ * No second GPS engine, old/new comparison, mode-switch timer or PHONE fallback.
  */
 internal class AaLocationFeedPolicy(
     characterization: Int,
