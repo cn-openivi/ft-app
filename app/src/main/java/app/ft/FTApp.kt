@@ -4,6 +4,10 @@ import android.app.Application
 import android.content.Intent
 import app.ft.core.DiagLog
 import app.ft.core.Prefs
+import app.ft.core.VehicleTelemetry
+import app.ft.dr.DrNavigationTelemetry
+import app.ft.dr.FtPositionTelemetry
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -36,6 +40,26 @@ class FTApp : Application() {
         app.ft.supercast.SuperCast.freshToken()
         app.ft.ui.car.CarStyles.reload()
         app.ft.ui.car.CarStyles.watchDayNight(scope)
+        // FT owns position authority before ANY consumer starts: widgets,
+        // future native apps and Android Auto share this exact output.
+        // Raw OEM GNSS remains available as input to the verified EKF
+        // producer, but never bypasses an active fused location feed.
+        scope.launch(Dispatchers.Default) {
+            VehicleTelemetry.gpsUpdates.collect { FtPositionTelemetry.acceptRaw(it) }
+        }
+        scope.launch(Dispatchers.Default) {
+            DrNavigationTelemetry.updates.collect { FtPositionTelemetry.acceptFused(it) }
+        }
+        scope.launch(Dispatchers.Default) {
+            var observedCar = false
+            VehicleTelemetry.current.collect { snapshot ->
+                if (snapshot?.source == "ICCOA") observedCar = true
+                else if (snapshot == null && observedCar) {
+                    FtPositionTelemetry.clear()
+                    observedCar = false
+                }
+            }
+        }
         DiagLog.i("App", "FT ${runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""} ready")
         DiagLog.i("App", "phone ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} (${android.os.Build.DEVICE}), Android ${android.os.Build.VERSION.RELEASE} SDK ${android.os.Build.VERSION.SDK_INT}, " +
             "chip ${if (android.os.Build.VERSION.SDK_INT >= 31) "${android.os.Build.SOC_MANUFACTURER} ${android.os.Build.SOC_MODEL}" else android.os.Build.HARDWARE}, build ${android.os.Build.DISPLAY}")
