@@ -1,6 +1,9 @@
 package app.ft.dr
 
 import android.content.Context
+import app.ft.FTApp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import app.ft.core.AndroidWheelCalibrationStorage
 import app.ft.core.GpsSourceMode
 import app.ft.core.WheelCalibrationStore
@@ -19,6 +22,9 @@ internal object FtDrRuntime {
     private var verifiedVehicleId: String? = null
     private var wheelCalibration: WheelSpeedAutoCalibration? = null
     private var calibrationStore: WheelCalibrationStore? = null
+    // One IO commit per completed segment; discard callbacks from old car epochs.
+    private var calibrationCommitInFlight = false
+    private var calibrationEpoch = 0L
     private val wheelAcceleration = VerifiedWheelAcceleration()
 
     private val fusion = FtDrFusionEngine { latitude, longitude, estimate, emittedAtMs ->
@@ -115,12 +121,31 @@ internal object FtDrRuntime {
                     independentCarGnssVerified = true,
                     monotonicFixEpochVerified = true
                 ))
-                // A segment completion is rare; do not perform synchronous
-                // disk I/O per GNSS, wheel, or IMU frame.
-                if (calibration.estimate().pendingPersistence) {
-                    calibrationStore?.persistIfPending(
-                        calibration, requireNotNull(verifiedVehicleId)
-                    )
+                // A completed 1–2 km segment may require durable storage.
+                // Copy its immutable snapshot and commit on IO OUTSIDE the
+                // synchronized GNSS callback; never pause real-time navigation.
+                if (!calibrationCommitInFlight) {
+                    val snapshot = calibration.snapshotForPersistence()
+                    val store = calibrationStore
+                    val carId = verifiedVehicleId
+                    if (snapshot != null && store != null &&
+                        snapshot.vehicleId == carId) {
+                        calibrationCommitInFlight = true
+                        val epoch = calibrationEpoch
+                        FTApp.instance.scope.launch(Dispatchers.IO) {
+                            val saved = runCatching {
+                                store.persistSnapshot(snapshot)
+                            }.getOrDefault(false)
+                            synchronized(FtDrRuntime) {
+                                if (epoch == calibrationEpoch) {
+                                    if (saved && wheelCalibration === calibration &&
+                                        verifiedVehicleId == carId)
+                                        calibration.confirmPersisted(snapshot)
+                                    calibrationCommitInFlight = false
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -134,6 +159,8 @@ internal object FtDrRuntime {
         verifiedVehicleId = null
         wheelCalibration = null
         calibrationStore = null
+        calibrationEpoch++
+        calibrationCommitInFlight = false
         wheelAcceleration.reset()
     }
 }

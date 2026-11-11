@@ -55,6 +55,19 @@ class WheelCalibrationStoreTest {
         assertTrue(backing.values.isEmpty())
     }
 
+    @Test fun immutableSnapshotCanCommitWithoutMutatingLiveCalibration() {
+        val backing = MemoryStorage()
+        val store = WheelCalibrationStore(backing)
+        val snapshot = WheelSpeedAutoCalibration.Snapshot("verified-car-A", 1.006)
+        assertTrue(store.persistSnapshot(snapshot))
+        assertEquals(1.006, store.restore("verified-car-A")!!.multiplier, 0.0)
+        assertNull(store.restore("verified-car-B"))
+        backing.writeSucceeds = false
+        assertFalse(store.persistSnapshot(
+            WheelSpeedAutoCalibration.Snapshot("verified-car-A", 1.007)))
+        assertEquals(1.006, store.restore("verified-car-A")!!.multiplier, 0.0)
+    }
+
     @Test fun completedThreeSegmentsAreDurableOnlyAfterSuccessfulCommit() {
         val backing = MemoryStorage()
         val store = WheelCalibrationStore(backing)

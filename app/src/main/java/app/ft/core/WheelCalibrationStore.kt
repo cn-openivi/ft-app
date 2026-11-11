@@ -24,15 +24,24 @@ internal class WheelCalibrationStore(private val storage: Storage) {
         return WheelSpeedAutoCalibration.Snapshot(verifiedVehicleId, value)
     }
 
+    /**
+     * Persist an immutable already-confirmed calibration snapshot from an IO
+     * dispatcher. Never hold the FT sensor lock during a disk commit.
+     */
+    fun persistSnapshot(snapshot: WheelSpeedAutoCalibration.Snapshot): Boolean {
+        val key = keyFor(snapshot.vehicleId) ?: return false
+        if (!snapshot.multiplier.isFinite() ||
+            snapshot.multiplier !in 0.90..1.10) return false
+        return storage.write(key, snapshot.multiplier.toString())
+    }
+
     fun persistIfPending(
         calibration: WheelSpeedAutoCalibration,
         verifiedVehicleId: String
     ): Boolean {
-        val key = keyFor(verifiedVehicleId) ?: return false
         val pending = calibration.snapshotForPersistence() ?: return false
-        if (pending.vehicleId != verifiedVehicleId ||
-            !pending.multiplier.isFinite() || pending.multiplier !in 0.90..1.10) return false
-        if (!storage.write(key, pending.multiplier.toString())) return false
+        if (pending.vehicleId != verifiedVehicleId) return false
+        if (!persistSnapshot(pending)) return false
         return calibration.confirmPersisted(pending)
     }
 
