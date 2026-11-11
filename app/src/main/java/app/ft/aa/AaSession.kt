@@ -8,12 +8,6 @@ import app.ft.core.Prefs
 import app.ft.core.CarProtocol
 import app.ft.core.VehicleTelemetry
 import app.ft.dr.DrNavigationTelemetry
-import app.ft.core.VehicleLocation
-import app.ft.dr.DrNavigationFix
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import app.ft.core.ProtoReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,12 +22,6 @@ import java.io.InputStream
 import java.io.OutputStream
 
 private val OFF_MAIN = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ft-aa-main-sends").apply { isDaemon = true } }
-
-/** All three sources are merged without polling or delaying accepted car GPS. */
-private sealed class AaLocationSignal {
-    data class Oem(val value: VehicleLocation) : AaLocationSignal()
-    data class Dr(val value: DrNavigationFix) : AaLocationSignal()
-}
 
 class AaSession(
     context: Context,
@@ -477,80 +465,65 @@ class AaSession(
     }
 
     /**
-     * The phone must REALLY subscribe to AA LOCATION before anything is sent.
-     * Continuous wheel/yaw-calibrated TinyEKF DR runs outside this collector.
-     * Every new OEM WGS84 fix is forwarded instantly and can correct that EKF;
-     * each new verified DR prediction may fill the interval BETWEEN OEM fixes.
-     * When OEM GNSS disappears, verified DR simply continues on its next
-     * update: no loss timer, no phone substitute and no LOCATION SENSOR_ERROR.
-     * No timer or diagnostic GNSS_LOST threshold is required.
+     * ONE Android Auto LOCATION stream, decided at SDP and activated ONLY on
+     * a genuine phone SensorStartRequest(LOCATION).
      *
-     * If the DR producer is not verified/available or this session did not
-     * advertise actual DEAD_RECKONED capability, we cannot invent DR.
-     * We then emit nothing until the next valid OEM GPS event; AA receives
-     * neither a stale cached fix nor an artificial unavailable/recovered error.
+     * Verified DR SDP: transmit only newly published, filtered TinyEKF fixes.
+     * OEM GNSS belongs INSIDE the independently validated filter, not on AA
+     * raw passthrough. The EKF producer is responsible for GNSS correction,
+     * NIS/odometry/continuity checks and continuous wheel/yaw prediction.
+     *
+     * Unverified DR SDP: retain the honest RAW_ONLY OEM GNSS baseline.
+     * Raw mode has no multipath suppression claim. Never silently mix
+     * unfiltered GNSS with fused DR within one AA session. No GPS loss timer,
+     * AA LOCATION SENSOR_ERROR, stale replay or automatic PHONE fallback.
      */
-    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private fun startCarGps(requestedMs: Long) {
         carGpsJob?.cancel()
         carGpsSubscribed = true
+        val sessionCharacterization = locationCharacterizationAtDiscovery
         carGpsJob = scope.launch(Dispatchers.IO) {
-            val startedWall = System.currentTimeMillis()
-            val rawGate = AaGpsGate()
-            val drGate = AaContinuousDrGate(startedWall)
-            var sentCar = 0L
-            var sentDr = 0L
-            val drCharacterization = locationCharacterizationAtDiscovery
-            val canSendDr = AaLocationCharacterization.permitsEstimatedPosition(
-                drCharacterization)
-
-            val gpsEvents: Flow<AaLocationSignal> =
-                VehicleTelemetry.gpsUpdates.map { AaLocationSignal.Oem(it) }
-            val drEvents: Flow<AaLocationSignal> =
-                DrNavigationTelemetry.current.filterNotNull().map {
-                    AaLocationSignal.Dr(it)
-                }
-            // GNSS and verified DR are merged directly as new events arrive.
-            merge(gpsEvents, drEvents).collect { signal ->
-                if (!isActive || !lifecycle.running || !carGpsSubscribed ||
-                    !sensorChannelOpened) return@collect
-                when (signal) {
-                    is AaLocationSignal.Oem -> {
-                        val packet = rawGate.accept(signal.value,
-                            System.currentTimeMillis())
-                        if (packet != null) {
-                            drGate.noteCarFix(signal.value.positionAtMs)
-                            sendEnc(AaProtocol.CH_SENSOR,
-                                AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                            sentCar++
-                            if (sentCar == 1L || sentCar % 100L == 0L)
-                                DiagLog.i(tag, "car GNSS to AA: $sentCar new OEM frames")
-                        }
+            val gate = AaLocationFeedPolicy(
+                sessionCharacterization, System.currentTimeMillis())
+            var sent = 0L
+            if (gate.fusedOnly) {
+                // replay=0, one pending frame: new verified TinyEKF outputs only.
+                // NO VehicleTelemetry.gpsUpdates RAW sender in this branch.
+                DrNavigationTelemetry.updates.collect { estimate ->
+                    if (!isActive || !lifecycle.running || !carGpsSubscribed ||
+                        !sensorChannelOpened) return@collect
+                    val packet = gate.fused(estimate, System.currentTimeMillis())
+                    if (packet != null) {
+                        sendEnc(AaProtocol.CH_SENSOR,
+                            AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                        sent++
+                        if (sent == 1L || sent % 100L == 0L)
+                            DiagLog.i(tag,
+                                "AA LOCATION filtered TinyEKF positions=$sent")
                     }
-                    is AaLocationSignal.Dr -> {
-                        if (canSendDr) {
-                            val nowWall = System.currentTimeMillis()
-                            if (drGate.accept(signal.value, nowWall,
-                                drCharacterization)) {
-                                val packet = AaCarGps.fusedEvent(signal.value,
-                                    nowWall, drCharacterization)
-                                if (packet != null) {
-                                    sendEnc(AaProtocol.CH_SENSOR,
-                                        AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                                    sentDr++
-                                    if (sentDr == 1L || sentDr % 100L == 0L)
-                                        DiagLog.i(tag,
-                                            "continuous verified DR to AA: $sentDr predictions")
-                                }
-                            }
-                        }
+                }
+            } else {
+                // OEM GPS events are a safe source-only baseline while real
+                // validated XA60 motion/accuracy and EKF producer are pending.
+                // This branch does NOT advertise or pretend to have anti-multipath.
+                VehicleTelemetry.gpsUpdates.collect { sample ->
+                    if (!isActive || !lifecycle.running || !carGpsSubscribed ||
+                        !sensorChannelOpened) return@collect
+                    val packet = gate.raw(sample, System.currentTimeMillis())
+                    if (packet != null) {
+                        sendEnc(AaProtocol.CH_SENSOR,
+                            AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                        sent++
+                        if (sent == 1L || sent % 100L == 0L)
+                            DiagLog.i(tag,
+                                "AA LOCATION raw OEM baseline (no DR) frames=$sent")
                     }
                 }
             }
         }
-        DiagLog.i(tag, "AA genuinely subscribed LOCATION intervalMs=$requestedMs; " +
-            "new OEM fixes and continuous verified DR merge event-driven; " +
-            "no GPS-loss timer, no AA GPS SENSOR_ERROR")
+        DiagLog.i(tag, "AA subscribed LOCATION intervalMs=$requestedMs; " +
+            "source=${if (AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization))
+                "FUSED_ONLY" else "RAW_ONLY"}; one source, no GPS-loss timer")
     }
 
     /** Satellite counts are equally limited to fresh incoming GPS events. */
