@@ -62,7 +62,8 @@ internal object FtDrRuntime {
             !motion.gearDirectionVerified) {
             wheelAcceleration.reset()
             wheelCalibration?.resetSegment()
-            return false
+            // Propagate invalid frame so fusion cannot integrate over its interval.
+            return fusion.onMotion(motion, emittedAtMs)
         }
 
         val calibration = wheelCalibration

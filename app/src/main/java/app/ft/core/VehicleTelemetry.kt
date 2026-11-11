@@ -104,40 +104,9 @@ object VehicleTelemetry {
         // Gear and position have independent event/timestamps. The snapshot
         // predicate below only ensures the clock is not in the future; it
         // must not be used as an OEM GNSS availability or DR switch gate.
-        val previous = _current.value?.takeIf {
-            it.source == location.source && it.fresh(System.currentTimeMillis())
-        }
-        // Late OEM GPS frames must not replace a newer accepted position.
-        // GearInfo is updated independently by updateIccoaSpeed(), so an
-        // older GPS frame must not roll back the shared telemetry snapshot.
-        // Reject implausibly future-dated GPS positions before they can poison
-        // the shared high-water mark. Match the selector's 1s clock tolerance.
-        // GearInfo is delivered through updateIccoaSpeed(), not publish().
-        if (location.positionAtMs > 0L &&
-            location.positionAtMs > location.receivedAtMs &&
-            location.positionAtMs - location.receivedAtMs > 1_000L) return
-        val latestPosition = _current.value?.takeIf { it.source == location.source }
-        if (location.source == "ICCOA") {
-            // Local monotonic RX ordering: an older or same-position timestamp
-            // may not roll back the last genuine GPS fix. Same-millisecond
-            // distinct OEM frames remain valid if their raw stamps differ.
-            if (latestPosition != null &&
-                (location.positionAtMs < latestPosition.positionAtMs ||
-                 (location.positionAtMs == latestPosition.positionAtMs &&
-                  location.deviceTimestampRaw == latestPosition.deviceTimestampRaw))) return
-            // Discard an exact replay of the same OEM packet. Clock age is NOT
-            // tested, and a clock correction backwards must not stall navigation.
-            val lastStamp = latestPosition?.deviceTimestampRaw
-            if (latestPosition != null && lastStamp != null &&
-                location.deviceTimestampRaw != null &&
-                lastStamp == location.deviceTimestampRaw &&
-                latestPosition.latitude == location.latitude &&
-                latestPosition.longitude == location.longitude &&
-                latestPosition.speedRaw == location.speedRaw &&
-                latestPosition.headingRaw == location.headingRaw) return
-        } else if (latestPosition != null && latestPosition.positionAtMs > 0L &&
-            (location.positionAtMs <= 0L ||
-                latestPosition.positionAtMs >= location.positionAtMs)) return
+        // Every actual OEM callback is a new coordinate event.
+        // Never compare it to previous GPS position/clock/packet number.
+        val previous = _current.value?.takeIf { it.source == location.source }
         val next = if (location.source == "ICCOA")
             location.copy(gpsPacketSequence = ++iccoaGpsSequence) else location
         // GearInfo update is never synthesized into a GPS position event.

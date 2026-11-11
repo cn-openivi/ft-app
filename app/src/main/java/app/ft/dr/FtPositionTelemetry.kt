@@ -62,30 +62,20 @@ internal object FtPositionTelemetry {
     val updates: SharedFlow<FtNavigationPosition> = _updates
 
     private var fusedAuthority = false
-    private var lastRawSequence = 0L
-    private var lastPositionAtMs = Long.MIN_VALUE
-
     @Synchronized
     fun acceptRaw(sample: VehicleLocation, nowMs: Long = System.currentTimeMillis()): Boolean {
         if (fusedAuthority || sample.source != "ICCOA" ||
             sample.coordinatesUnit != "ANDROID_LOCATION_WGS84" ||
-            sample.positionAtMs <= 0L || sample.positionAtMs > nowMs ||
-            sample.positionAtMs < lastPositionAtMs) return false
+            sample.receivedAtMs <= 0L) return false
         val lat = sample.displayLatitude
         val lon = sample.displayLongitude
         if (lat == null || lon == null || !lat.isFinite() || !lon.isFinite() ||
             lat !in -90.0..90.0 || lon !in -180.0..180.0 ||
             (lat == 0.0 && lon == 0.0)) return false
 
-        val seq = sample.gpsPacketSequence
-        if (seq > 0L && seq <= lastRawSequence) return false
-        if (seq <= 0L && sample.positionAtMs <= lastPositionAtMs) return false
-
         val next = FtNavigationPosition(
             source = FtNavigationPosition.Source.RAW_UNFILTERED,
             receivedAtMs = sample.positionAtMs, raw = sample)
-        if (seq > 0L) lastRawSequence = seq
-        lastPositionAtMs = sample.positionAtMs
         _current.value = next
         _updates.tryEmit(next)
         return true
@@ -93,14 +83,11 @@ internal object FtPositionTelemetry {
 
     @Synchronized
     fun acceptFused(fix: DrNavigationFix, nowMs: Long = System.currentTimeMillis()): Boolean {
-        if (!fix.eligibleForFt(nowMs) ||
-            fix.producedAtMs < lastPositionAtMs ||
-            (fusedAuthority && fix.producedAtMs <= lastPositionAtMs)) return false
+        if (!fix.eligibleForFt(nowMs)) return false
         fusedAuthority = true
         val next = FtNavigationPosition(
             source = FtNavigationPosition.Source.FUSED,
             receivedAtMs = fix.producedAtMs, fused = fix)
-        lastPositionAtMs = fix.producedAtMs
         _current.value = next
         _updates.tryEmit(next)
         return true
@@ -110,8 +97,6 @@ internal object FtPositionTelemetry {
     @Synchronized
     fun clear() {
         fusedAuthority = false
-        lastRawSequence = 0L
-        lastPositionAtMs = Long.MIN_VALUE
         _current.value = null
     }
 }
