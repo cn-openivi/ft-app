@@ -129,37 +129,6 @@ internal object AaCarGps {
 }
 
 /**
- * Only an INTERNAL GNSS-health monitor. It does not control DR prediction
- * or notify AA with LOCATION SENSOR_ERROR. It uses a monotonic clock and
- * last NEW accepted OEM GNSS packet, not stale gear or satellite counters.
- */
-internal class AaCarGnssHealthGate(
-    startedElapsedMs: Long,
-    private val lossAfterMs: Long = 5_000L
-) {
-    init { require(lossAfterMs == 5_000L) }
-    private var lastGnssElapsedMs = startedElapsedMs
-    private var outage = false
-
-    /** Returns true only when a previously logged internal outage recovered. */
-    fun onGnss(elapsedMs: Long): Boolean {
-        if (elapsedMs < lastGnssElapsedMs) return false
-        val recovered = outage
-        outage = false
-        lastGnssElapsedMs = elapsedMs
-        return recovered
-    }
-
-    /** Emits a one-shot INTERNAL diagnostic, not an AA wire message. */
-    fun onCheck(elapsedMs: Long): Boolean {
-        if (outage || elapsedMs < lastGnssElapsedMs ||
-            elapsedMs - lastGnssElapsedMs < lossAfterMs) return false
-        outage = true
-        return true
-    }
-}
-
-/**
  * Continuous already-running vehicle DR: NO GNSS-loss timer gating.
  * A new verified prediction is eligible at any time after AA subscription,
  * including between normal 10Hz GNSS observations and the first missed fix.
