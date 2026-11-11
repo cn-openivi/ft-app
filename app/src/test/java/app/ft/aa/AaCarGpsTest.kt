@@ -326,4 +326,47 @@ class AaCarGpsTest {
         assertFalse(gate.accept(verifiedDr(20_001L), 25_000L, mode))
     }
 
+
+    @Test fun fusedSessionSuppressesEveryRawOemGpsPacketToPreventMultipathLeak() {
+        val policy = AaLocationFeedPolicy(
+            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR, 10_000L)
+        val goodOem = car(55.7, 37.6, 10_101L).copy(gpsPacketSequence = 1L)
+        val reflectedOem = car(55.7, 37.601, 10_102L).copy(gpsPacketSequence = 2L)
+        assertTrue(policy.fusedOnly)
+        assertNull(policy.raw(goodOem, 10_101L))
+        assertNull(policy.raw(reflectedOem, 10_102L))
+        assertNotNull(policy.fused(verifiedDr(10_103L), 10_103L))
+        assertNull(policy.raw(goodOem.copy(gpsPacketSequence = 3L), 10_104L))
+        assertNotNull(policy.fused(verifiedDr(10_201L), 10_201L))
+        assertNull(policy.fused(verifiedDr(10_201L), 10_202L))
+    }
+
+    @Test fun unverifiedDrSessionCarriesOnlyFreshOemRawBaseline() {
+        val policy = AaLocationFeedPolicy(
+            AaLocationCharacterization.RAW_GNSS_ONLY, 10_000L)
+        assertFalse(policy.fusedOnly)
+        assertNull(policy.fused(verifiedDr(10_101L), 10_101L))
+        val fresh = car(55.7, 37.6, 10_101L).copy(gpsPacketSequence = 1L)
+        assertNotNull(policy.raw(fresh, 10_101L))
+        assertNull(policy.raw(fresh, 10_102L))
+        assertNotNull(policy.raw(fresh.copy(gpsPacketSequence = 2L), 10_103L))
+    }
+
+    @Test fun frozenSessionCharacterizationForbidsMidSessionUnverifiedSwitch() {
+        val policy = AaLocationFeedPolicy(
+            AaLocationCharacterization.RAW_GNSS_ONLY, 10_000L)
+        assertNull(policy.fused(verifiedDr(10_110L), 10_110L))
+        assertNotNull(policy.raw(
+            car(55.7, 37.6, 10_120L).copy(gpsPacketSequence = 20L),
+            10_120L))
+        // A new connection with verified DR requires a NEW SDP. Do not
+        // emit one raw and one fused coordinate inside the same AA session.
+        val nextSession = AaLocationFeedPolicy(
+            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR, 20_000L)
+        assertNull(nextSession.raw(
+            car(55.7, 37.6, 20_100L).copy(gpsPacketSequence = 21L),
+            20_100L))
+        assertNotNull(nextSession.fused(verifiedDr(20_101L), 20_101L))
+    }
+
 }
