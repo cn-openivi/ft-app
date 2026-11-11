@@ -68,13 +68,14 @@ internal class FtDrFusionEngine(
     fun onMotion(input: Motion, emittedAtMs: Long): Boolean {
         if (!input.valid() || emittedAtMs <= 0L) {
             val prev = lastMotionMs
-            // A malformed frame cannot advance a trusted motion clock.
-            // On an actual measured elapsed interval, hold instead of dead reckoning.
+            // Do not integrate unknown displacement across this interval.
+            // The next good sample starts a fresh trusted clock, rather than
+            // using the invalid frame as a wheel/yaw measurement.
             if (prev != null && input.monotonicMs > prev &&
                 input.monotonicMs - prev <= 1000L) {
                 ekf.holdUnverifiedMotion((input.monotonicMs - prev) / 1000.0)
-                lastMotionMs = input.monotonicMs
             }
+            lastMotionMs = null
             return false
         }
         val previous = lastMotionMs

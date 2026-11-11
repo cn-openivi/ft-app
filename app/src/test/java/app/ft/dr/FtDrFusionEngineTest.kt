@@ -105,4 +105,21 @@ class FtDrFusionEngineTest {
         assertFalse(engine.onGnss(gnss(1200L, verified = false)))
         assertEquals(0, published)
     }
+
+    @Test fun anUnverifiedMotionGapDoesNotCreateDistanceAtNextGoodFrame() {
+        val output = mutableListOf<DeadReckoningEkf.Estimate>()
+        val engine = FtDrFusionEngine { _, _, estimate, _ ->
+            output.add(estimate); true
+        }
+        assertTrue(engine.onGnss(gnss(1000L)))
+        assertFalse(engine.onMotion(motion(1000L), 101_000L))
+        assertTrue(engine.onMotion(motion(1100L), 101_100L))
+        val before = output.last().eastMetres
+        assertFalse(engine.onMotion(
+            motion(1200L).copy(yawAxisAndUnitsVerified = false), 101_200L))
+        assertFalse(engine.onMotion(motion(1300L), 101_300L))
+        assertEquals(before, output.last().eastMetres, 0.00001)
+        assertTrue(engine.onMotion(motion(1400L), 101_400L))
+        assertTrue(output.last().eastMetres > before)
+    }
 }

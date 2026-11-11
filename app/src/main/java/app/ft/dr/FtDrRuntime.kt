@@ -5,6 +5,7 @@ import app.ft.core.AndroidWheelCalibrationStorage
 import app.ft.core.GpsSourceMode
 import app.ft.core.WheelCalibrationStore
 import app.ft.core.WheelSpeedAutoCalibration
+import app.ft.core.VerifiedWheelAcceleration
 import kotlin.math.abs
 
 /**
@@ -18,6 +19,7 @@ internal object FtDrRuntime {
     private var verifiedVehicleId: String? = null
     private var wheelCalibration: WheelSpeedAutoCalibration? = null
     private var calibrationStore: WheelCalibrationStore? = null
+    private val wheelAcceleration = VerifiedWheelAcceleration()
 
     private val fusion = FtDrFusionEngine { latitude, longitude, estimate, emittedAtMs ->
         DrNavigationTelemetry.publishFromVerifiedEkf(
@@ -56,16 +58,24 @@ internal object FtDrRuntime {
     fun acceptVerifiedMotion(motion: FtDrFusionEngine.Motion, emittedAtMs: Long): Boolean {
         if (verifiedVehicleId == null ||
             !motion.wheelUnitsVerified || !motion.yawAxisAndUnitsVerified ||
-            !motion.gearDirectionVerified) return false
+            !motion.gearDirectionVerified) {
+            wheelAcceleration.reset()
+            wheelCalibration?.resetSegment()
+            return false
+        }
 
         val calibration = wheelCalibration
-        if (!motion.reverse && motion.accelerationVerified &&
-            motion.longitudinalAccelerationMps2 != null) {
+        val derivedAcceleration = wheelAcceleration.observe(
+            monotonicMs = motion.monotonicMs,
+            forwardWheelSpeedMps = motion.signedWheelSpeedMps,
+            verified = !motion.reverse
+        )
+        if (derivedAcceleration != null) {
             calibration?.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
                 monotonicMs = motion.monotonicMs,
                 forwardSpeedMps = motion.signedWheelSpeedMps,
                 yawRateRadPerSecond = motion.yawRateRadiansPerSecond,
-                longitudinalAccelerationMps2 = motion.longitudinalAccelerationMps2,
+                longitudinalAccelerationMps2 = derivedAcceleration,
                 verifiedWheelAndYawUnits = true,
                 verifiedForwardGear = true
             ))
@@ -121,5 +131,6 @@ internal object FtDrRuntime {
         verifiedVehicleId = null
         wheelCalibration = null
         calibrationStore = null
+        wheelAcceleration.reset()
     }
 }
