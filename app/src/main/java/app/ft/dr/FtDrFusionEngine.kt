@@ -74,9 +74,10 @@ internal class FtDrFusionEngine(
             return false
         }
         val previous = lastMotionMs
+        if (previous != null && input.monotonicMs <= previous) return false
         lastMotionMs = input.monotonicMs
         trustedMotionSeen = true
-        if (previous == null || input.monotonicMs <= previous) return false
+        if (previous == null) return false
         val elapsedMs = input.monotonicMs - previous
         if (elapsedMs > 1000L) {
             // Dropout is not a fabricated 1-second displacement.
