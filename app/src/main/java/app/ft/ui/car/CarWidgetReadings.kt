@@ -2,15 +2,19 @@ package app.ft.ui.car
 
 import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
+import app.ft.dr.DrNavigationFix
 
 /** Presentation-only helpers; Android Auto GPS delivery is independent. */
 internal object CarWidgetReadings {
     fun displayNow(
         uiNowMs: Long,
         vehicle: VehicleLocation?,
-        phone: CarInfo.PhoneGpsFix? = null
+        phone: CarInfo.PhoneGpsFix? = null,
+        dr: DrNavigationFix? = null
     ): Long = maxOf(
-        uiNowMs, vehicle?.receivedAtMs ?: uiNowMs, phone?.receivedAtMs ?: uiNowMs
+        uiNowMs, vehicle?.receivedAtMs ?: uiNowMs,
+        phone?.receivedAtMs ?: uiNowMs,
+        dr?.producedAtMs ?: uiNowMs
     )
 
     fun speedKmh(reading: CarGpsSourceSelector.Reading, preview: Boolean): Float? {
