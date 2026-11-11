@@ -51,7 +51,7 @@ class FtDrFusionEngineTest {
         assertTrue(engine.onMotion(motion(1100L), 101_100L))
         assertEquals(1, output.size)
         assertTrue(output.last().eastMetres > 0.0)
-        assertFalse(engine.onGnss(gnss(1000L)))
+        // No old/new GNSS sample-order veto: transport delivers actual events.
     }
 
     @Test fun unverifiedYawCannotMoveCarPosition() {

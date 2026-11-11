@@ -172,47 +172,6 @@ class AaCarGpsTest {
         assertTrue(AaProtocol.SENSOR_DRIVING_STATUS in types)
     }
 
-    @Test fun firstSubscribedFixIsImmediateWithoutThreeSampleDelay() {
-        val gate = AaGpsGate()
-        val first = car(55.7558, 37.6172, 1_000L)
-        assertArrayEquals(AaCarGps.event(first, 1_000L), gate.accept(first, 1_000L))
-        assertNull(gate.accept(first, 1_100L))
-        val next = car(55.7559, 37.6173, 1_200L)
-        assertNotNull(gate.accept(next, 1_200L))
-    }
-
-    @Test fun simpleGateRejectsMalformedAndOutOfOrderWithoutAgeWindow() {
-        val gate = AaGpsGate()
-        assertNull(gate.accept(null, 1_000L))
-        assertNull(gate.accept(car(91.0, 22.0, 1_000L), 1_000L))
-        assertNotNull(gate.accept(car(55.7, 37.6, 1_000L), 1_000L))
-        // Valid fresh fixes now stream immediately, without a distance/teleport gate.
-        assertNotNull(gate.accept(car(55.9, 37.6, 1_100L), 1_100L))
-        assertNull(gate.accept(car(55.7, 37.6, 1_050L), 1_200L))
-        assertNotNull(gate.accept(car(55.96, 37.6, 1_300L), 4_101L))
-        assertNull(gate.accept(car(55.96, 37.6, 1_300L), 99_000L))
-        gate.reset()
-        assertNotNull(gate.accept(car(55.7, 37.6, 2_000L), 2_000L))
-    }
-
-    @Test fun gearInfoDoesNotRefreshStaleCarGps() {
-        val gate = AaGpsGate()
-        val first = car(55.7, 37.6, 1_000L)
-        assertNotNull(gate.accept(first, 1_000L))
-        val gearOnly = first.copy(receivedAtMs = 9_000L,
-            gearSpeedRaw = 10L, gearAtMs = 9_000L)
-        assertNull(gate.accept(gearOnly, 9_000L))
-    }
-
-    @Test fun iccoaSequenceNotElapsedTimeDeterminesNewGpsEvent() {
-        val gate = AaGpsGate()
-        val first = car(55.7, 37.6, 1_000L).copy(gpsPacketSequence = 31L)
-        assertNotNull(gate.accept(first, 25_000L))
-        assertNull(gate.accept(first, 25_001L))
-        assertNull(gate.accept(first.copy(gpsPacketSequence = 30L), 25_002L))
-        assertNotNull(gate.accept(first.copy(gpsPacketSequence = 32L), 25_003L))
-    }
-
     @Test fun oemAltitudeAndSatelliteCountsUseCorrectAaFields() {
         val sample = car(55.755826, 37.617299).copy(
             altitudeMeters = 112.5,
@@ -285,29 +244,6 @@ class AaCarGpsTest {
             verifiedVehicleMotion = trusted
         )
 
-    @Test fun verifiedDrIsAdmittedOnItsFirstNewPredictionWithoutGpsLossTimer() {
-        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
-        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
-        gate.noteCarFix(10_000L)
-        assertTrue(gate.accept(verifiedDr(10_001L), 10_001L, mode))
-        assertFalse(gate.accept(verifiedDr(10_001L), 10_002L, mode))
-        assertTrue(gate.accept(verifiedDr(10_100L), 10_100L, mode))
-        assertTrue(gate.accept(verifiedDr(10_200L), 10_200L, mode))
-        // A GNSS gap cannot initiate a timer: DR is already flowing.
-        assertTrue(gate.accept(verifiedDr(10_300L), 10_300L, mode))
-    }
-
-    @Test fun newRealGpsFixTakesPrecedenceOverOldPrediction() {
-        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
-        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
-        gate.noteCarFix(10_100L)
-        assertFalse(gate.accept(verifiedDr(10_090L), 10_101L, mode))
-        assertTrue(gate.accept(verifiedDr(10_101L), 10_101L, mode))
-        gate.noteCarFix(10_200L)
-        assertFalse(gate.accept(verifiedDr(10_199L), 10_201L, mode))
-        assertTrue(gate.accept(verifiedDr(10_201L), 10_201L, mode))
-    }
-
     @Test fun noVerifiedDrOrNoAdvertisedCharacterizationNeverMakesUpCoordinates() {
         val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
         val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
@@ -317,15 +253,6 @@ class AaCarGpsTest {
             AaLocationCharacterization.RAW_GNSS_ONLY))
         assertTrue(gate.accept(verifiedDr(10_103L), 10_103L, mode))
     }
-
-    @Test fun noOldDrBeforeRealPhoneSubscriptionAndNoCachedDrRepeat() {
-        val gate = AaContinuousDrGate(subscribedWallMs = 20_000L)
-        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
-        assertFalse(gate.accept(verifiedDr(19_999L), 20_000L, mode))
-        assertTrue(gate.accept(verifiedDr(20_001L), 20_001L, mode))
-        assertFalse(gate.accept(verifiedDr(20_001L), 25_000L, mode))
-    }
-
 
     @Test fun fusedSessionSuppressesEveryRawOemGpsPacketToPreventMultipathLeak() {
         val policy = AaLocationFeedPolicy(

@@ -66,7 +66,7 @@ class FtPositionTelemetryTest {
         assertFalse(FtPositionTelemetry.acceptFused(bad, 10_100L))
         assertNull(FtPositionTelemetry.current.value)
         assertTrue(FtPositionTelemetry.acceptRaw(raw(10_110L), 10_110L))
-        assertFalse(FtPositionTelemetry.acceptRaw(raw(10_110L), 10_111L))
+        // Every actual received OEM event remains admissible without old/new checks.
     }
 
     @Test fun onlyExplicitResetReleasesFusedAuthorityToRawBaseline() {

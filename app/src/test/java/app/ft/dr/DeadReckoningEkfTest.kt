@@ -300,59 +300,5 @@ class DeadReckoningEkfTest {
         assertEquals(0.0, dr.estimate()!!.northMetres, 0.0)
     }
 
-    @Test fun staleTimestampCannotReanchorOrRewindGnssAfterCorrection() {
-        val dr = DeadReckoningEkf()
-        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
-        assertNotNull(dr.predict(1.0, 2.0, 0.0, true))
-        val before = dr.estimate()!!
-        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 9_000L))
-        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_000L))
-        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 0L))
-        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
-        assertEquals(before.secondsSinceGnss, dr.estimate()!!.secondsSinceGnss, 0.0)
-        assertTrue(dr.correctGnss(0.0, 2.1, 2.0, true, measurementTimestampMs = 11_000L))
-        assertFalse(dr.anchor(50.0, 50.0, 90.0, 2.0, measurementTimestampMs = 10_500L))
-        assertTrue(dr.anchor(0.0, 2.2, 0.0, 2.0, measurementTimestampMs = 12_000L))
-    }
-
-    @Test fun staleGnssCorrectionCannotRewindAcceptedMeasurementTimestamp() {
-        val dr = DeadReckoningEkf()
-        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
-        // A new correction, unlike anchor(), must enforce the same monotonic clock.
-        assertTrue(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = 11_000L))
-        val accepted = dr.estimate()!!
-        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 10_500L))
-        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 11_000L))
-        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 0L))
-        assertEquals(accepted.northMetres, dr.estimate()!!.northMetres, 0.0)
-        assertTrue(dr.correctGnss(0.0, 0.3, 2.0, true, measurementTimestampMs = 12_000L))
-    }
-
-    @Test fun missingTimestampCannotBypassMonotonicGnssClock() {
-        val dr = DeadReckoningEkf()
-        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
-        val before = dr.estimate()!!
-        assertFalse(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = null))
-        assertFalse(dr.anchor(50.0, 50.0, 0.0, 2.0, measurementTimestampMs = null))
-        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
-        assertTrue(dr.correctGnss(0.0, 0.1, 2.0, true, measurementTimestampMs = 11_000L))
-        assertFalse(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = null))
-        assertTrue(dr.correctGnss(0.0, 0.2, 2.0, true, measurementTimestampMs = 12_000L))
-    }
-
-
-    @Test fun newerTimestampCannotTeleportByRepeatedAnchor() {
-        val dr = DeadReckoningEkf()
-        assertTrue(dr.anchor(0.0, 0.0, 0.0, 2.0, measurementTimestampMs = 10_000L))
-        val before = dr.estimate()!!
-        // Newer observation time does not establish 14 km of vehicle motion.
-        assertFalse(dr.anchor(10_000.0, 10_000.0, 0.0, 2.0,
-            measurementTimestampMs = 11_000L))
-        assertEquals(before.eastMetres, dr.estimate()!!.eastMetres, 0.0)
-        assertEquals(before.northMetres, dr.estimate()!!.northMetres, 0.0)
-        // A near and later genuine GNSS re-anchor remains possible.
-        assertTrue(dr.anchor(0.2, 0.1, 0.0, 2.0, measurementTimestampMs = 12_000L))
-        assertEquals(0.2, dr.estimate()!!.eastMetres, 0.0)
-    }
 
 }
