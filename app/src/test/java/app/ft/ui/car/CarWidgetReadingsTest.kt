@@ -77,6 +77,16 @@ class CarWidgetReadingsTest {
         assertEquals(10_900L, now)
     }
 
+    @Test fun drMeasurementIsNotHeldBackByOneSecondUiRefreshTick() {
+        val fresh = dr(10_080L)
+        val now = CarWidgetReadings.displayNow(
+            10_000L, car(10_000L), phone(10_000L), fresh)
+        assertEquals(10_080L, now)
+        val selected = CarGpsSourceSelector().select(
+            car(10_000L), phone(10_000L), now, drFix = fresh)
+        assertEquals(CarGpsSourceSelector.Source.DR, selected.source)
+    }
+
     @Test fun noValidSourceCannotInventCoordinates() {
         val reading = CarGpsSourceSelector().select(null,
             phone(10_000L), 10_000L)
