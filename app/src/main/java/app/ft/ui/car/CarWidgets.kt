@@ -73,7 +73,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
         while (true) { delay(1_000); value = System.currentTimeMillis() }
     }
     // Observe new ICCOA *position frames*, never GearInfo as proof of a GPS fix.
-    val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps)
+    val displayNow = CarWidgetReadings.displayNow(now, vehicle, phoneGps, verifiedDr)
     val reading = selector.select(vehicle, phoneGps, displayNow,
         manualPhoneMode = FTApp.instance.prefs.gpsSourceMode == GpsSourceMode.PHONE,
         drFix = verifiedDr)
