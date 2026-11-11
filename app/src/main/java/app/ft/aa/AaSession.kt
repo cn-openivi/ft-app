@@ -483,7 +483,7 @@ class AaSession(
      * each new verified DR prediction may fill the interval BETWEEN OEM fixes.
      * When OEM GNSS disappears, verified DR simply continues on its next
      * update: no loss timer, no phone substitute and no LOCATION SENSOR_ERROR.
-     * Five seconds is solely an internal GNSS_LOST diagnostic.
+     * No timer or diagnostic GNSS_LOST threshold is required.
      *
      * If the DR producer is not verified/available or this session did not
      * advertise actual DEAD_RECKONED capability, we cannot invent DR.
