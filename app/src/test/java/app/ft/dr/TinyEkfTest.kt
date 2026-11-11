@@ -33,6 +33,31 @@ class TinyEkfTest {
             ekf.covariance(), 1e-10)
     }
 
+    @Test fun josephCovarianceRemainsSymmetricAndNonnegativeThroughCorrections() {
+        val ekf = TinyEkf(4, 2)
+        ekf.reset(doubleArrayOf(0.0, 0.0, 0.0, 0.0),
+            doubleArrayOf(1.0, 1.0, 0.1, 0.01))
+        repeat(300) {
+            assertTrue(ekf.update(
+                measurement = doubleArrayOf(0.1, -0.1),
+                expectedMeasurement = doubleArrayOf(0.0, 0.0),
+                observationJacobian = doubleArrayOf(
+                    1.0, 0.0, 0.0, 0.0,
+                    0.0, 1.0, 0.0, 0.0),
+                observationNoise = doubleArrayOf(
+                    1e-8, 0.0, 0.0, 1e-8)
+            ))
+        }
+        val covariance = ekf.covariance()
+        assertTrue(covariance.all { it.isFinite() })
+        for (i in 0 until 4) {
+            assertTrue(covariance[i * 4 + i] >= 0.0)
+            for (j in 0 until 4)
+                assertEquals(covariance[i * 4 + j],
+                    covariance[j * 4 + i], 1e-12)
+        }
+    }
+
     @Test fun singularInnovationNeverCorruptsFilterState() {
         val ekf = TinyEkf(2, 2)
         ekf.reset(doubleArrayOf(7.0, -3.0), doubleArrayOf(0.0, 0.0))

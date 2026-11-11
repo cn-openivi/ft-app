@@ -102,14 +102,19 @@ internal class DeadReckoningEkf {
 
         val x = filter.state()
         val distance = calibratedSpeedMetresPerSecond * dtSeconds
-        val mid = x[HEADING] +
-            (vehicleYawRateRadiansPerSecond - x[GYRO_BIAS]) * dtSeconds / 2.0
+        // Adapted from Naviator's ZUPT principle for our 4-state wheel-driven
+        // vehicle model. Unlike a phone IMU detector, independently verified
+        // ZERO wheel velocity already means zero vehicle displacement:
+        // do not integrate gyro bias/noise into a fictitious turn at rest.
+        // No consecutive samples, debounce, extra filter or GPS wait.
+        val stationary = calibratedSpeedMetresPerSecond == 0.0
+        val angularVelocity = if (stationary) 0.0
+            else vehicleYawRateRadiansPerSecond - x[GYRO_BIAS]
+        val mid = x[HEADING] + angularVelocity * dtSeconds / 2.0
         val next = x.copyOf()
         next[EAST] += distance * sin(mid)
         next[NORTH] += distance * cos(mid)
-        next[HEADING] = normalize(
-            x[HEADING] + (vehicleYawRateRadiansPerSecond - x[GYRO_BIAS]) * dtSeconds
-        )
+        next[HEADING] = normalize(x[HEADING] + angularVelocity * dtSeconds)
         val f = DoubleArray(STATE_SIZE * STATE_SIZE) { i ->
             if (i / STATE_SIZE == i % STATE_SIZE) 1.0 else 0.0
         }
@@ -117,7 +122,8 @@ internal class DeadReckoningEkf {
         f[NORTH * STATE_SIZE + HEADING] = -distance * sin(mid)
         f[EAST * STATE_SIZE + GYRO_BIAS] = -0.5 * distance * dtSeconds * cos(mid)
         f[NORTH * STATE_SIZE + GYRO_BIAS] = 0.5 * distance * dtSeconds * sin(mid)
-        f[HEADING * STATE_SIZE + GYRO_BIAS] = -dtSeconds
+        f[HEADING * STATE_SIZE + GYRO_BIAS] =
+            if (stationary) 0.0 else -dtSeconds
 
         val q = DoubleArray(STATE_SIZE * STATE_SIZE)
         // Reverse is signed displacement, but uncertainty scales with the

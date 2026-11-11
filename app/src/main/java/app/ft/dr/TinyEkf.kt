@@ -68,8 +68,12 @@ internal class TinyEkf(
 
     /**
      * TinyEKF: G = P H' (H P H' + R)^-1
-     * x = x + G(z - h(x)), P = (I - G H) P.
+     * x = x + G(z - h(x)).
      *
+     * Covariance uses the Joseph form P=(I-KH)P(I-KH)' + KRK'
+     * as in robot_localization (BSD). This is algebraically identical to
+     * the simplified update, but better preserves positive covariance under
+     * many successive GNSS corrections. No extra measurement gate or timer.
      * Returns false for a singular covariance without corrupting state.
      */
     @Synchronized
@@ -104,7 +108,15 @@ internal class TinyEkf(
         val iMinusGh = DoubleArray(n * n) { i ->
             (if (i / n == i % n) 1.0 else 0.0) - gh[i]
         }
-        val nextP = symmetric(multiply(iMinusGh, p, n, n, n), n)
+        // Stable Joseph covariance form, using the same gain and measurement.
+        // Compute entirely before committing state so a numerical error leaves
+        // the original EKF untouched.
+        val residualP = multiply(iMinusGh, p, n, n, n)
+        val josephP = multiply(residualP, transpose(iMinusGh, n, n), n, n, n)
+        val gainR = multiply(gain, observationNoise, n, m, m)
+        val gainRGainT = multiply(gainR, transpose(gain, n, m), n, m, n)
+        val nextP = symmetric(
+            DoubleArray(n * n) { i -> josephP[i] + gainRGainT[i] }, n)
         if (!nextX.all(Double::isFinite) || !nextP.all(Double::isFinite) ||
             (0 until n).any { nextP[it * n + it] < -1e-9 }) return false
         x = nextX

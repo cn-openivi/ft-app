@@ -242,6 +242,23 @@ class DeadReckoningEkfTest {
         assertEquals(10.0, dr.estimate()!!.northMetres, 0.0001)
     }
 
+    @Test fun verifiedFullStopNeverInventsTurnFromGyroNoise() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 90.0, 2.0))
+        repeat(100) {
+            assertNotNull(dr.predict(0.1, 0.0, 0.05, true))
+        }
+        val stationary = dr.estimate()!!
+        assertEquals(90.0, stationary.headingDegrees, 1e-9)
+        assertEquals(0.0, stationary.eastMetres, 1e-9)
+        assertEquals(0.0, stationary.northMetres, 1e-9)
+        // The first real verified nonzero wheel observation resumes heading
+        // integration immediately, without any sample-count trigger.
+        val moving = dr.predict(0.1, 10.0, 0.05, true)!!
+        assertTrue(moving.headingDegrees > 90.0)
+        assertTrue(moving.eastMetres > 0.0)
+    }
+
     @Test fun noCorrectionFromPredictedOrUnverifiedGps() {
         val dr = DeadReckoningEkf()
         dr.anchor(0.0, 0.0, 30.0, 3.0)
