@@ -1,0 +1,91 @@
+name: FT179 field candidate full unsigned APK (existing VPS runner)
+
+on:
+  push:
+    branches:
+      - openivi/ft179-dr-field-20261111
+    paths:
+      - 'app/**'
+      - '.github/workflows/ft179-vps-unsigned.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft179-vps-unsigned
+  cancel-in-progress: false
+
+jobs:
+  verify-full-unsigned:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 75
+    steps:
+      - name: Checkout triggering exact commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify isolated branch, exact SHA and nonroot user
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REF_NAME" = 'openivi/ft179-dr-field-20261111'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 179' app/build.gradle.kts
+          grep -Fq 'versionName = "3.9.65-xa60-ft179-gps-dr-field"' app/build.gradle.kts
+          echo "FT179_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Complete regression and full unsigned APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit
+      - name: Verify APK content, identity, unsigned status, digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/unsignedTransit/app-unsignedTransit-unsigned.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -Z1 "$APK" | grep -Fxq 'classes.dex'
+          unzip -Z1 "$APK" | grep -Fxq 'AndroidManifest.xml'
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          AAPT="$(find "$SDK/build-tools" -maxdepth 2 -name aapt -type f | sort -V | tail -1)"
+          SIGNER="$(find "$SDK/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          test -x "$AAPT" && test -x "$SIGNER"
+          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='179'" apk-badging.txt
+          if "$AAPT" dump badging "$APK" | grep -q '^application-debuggable'; then
+            echo "REFUSE debuggable candidate" >&2; exit 1
+          fi
+          if "$SIGNER" verify "$APK" >/dev/null 2>&1; then
+            echo "REFUSE signed candidate" >&2; exit 1
+          fi
+          mkdir -p verified
+          cp "$APK" verified/FT179_XA60_FULL_UNSIGNED.apk
+          test "$(stat -c%s verified/FT179_XA60_FULL_UNSIGNED.apk)" -gt 100000
+          sha256sum verified/FT179_XA60_FULL_UNSIGNED.apk | tee verified/SHA256SUMS
+          printf 'SOURCE_SHA=%s\nVERSION_CODE=179\nAPP_ID=app.ft.xa60\nSIGNATURE=UNSIGNED\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" > verified/PROVENANCE.txt
+          cp apk-badging.txt verified/
+      - name: Retain 1 day only until Drive verification
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ft179-unsigned-${{ github.sha }}
+          path: verified/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
