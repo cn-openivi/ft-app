@@ -2,6 +2,8 @@ package app.ft.dr
 
 import app.ft.core.GpsSourceMode
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.PI
 import kotlin.math.abs
@@ -39,6 +41,14 @@ internal data class DrNavigationFix(
 internal object DrNavigationTelemetry {
     private val _current = MutableStateFlow<DrNavigationFix?>(null)
     val current: StateFlow<DrNavigationFix?> = _current
+    // SDP reads the current snapshot, while AA sees ONLY newly produced
+    // verified fused coordinates. No replay of a stale GNSS or DR position.
+    private val _updates = MutableSharedFlow<DrNavigationFix>(
+        replay = 0, extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    val updates: kotlinx.coroutines.flow.SharedFlow<DrNavigationFix> = _updates
+    private var lastPublishedAtMs = Long.MIN_VALUE
 
     @Synchronized
     fun publishFromVerifiedEkf(
@@ -49,7 +59,8 @@ internal object DrNavigationTelemetry {
         wheelSpeedAndYawVerified: Boolean,
         producedAtMs: Long
     ): Boolean {
-        if (!wheelSpeedAndYawVerified || !referenceLatitude.isFinite() ||
+        if (producedAtMs <= lastPublishedAtMs || !wheelSpeedAndYawVerified ||
+            !referenceLatitude.isFinite() ||
             !referenceLongitude.isFinite() || referenceLatitude !in -85.0..85.0 ||
             referenceLongitude !in -180.0..180.0 ||
             !estimate.eastMetres.isFinite() || !estimate.northMetres.isFinite() ||
@@ -71,7 +82,7 @@ internal object DrNavigationTelemetry {
             estimate.eastMetres / (eastRadius * cos(latRad)) * 180.0 / PI
         if (!lat.isFinite() || !lon.isFinite() || lat !in -90.0..90.0 ||
             lon !in -180.0..180.0) return false
-        _current.value = DrNavigationFix(
+        val next = DrNavigationFix(
             latitude = lat, longitude = lon,
             accuracyMetres = estimate.horizontalUncertaintyMetres,
             headingDegrees = estimate.headingDegrees,
@@ -80,11 +91,15 @@ internal object DrNavigationTelemetry {
             estimated = estimate.estimated,
             verifiedVehicleMotion = true
         )
+        lastPublishedAtMs = producedAtMs
+        _current.value = next
+        _updates.tryEmit(next)
         return true
     }
 
     @Synchronized
     fun clear() {
         _current.value = null
+        lastPublishedAtMs = Long.MIN_VALUE
     }
 }
