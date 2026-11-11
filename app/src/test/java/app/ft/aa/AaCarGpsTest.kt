@@ -2,6 +2,8 @@ package app.ft.aa
 
 import app.ft.core.ProtoReader
 import app.ft.core.VehicleLocation
+import app.ft.core.GpsSourceMode
+import app.ft.dr.DrNavigationFix
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -274,72 +276,54 @@ class AaCarGpsTest {
         assertTrue(AaProtocol.SENSOR_DRIVING_STATUS in types)
     }
 
-    @Test fun subscribedAaGpsDoesNotDeclareOemLossBeforeFiveSeconds() {
-        val gate = AaGpsAvailabilityGate(startedElapsedMs = 10_000L)
-        assertFalse(gate.shouldReportUnavailable(13_500L))
-        assertFalse(gate.shouldReportUnavailable(14_999L))
-        assertTrue(gate.shouldReportUnavailable(15_000L))
-        assertFalse(gate.shouldReportUnavailable(16_000L))
-        // No FT-side auto phone switch; AA owns its response to SENSOR_ERROR.
-        assertArrayEquals(byteArrayOf(8, 1, 16, 2), AaCarGps.sensorError(2))
+    private fun verifiedDr(at: Long, trusted: Boolean = true): DrNavigationFix =
+        DrNavigationFix(
+            latitude = 55.7, longitude = 37.6,
+            accuracyMetres = 12.0, headingDegrees = 90.0,
+            fromSelectedGps = GpsSourceMode.CAR,
+            producedAtMs = at, estimated = true,
+            verifiedVehicleMotion = trusted
+        )
+
+    @Test fun verifiedDrIsAdmittedOnItsFirstNewPredictionWithoutGpsLossTimer() {
+        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
+        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
+        gate.noteCarFix(10_000L)
+        assertTrue(gate.accept(verifiedDr(10_001L), 10_001L, mode))
+        assertFalse(gate.accept(verifiedDr(10_001L), 10_002L, mode))
+        assertTrue(gate.accept(verifiedDr(10_100L), 10_100L, mode))
+        assertTrue(gate.accept(verifiedDr(10_200L), 10_200L, mode))
+        // A GNSS gap cannot initiate a timer: DR is already flowing.
+        assertTrue(gate.accept(verifiedDr(10_300L), 10_300L, mode))
     }
 
-    @Test fun lateGearInfoCannotResetFiveSecondLossTimerAndRealFixRecoversOnce() {
-        val gate = AaGpsAvailabilityGate(startedElapsedMs = 2_000L)
-        assertFalse(gate.onDeliveredLocation(3_000L))
-        // Normal GearInfo updates never call onDeliveredLocation.
-        for (now in 3_100L..7_900L step 100L)
-            assertFalse(gate.shouldReportUnavailable(now))
-        assertTrue(gate.shouldReportUnavailable(8_000L))
-        assertFalse(gate.shouldReportUnavailable(8_500L))
-        assertTrue(gate.onDeliveredLocation(9_000L))
-        assertArrayEquals(byteArrayOf(8, 1, 16, 1), AaCarGps.sensorError(1))
-        assertFalse(gate.onDeliveredLocation(10_000L))
-        assertFalse(gate.shouldReportUnavailable(14_999L))
-        assertTrue(gate.shouldReportUnavailable(15_000L))
+    @Test fun newRealGpsFixTakesPrecedenceOverOldPrediction() {
+        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
+        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
+        gate.noteCarFix(10_100L)
+        assertFalse(gate.accept(verifiedDr(10_090L), 10_101L, mode))
+        assertTrue(gate.accept(verifiedDr(10_101L), 10_101L, mode))
+        gate.noteCarFix(10_200L)
+        assertFalse(gate.accept(verifiedDr(10_199L), 10_201L, mode))
+        assertTrue(gate.accept(verifiedDr(10_201L), 10_201L, mode))
     }
 
-    @Test fun delayedElapsedCallbackCannotRewindFiveSecondLossClock() {
-        val gate = AaGpsAvailabilityGate(startedElapsedMs = 2_000L)
-        assertFalse(gate.onDeliveredLocation(6_000L))
-        assertFalse(gate.onDeliveredLocation(5_500L))
-        assertFalse(gate.shouldReportUnavailable(10_999L))
-        assertTrue(gate.shouldReportUnavailable(11_000L))
-        assertFalse(gate.onDeliveredLocation(5_900L))
-        assertFalse(gate.shouldReportUnavailable(11_500L))
-        assertTrue(gate.onDeliveredLocation(11_600L))
+    @Test fun noVerifiedDrOrNoAdvertisedCharacterizationNeverMakesUpCoordinates() {
+        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
+        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
+        assertFalse(gate.accept(null, 10_100L, mode))
+        assertFalse(gate.accept(verifiedDr(10_101L, false), 10_101L, mode))
+        assertFalse(gate.accept(verifiedDr(10_102L), 10_102L,
+            AaLocationCharacterization.RAW_GNSS_ONLY))
+        assertTrue(gate.accept(verifiedDr(10_103L), 10_103L, mode))
     }
 
-    @Test fun backwardsMonotonicTimestampCannotFakeAaGpsLoss() {
-        val gate = AaGpsAvailabilityGate(startedElapsedMs = 50_000L)
-        assertFalse(gate.shouldReportUnavailable(49_000L))
-        assertFalse(gate.shouldReportUnavailable(54_999L))
-        assertTrue(gate.shouldReportUnavailable(55_000L))
+    @Test fun noOldDrBeforeRealPhoneSubscriptionAndNoCachedDrRepeat() {
+        val gate = AaContinuousDrGate(subscribedWallMs = 20_000L)
+        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
+        assertFalse(gate.accept(verifiedDr(19_999L), 20_000L, mode))
+        assertTrue(gate.accept(verifiedDr(20_001L), 20_001L, mode))
+        assertFalse(gate.accept(verifiedDr(20_001L), 25_000L, mode))
     }
 
-    @Test fun verifiedCarDrCannotDisplaceFreshOemGnssWithinFiveSeconds() {
-        val priority = AaCarDrSwitchGate(startedElapsedMs = 10_000L)
-        assertFalse(priority.canUseVerifiedDr(14_999L))
-        priority.onCarGps(14_500L) // New OEM GNSS takes priority.
-        assertFalse(priority.canUseVerifiedDr(18_999L))
-        assertTrue(priority.canUseVerifiedDr(19_500L))
-    }
-
-    @Test fun newOemGpsImmediatelyRecoversAfterDrWithoutPhone() {
-        val priority = AaCarDrSwitchGate(startedElapsedMs = 10_000L)
-        assertTrue(priority.canUseVerifiedDr(15_000L))
-        priority.onCarGps(15_100L)
-        assertFalse(priority.canUseVerifiedDr(15_101L))
-        assertFalse(priority.canUseVerifiedDr(20_099L))
-        assertTrue(priority.canUseVerifiedDr(20_100L))
-        // A late callback may never move the monotonic five-second deadline backwards.
-        priority.onCarGps(12_000L)
-        assertFalse(priority.canUseVerifiedDr(19_999L))
-    }
-
-    @Test fun gpsSensorErrorMatchesAndroidAutoWireSchema() {
-        val p = ProtoReader(AaCarGps.sensorError(2))
-        assertEquals(1, p.int(1))
-        assertEquals(2, p.int(2))
-    }
 }
