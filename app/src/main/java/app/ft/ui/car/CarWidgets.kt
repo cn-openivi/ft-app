@@ -33,7 +33,6 @@ import app.ft.core.CarInfo
 import app.ft.FTApp
 import app.ft.core.CarProtocol
 import app.ft.core.GpsSourceMode
-import app.ft.core.GpsSourceMode
 import app.ft.dr.FtPositionTelemetry
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
