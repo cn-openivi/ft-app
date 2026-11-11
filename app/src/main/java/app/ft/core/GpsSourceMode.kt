@@ -3,9 +3,9 @@ package app.ft.core
 /**
  * GNSS provenance gate for future TinyEKF corrections and Android Auto SDP.
  *
- * This is NOT the FT dashboard GPS selector. The FT dashboard has a separate
- * owner-approved car-primary automatic 7-second car/phone hysteresis, restored
- * from the signed FT174 baseline; it never treats GearInfo as a new GPS fix.
+ * The FT-native dashboard and all FT apps take the central FT position
+ * telemetry stream. There is NO car-to-phone automatic hysteresis/timer.
+ * A genuine OEM GNSS observation alone does not override verified fused DR.
  *
  * CAR: accept only verified OEM GNSS to correct TinyEKF and advertise car
  * LOCATION in ICCOA. AA's phone chooses whether to subscribe to LOCATION and
