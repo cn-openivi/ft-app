@@ -44,13 +44,17 @@ data class VehicleLocation(
     /** Monotonic received ICCOA GPS packet sequence, not wall or GNSS fix time. */
     val gpsPacketSequence: Long = 0L
 ) {
-    /** UI/telemetry liveness only; never gate a newly received OEM GNSS event. */
+    /**
+     * Clock-domain sanity only, NOT a GPS time-to-live or GNSS-loss verdict.
+     * Do not infer live signal from a stored snapshot; new GNSS is delivered
+     * solely by the gpsUpdates event stream and its receive sequence.
+     */
     fun fresh(nowMs: Long = System.currentTimeMillis()) =
-        nowMs >= receivedAtMs && nowMs - receivedAtMs <= 5_000L
+        receivedAtMs > 0L && nowMs >= receivedAtMs
 
-    /** Five-second loss-status window, not a GNSS measurement-age rejection gate. */
+    /** Known position recorded in this snapshot, NOT proof that GNSS is live. */
     fun positionFresh(nowMs: Long = System.currentTimeMillis()) =
-        positionAtMs > 0L && nowMs >= positionAtMs && nowMs - positionAtMs <= 5_000L
+        positionAtMs > 0L && nowMs >= positionAtMs
 
     /** OEM GearInfo speed, never a GNSS fix or proof of calibrated wheel speed. */
     fun gearSpeedFresh(nowMs: Long = System.currentTimeMillis()) =
@@ -80,7 +84,8 @@ object VehicleTelemetry {
      */
     private fun note(sample: VehicleLocation) {
         val now = sample.receivedAtMs
-        val hasFix = sample.positionFresh(now) &&
+        val hasFix = sample.positionAtMs > 0L &&
+            sample.positionAtMs <= now &&
             ((sample.displayLatitude != null && sample.displayLongitude != null) ||
              (sample.rawLatitude != null && sample.rawLongitude != null))
         val decision = logSampler.accept(sample.source, now, hasFix) ?: return
@@ -96,9 +101,9 @@ object VehicleTelemetry {
 
     @Synchronized fun publish(location: VehicleLocation) {
         require(location.source == "ICCOA" || location.source == "BAIDU")
-        // A delayed GPS measurement may carry an older receivedAtMs than a
-        // just-arrived GearInfo frame. Evaluate GearInfo freshness against
-        // the local clock, never against the GPS packet's past timestamp.
+        // Gear and position have independent event/timestamps. The snapshot
+        // predicate below only ensures the clock is not in the future; it
+        // must not be used as an OEM GNSS availability or DR switch gate.
         val previous = _current.value?.takeIf {
             it.source == location.source && it.fresh(System.currentTimeMillis())
         }
@@ -158,9 +163,9 @@ object VehicleTelemetry {
     @Synchronized fun updateIccoaSpeed(rawSpeed: Long, gearRaw: Long? = null) {
         if (rawSpeed < 0L || rawSpeed > 100_000L || (gearRaw != null && gearRaw !in 0L..4L)) return
         val now = System.currentTimeMillis()
-        // A new GearInfo frame must not erase the last GPS position after a
-        // long gap. Freshness uses positionAtMs independently; retaining the
-        // stale fix is for UI only and never makes it usable by Android Auto.
+        // GearInfo must not erase historical GPS measurements. The stored
+        // position is NEVER replayed to Android Auto: only gpsUpdates emits
+        // newly accepted GPS packets with a distinct receive sequence.
         val old = _current.value?.takeIf { it.source == "ICCOA" }
         _current.value = (old ?: VehicleLocation("ICCOA", now, positionAtMs = 0L)).copy(
             receivedAtMs = now,
