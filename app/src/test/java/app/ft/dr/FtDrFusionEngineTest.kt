@@ -33,10 +33,11 @@ class FtDrFusionEngineTest {
     @Test fun refusesRawGnssAsVerifiedEkfAnchor() {
         var publishes = 0
         val engine = FtDrFusionEngine { _, _, _, _ -> publishes++; true }
-        assertFalse(engine.onGnss(gnss(1000L)))
+        assertTrue(engine.onGnss(gnss(1000L)))
         assertFalse(engine.onMotion(
             motion(1000L).copy(wheelUnitsVerified = false), 101_000L))
-        assertFalse(engine.onGnss(gnss(1050L)))
+        // A later reliable fix is valid even without trusted wheel/yaw.
+        assertTrue(engine.onGnss(gnss(1050L)))
         assertEquals(0, publishes)
     }
 
@@ -48,8 +49,8 @@ class FtDrFusionEngineTest {
         assertFalse(engine.onMotion(motion(1000L), 101_000L))
         assertTrue(engine.onGnss(gnss(1000L)))
         assertTrue(engine.onMotion(motion(1100L), 101_100L))
-        assertEquals(2, output.size)
-        assertTrue(output.last().eastMetres > output.first().eastMetres)
+        assertEquals(1, output.size)
+        assertTrue(output.last().eastMetres > 0.0)
         assertFalse(engine.onGnss(gnss(1000L)))
     }
 
@@ -63,7 +64,7 @@ class FtDrFusionEngineTest {
         assertFalse(engine.onMotion(
             motion(1100L).copy(yawAxisAndUnitsVerified = false),
             101_100L))
-        assertEquals(1, output.size)
+        assertEquals(0, output.size)
     }
 
     @Test fun noAutomaticPhoneSourceSwitch() {
@@ -80,6 +81,28 @@ class FtDrFusionEngineTest {
         assertTrue(engine.onGnss(gnss(1000L)))
         engine.reset()
         assertFalse(engine.onMotion(motion(1100L), 101_100L))
-        assertEquals(1, count)
+        assertEquals(0, count)
+    }
+
+    @Test fun gnssBeforeAnyMotionAnchorsImmediatelyWithoutFakingDr() {
+        val positions = mutableListOf<DeadReckoningEkf.Estimate>()
+        val engine = FtDrFusionEngine { _, _, estimate, _ -> positions.add(estimate); true }
+        assertTrue(engine.onGnss(gnss(1000L)))
+        assertEquals(0, positions.size)
+        assertFalse(engine.onMotion(motion(1000L), 101_000L))
+        assertEquals(0, positions.size)
+        assertTrue(engine.onMotion(motion(1100L), 101_100L))
+        assertEquals(1, positions.size)
+        assertTrue(positions.single().eastMetres > 0.0)
+    }
+
+    @Test fun repeatedReliableGnssDoesNotRequireWheelAndDoesNotClaimFusion() {
+        var published = 0
+        val engine = FtDrFusionEngine { _, _, _, _ -> published++; true }
+        assertTrue(engine.onGnss(gnss(1000L)))
+        assertTrue(engine.onGnss(gnss(1100L)))
+        assertFalse(engine.onGnss(gnss(1000L)))
+        assertFalse(engine.onGnss(gnss(1200L, verified = false)))
+        assertEquals(0, published)
     }
 }

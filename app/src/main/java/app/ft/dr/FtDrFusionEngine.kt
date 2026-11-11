@@ -49,7 +49,9 @@ internal class FtDrFusionEngine(
     private var originLon: Double? = null
     private var lastMotionMs: Long? = null
     private var lastGnssFixMs: Long? = null
-    private var trustedMotionSeen = false
+    // GNSS is admitted independently; only a genuine wheel/yaw EKF prediction
+    // may promote its result from RAW_UNFILTERED to FUSED for FT consumers.
+    private var verifiedPredictionSinceAnchor = false
     private var lastPublishAtMs = Long.MIN_VALUE
 
     fun reset() {
@@ -59,7 +61,7 @@ internal class FtDrFusionEngine(
         lastMotionMs = null
         lastGnssFixMs = null
         lastPublishAtMs = Long.MIN_VALUE
-        trustedMotionSeen = false
+        verifiedPredictionSinceAnchor = false
     }
 
     /** No synthetic movement or guessed speed if any trust field is absent. */
@@ -78,7 +80,6 @@ internal class FtDrFusionEngine(
         val previous = lastMotionMs
         if (previous != null && input.monotonicMs <= previous) return false
         lastMotionMs = input.monotonicMs
-        trustedMotionSeen = true
         if (previous == null) return false
         val elapsedMs = input.monotonicMs - previous
         if (elapsedMs > 1000L) {
@@ -95,6 +96,7 @@ internal class FtDrFusionEngine(
                 input.longitudinalAccelerationMps2,
             accelerationVerified = input.accelerationVerified
         ) ?: return false
+        verifiedPredictionSinceAnchor = true
         return publishEstimate(estimate, emittedAtMs)
     }
 
@@ -109,7 +111,6 @@ internal class FtDrFusionEngine(
             input.horizontalAccuracyMetres !in 0.5..30.0 ||
             !input.courseDegrees.isFinite() ||
             input.fixMonotonicMs <= 0L || input.emittedAtMs <= 0L ||
-            !trustedMotionSeen ||
             (lastGnssFixMs != null && input.fixMonotonicMs <= lastGnssFixMs!!)) return false
 
         val initialLatitude = originLat
@@ -124,6 +125,7 @@ internal class FtDrFusionEngine(
             )) return false
             originLat = input.latitude
             originLon = input.longitude
+            verifiedPredictionSinceAnchor = false
         } else {
             val eastNorth = toLocalMetres(
                 initialLatitude, initialLongitude, input.latitude, input.longitude)
@@ -138,7 +140,13 @@ internal class FtDrFusionEngine(
             )) return false
         }
         lastGnssFixMs = input.fixMonotonicMs
-        return ekf.estimate()?.let { publishEstimate(it, input.emittedAtMs) } == true
+        // Valid GNSS corrects/anchors the EKF even before any motion packet.
+        // Successful GNSS admission is NOT synonymous with FUSED publication.
+        // The existing RAW_UNFILTERED bus handles GNSS-only navigation.
+        if (verifiedPredictionSinceAnchor) {
+            ekf.estimate()?.let { publishEstimate(it, input.emittedAtMs) }
+        }
+        return true
     }
 
     private fun Motion.valid(): Boolean =
