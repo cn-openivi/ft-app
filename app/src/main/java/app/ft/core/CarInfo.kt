@@ -53,7 +53,7 @@ object CarInfo {
     private val _speed = MutableStateFlow(-1f)
     val speed: StateFlow<Float> = _speed
 
-    /** Phone GNSS backup for the car widgets; separate from ICCOA/AA projection. */
+    /** Phone GNSS only when explicitly selected; FT native apps default to FT position telemetry. */
     data class PhoneGpsFix(
         val latitude: Double,
         val longitude: Double,
