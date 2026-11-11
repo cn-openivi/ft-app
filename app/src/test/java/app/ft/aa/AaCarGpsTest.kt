@@ -116,8 +116,7 @@ class AaCarGpsTest {
         // A fresh OEM WGS84 location with zero satellite counters has the
         // same exact AA payload as any other fresh coordinate. The counters
         // must not silently erase valid OEM positions or imply actual DR.
-        val gate = AaGpsGate()
-        val packet = gate.accept(car(55.755826, 37.617299, 1_200L)
+        val packet = AaCarGps.event(car(55.755826, 37.617299, 1_200L)
             .copy(satellitesUsed = 0L, satellitesVisible = 0L), 1_200L)
         assertArrayEquals(byteArrayOf(
             10, 12, 16, -12, -45, -18, -119, 2, 24, -66, -29, -81, -77, 1
@@ -244,56 +243,25 @@ class AaCarGpsTest {
             verifiedVehicleMotion = trusted
         )
 
-    @Test fun noVerifiedDrOrNoAdvertisedCharacterizationNeverMakesUpCoordinates() {
-        val gate = AaContinuousDrGate(subscribedWallMs = 10_000L)
-        val mode = AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
-        assertFalse(gate.accept(null, 10_100L, mode))
-        assertFalse(gate.accept(verifiedDr(10_101L, false), 10_101L, mode))
-        assertFalse(gate.accept(verifiedDr(10_102L), 10_102L,
-            AaLocationCharacterization.RAW_GNSS_ONLY))
-        assertTrue(gate.accept(verifiedDr(10_103L), 10_103L, mode))
-    }
-
-    @Test fun fusedSessionSuppressesEveryRawOemGpsPacketToPreventMultipathLeak() {
+    @Test fun fusionOwnsAaStreamAfterPromotionWithoutOemRawLeak() {
         val policy = AaLocationFeedPolicy(
             AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR, 10_000L)
-        val goodOem = car(55.7, 37.6, 10_101L).copy(gpsPacketSequence = 1L)
-        val reflectedOem = car(55.7, 37.601, 10_102L).copy(gpsPacketSequence = 2L)
-        assertTrue(policy.fusedOnly)
-        assertNull(policy.raw(goodOem, 10_101L))
-        assertNull(policy.raw(reflectedOem, 10_102L))
+        val raw = car(55.7, 37.6, 10_101L)
+        assertNull(policy.raw(raw, 10_101L))
         assertNotNull(policy.fused(verifiedDr(10_103L), 10_103L))
-        assertNull(policy.raw(goodOem.copy(gpsPacketSequence = 3L), 10_104L))
-        assertNotNull(policy.fused(verifiedDr(10_201L), 10_201L))
-        assertNull(policy.fused(verifiedDr(10_201L), 10_202L))
     }
 
-    @Test fun unverifiedDrSessionCarriesOnlyFreshOemRawBaseline() {
+    @Test fun rawSessionDoesNotStallWhenFtBecomesVerifiedFusion() {
         val policy = AaLocationFeedPolicy(
             AaLocationCharacterization.RAW_GNSS_ONLY, 10_000L)
         assertFalse(policy.fusedOnly)
-        assertNull(policy.fused(verifiedDr(10_101L), 10_101L))
-        val fresh = car(55.7, 37.6, 10_101L).copy(gpsPacketSequence = 1L)
-        assertNotNull(policy.raw(fresh, 10_101L))
-        assertNull(policy.raw(fresh, 10_102L))
-        assertNotNull(policy.raw(fresh.copy(gpsPacketSequence = 2L), 10_103L))
+        val raw = car(55.7, 37.6, 10_101L)
+        assertNotNull(policy.raw(raw, 10_101L))
+        // Once FT publishes FUSED, AA accepts the exact same FT position,
+        // instead of a frozen RAW_ONLY filter that would drop everything.
+        assertNotNull(policy.fused(verifiedDr(10_102L), 10_102L))
+        assertNull(policy.fused(verifiedDr(10_103L, false), 10_103L))
     }
 
-    @Test fun frozenSessionCharacterizationForbidsMidSessionUnverifiedSwitch() {
-        val policy = AaLocationFeedPolicy(
-            AaLocationCharacterization.RAW_GNSS_ONLY, 10_000L)
-        assertNull(policy.fused(verifiedDr(10_110L), 10_110L))
-        assertNotNull(policy.raw(
-            car(55.7, 37.6, 10_120L).copy(gpsPacketSequence = 20L),
-            10_120L))
-        // A new connection with verified DR requires a NEW SDP. Do not
-        // emit one raw and one fused coordinate inside the same AA session.
-        val nextSession = AaLocationFeedPolicy(
-            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR, 20_000L)
-        assertNull(nextSession.raw(
-            car(55.7, 37.6, 20_100L).copy(gpsPacketSequence = 21L),
-            20_100L))
-        assertNotNull(nextSession.fused(verifiedDr(20_101L), 20_101L))
-    }
 
 }

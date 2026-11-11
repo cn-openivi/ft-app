@@ -480,16 +480,16 @@ class AaSession(
             val gate = AaLocationFeedPolicy(
                 sessionCharacterization, System.currentTimeMillis())
             var sent = 0L
-            // FT's central position engine is the sole source of all new
-            // coordinates. AA merely subscribes and serializes its permitted
-            // SDP mode. It does NOT independently switch raw GPS and DR.
+            // FT alone selects RAW or verified FUSED. Early AA capability
+            // negotiation must never starve the already subscribed receiver
+            // when FT gains independently verified sensor fusion later.
             FtPositionTelemetry.updates.collect { position ->
                 if (!isActive || !lifecycle.running || !carGpsSubscribed ||
                     !sensorChannelOpened) return@collect
                 val nowWall = System.currentTimeMillis()
                 val packet = when (position.source) {
                     FtNavigationPosition.Source.FUSED ->
-                        position.fused?.let { if (gate.fusedOnly) gate.fused(it, nowWall) else null }
+                        position.fused?.let { gate.fused(it, nowWall) }
                     FtNavigationPosition.Source.RAW_UNFILTERED ->
                         position.raw?.let { if (!gate.fusedOnly) gate.raw(it, nowWall) else null }
                 }
@@ -505,7 +505,7 @@ class AaSession(
         }
         val modeLabel =
             if (AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization))
-                "FUSED_ONLY" else "RAW_ONLY"
+                "FUSED_CAPABILITY" else "RAW_CAPABILITY_AT_DISCOVERY"
         DiagLog.i(tag, "AA subscribed LOCATION intervalMs=$requestedMs; " +
             "source=$modeLabel; one source, no GPS-loss timer")
     }

@@ -90,11 +90,11 @@ internal object AaCarGps {
     fun fusedEvent(
         estimate: DrNavigationFix?,
         nowMs: Long,
-        sessionCharacterization: Int
+        @Suppress("UNUSED_PARAMETER") sessionCharacterization: Int
     ): ByteArray? {
-        if (estimate == null || !estimate.eligibleForAa(nowMs) ||
-            !AaLocationCharacterization.permitsEstimatedPosition(
-                sessionCharacterization)) return null
+        // SDP capability is conservative at discovery, but FT can gain
+        // verified fusion later. Never drop its valid location events.
+        if (estimate == null || !estimate.eligibleForAa(nowMs)) return null
         val accuracyE3 = ceil(estimate.accuracyMetres * 1_000.0)
             .coerceAtLeast(1_000.0)
         if (!accuracyE3.isFinite() || accuracyE3 > Int.MAX_VALUE) return null
@@ -142,50 +142,21 @@ internal object AaCarGps {
  */
 internal class AaLocationFeedPolicy(
     characterization: Int,
-    subscribedAtMs: Long
+    @Suppress("UNUSED_PARAMETER") subscribedAtMs: Long
 ) {
-    private val declaredCharacterization = characterization
+    // RAW may be emitted only while FT itself owns RAW.
+    // Once verified FUSED takes authority, it is delivered immediately even
+    // if AA advertised a conservative RAW capability before car connection.
     val fusedOnly: Boolean =
-        AaLocationCharacterization.permitsEstimatedPosition(declaredCharacterization)
-    private val rawGate = AaGpsGate()
-    private val fusedGate = AaContinuousDrGate(subscribedAtMs)
+        AaLocationCharacterization.permitsEstimatedPosition(characterization)
 
     fun raw(sample: VehicleLocation?, nowMs: Long): ByteArray? =
-        if (fusedOnly) null else rawGate.accept(sample, nowMs)
+        if (fusedOnly) null else AaCarGps.event(sample, nowMs)
 
-    fun fused(estimate: DrNavigationFix?, nowMs: Long): ByteArray? {
-        if (!fusedOnly ||
-            !fusedGate.accept(estimate, nowMs,
-                declaredCharacterization)) return null
-        return AaCarGps.fusedEvent(estimate, nowMs,
-            declaredCharacterization)
-    }
-}
-
-/**
- * Continuous already-running vehicle DR: NO GNSS-loss timer gating.
- * A new verified prediction is eligible at any time after AA subscription,
- * including between normal 10Hz GNSS observations and the first missed fix.
- * No replay of previously emitted estimates and no pre-subscription DR cache.
- */
-internal class AaContinuousDrGate(@Suppress("UNUSED_PARAMETER") subscribedWallMs: Long) {
-    // This is a per-event stream from FT, not a polled cached location.
-    // Do not compare GPS/DR packets with earlier packets or timestamps.
-    fun noteCarFix(@Suppress("UNUSED_PARAMETER") positionAtMs: Long) = Unit
-
-    fun accept(
-        estimate: DrNavigationFix?,
-        nowMs: Long,
-        sessionCharacterization: Int
-    ): Boolean =
-        estimate?.eligibleForAa(nowMs) == true &&
-            AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization)
-}
-
-/** Encode each actual incoming OEM GPS frame without waiting for duplicates. */
-internal class AaGpsGate {
-    fun accept(sample: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? =
-        AaCarGps.event(sample, nowMs)
-
-    fun reset() = Unit
+    fun fused(estimate: DrNavigationFix?, nowMs: Long): ByteArray? =
+        AaCarGps.fusedEvent(
+            estimate, nowMs,
+            if (fusedOnly) AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR
+            else AaLocationCharacterization.RAW_GNSS_ONLY
+        )
 }
