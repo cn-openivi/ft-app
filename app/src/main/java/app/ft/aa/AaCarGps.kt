@@ -168,49 +168,24 @@ internal class AaLocationFeedPolicy(
  * including between normal 10Hz GNSS observations and the first missed fix.
  * No replay of previously emitted estimates and no pre-subscription DR cache.
  */
-internal class AaContinuousDrGate(private val subscribedWallMs: Long) {
-    private var lastDrProducedAtMs = subscribedWallMs
-    private var newestCarProducedAtMs = Long.MIN_VALUE
-
-    fun noteCarFix(positionAtMs: Long) {
-        if (positionAtMs > newestCarProducedAtMs) newestCarProducedAtMs = positionAtMs
-    }
+internal class AaContinuousDrGate(@Suppress("UNUSED_PARAMETER") subscribedWallMs: Long) {
+    // This is a per-event stream from FT, not a polled cached location.
+    // Do not compare GPS/DR packets with earlier packets or timestamps.
+    fun noteCarFix(@Suppress("UNUSED_PARAMETER") positionAtMs: Long) = Unit
 
     fun accept(
         estimate: DrNavigationFix?,
         nowMs: Long,
         sessionCharacterization: Int
-    ): Boolean {
-        if (estimate == null ||
-            !AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization) ||
-            !estimate.eligibleForAa(nowMs) ||
-            estimate.producedAtMs <= lastDrProducedAtMs ||
-            estimate.producedAtMs <= newestCarProducedAtMs) return false
-        lastDrProducedAtMs = estimate.producedAtMs
-        return true
-    }
+    ): Boolean =
+        estimate?.eligibleForAa(nowMs) == true &&
+            AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization)
 }
 
-/**
- * Only newly received ICCOA GPS packets are eligible for AA. No 3-second
- * age window, no 3-fix delay, and no cached last-position replay.
- * Keep duplicate/out-of-order protection using receive event sequence.
- */
+/** Encode each actual incoming OEM GPS frame without waiting for duplicates. */
 internal class AaGpsGate {
-    private var lastSequence = 0L
-    private var lastPositionAtMs = Long.MIN_VALUE
+    fun accept(sample: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? =
+        AaCarGps.event(sample, nowMs)
 
-    fun accept(sample: VehicleLocation?, nowMs: Long = System.currentTimeMillis()): ByteArray? {
-        if (sample == null || sample.positionAtMs <= 0L) return null
-        val sequence = sample.gpsPacketSequence
-        if (sequence > 0L) {
-            if (sequence <= lastSequence) return null
-        } else if (sample.positionAtMs <= lastPositionAtMs) return null
-        val packet = AaCarGps.event(sample, nowMs) ?: return null
-        if (sequence > 0L) lastSequence = sequence
-        lastPositionAtMs = sample.positionAtMs
-        return packet
-    }
-
-    fun reset() { lastSequence = 0L; lastPositionAtMs = Long.MIN_VALUE }
+    fun reset() = Unit
 }

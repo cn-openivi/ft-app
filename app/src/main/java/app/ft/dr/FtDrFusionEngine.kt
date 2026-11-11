@@ -48,19 +48,15 @@ internal class FtDrFusionEngine(
     private var originLat: Double? = null
     private var originLon: Double? = null
     private var lastMotionMs: Long? = null
-    private var lastGnssFixMs: Long? = null
     // GNSS is admitted independently; only a genuine wheel/yaw EKF prediction
     // may promote its result from RAW_UNFILTERED to FUSED for FT consumers.
     private var verifiedPredictionSinceAnchor = false
-    private var lastPublishAtMs = Long.MIN_VALUE
 
     fun reset() {
         ekf.reset()
         originLat = null
         originLon = null
         lastMotionMs = null
-        lastGnssFixMs = null
-        lastPublishAtMs = Long.MIN_VALUE
         verifiedPredictionSinceAnchor = false
     }
 
@@ -110,8 +106,7 @@ internal class FtDrFusionEngine(
             !input.longitude.isFinite() || input.longitude !in -180.0..180.0 ||
             !input.horizontalAccuracyMetres.isFinite() ||
             input.horizontalAccuracyMetres !in 0.5..30.0 ||
-            input.fixMonotonicMs <= 0L || input.emittedAtMs <= 0L ||
-            (lastGnssFixMs != null && input.fixMonotonicMs <= lastGnssFixMs!!)) return false
+            input.fixMonotonicMs <= 0L || input.emittedAtMs <= 0L) return false
 
         val initialLatitude = originLat
         val initialLongitude = originLon
@@ -121,7 +116,6 @@ internal class FtDrFusionEngine(
             // becomes available, native FT keeps its RAW_UNFILTERED GPS fix.
             // No guessed north heading and no fake EKF initialization.
             if (!input.courseVerified || !input.courseDegrees.isFinite()) {
-                lastGnssFixMs = input.fixMonotonicMs
                 return true
             }
             if (!ekf.anchor(
@@ -147,7 +141,6 @@ internal class FtDrFusionEngine(
                 measurementTimestampMs = input.fixMonotonicMs
             )) return false
         }
-        lastGnssFixMs = input.fixMonotonicMs
         // Valid GNSS corrects/anchors the EKF even before any motion packet.
         // Successful GNSS admission is NOT synonymous with FUSED publication.
         // The existing RAW_UNFILTERED bus handles GNSS-only navigation.
@@ -174,10 +167,7 @@ internal class FtDrFusionEngine(
     ): Boolean {
         val lat = originLat ?: return false
         val lon = originLon ?: return false
-        if (emittedAtMs <= lastPublishAtMs) return false
-        val accepted = publish(lat, lon, estimate, emittedAtMs)
-        if (accepted) lastPublishAtMs = emittedAtMs
-        return accepted
+        return publish(lat, lon, estimate, emittedAtMs)
     }
 
     private fun toLocalMetres(

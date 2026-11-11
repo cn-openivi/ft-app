@@ -54,8 +54,6 @@ internal object DrNavigationTelemetry {
         onBufferOverflow = BufferOverflow.DROP_OLDEST
     )
     val updates: kotlinx.coroutines.flow.SharedFlow<DrNavigationFix> = _updates
-    private var lastPublishedAtMs = Long.MIN_VALUE
-
     @Synchronized
     fun publishFromVerifiedEkf(
         referenceLatitude: Double,
@@ -65,7 +63,7 @@ internal object DrNavigationTelemetry {
         wheelSpeedAndYawVerified: Boolean,
         producedAtMs: Long
     ): Boolean {
-        if (producedAtMs <= lastPublishedAtMs || !wheelSpeedAndYawVerified ||
+        if (!wheelSpeedAndYawVerified ||
             !referenceLatitude.isFinite() ||
             !referenceLongitude.isFinite() || referenceLatitude !in -85.0..85.0 ||
             referenceLongitude !in -180.0..180.0 ||
@@ -97,7 +95,6 @@ internal object DrNavigationTelemetry {
             estimated = estimate.estimated,
             verifiedVehicleMotion = true
         )
-        lastPublishedAtMs = producedAtMs
         _current.value = next
         _updates.tryEmit(next)
         return true
@@ -106,6 +103,5 @@ internal object DrNavigationTelemetry {
     @Synchronized
     fun clear() {
         _current.value = null
-        lastPublishedAtMs = Long.MIN_VALUE
     }
 }
