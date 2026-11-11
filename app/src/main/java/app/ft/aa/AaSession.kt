@@ -521,9 +521,11 @@ class AaSession(
                 }
             }
         }
+        val modeLabel =
+            if (AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization))
+                "FUSED_ONLY" else "RAW_ONLY"
         DiagLog.i(tag, "AA subscribed LOCATION intervalMs=$requestedMs; " +
-            "source=${if (AaLocationCharacterization.permitsEstimatedPosition(sessionCharacterization))
-                "FUSED_ONLY" else "RAW_ONLY"}; one source, no GPS-loss timer")
+            "source=$modeLabel; one source, no GPS-loss timer")
     }
 
     /** Satellite counts are equally limited to fresh incoming GPS events. */
