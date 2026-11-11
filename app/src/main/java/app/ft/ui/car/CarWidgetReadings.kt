@@ -4,7 +4,7 @@ import app.ft.core.CarInfo
 import app.ft.core.VehicleLocation
 import app.ft.dr.DrNavigationFix
 
-/** Presentation-only helpers; Android Auto GPS delivery is independent. */
+/** FT-native rendering of the SAME authoritative location used by Android Auto. */
 internal object CarWidgetReadings {
     fun displayNow(
         uiNowMs: Long,
