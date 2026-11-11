@@ -20,13 +20,12 @@ import app.ft.core.GpsSourceMode
  */
 internal class DeadReckoningEkf {
     private val filter = TinyEkf(STATE_SIZE, GPS_MEASUREMENTS)
-    private val gnssContinuity = GnssContinuityGate()
-    private val odometryPlausibility = GnssOdometryPlausibility()
+    // One EKF: no rolling five-fix GNSS history or separate odometry veto.
+    // Track only whether actual wheel/yaw evidence was interrupted.
+    private var unobservedMotion = false
     private var initialized = false
     private var secondsWithoutGnss = 0.0
     private var previousWheelSpeedMetresPerSecond: Double? = null
-    // An explicit GNSS timestamp must never rewind a live trust anchor.
-    private var lastAcceptedGnssTimestampMs: Long? = null
 
     data class Estimate(
         val eastMetres: Double,
@@ -41,8 +40,7 @@ internal class DeadReckoningEkf {
         initialized = false
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
-        lastAcceptedGnssTimestampMs = null
-        gnssContinuity.reset()
+        unobservedMotion = false
         // Resetting the model invalidates the preceding trust anchor.
     }
 
@@ -56,20 +54,9 @@ internal class DeadReckoningEkf {
     ): Boolean {
         if (!eastMetres.isFinite() || !northMetres.isFinite() ||
             !headingDegrees.isFinite() || !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0 ||
-            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
-                (measurementTimestampMs != null &&
-                    (measurementTimestampMs <= 0L ||
-                        (lastAcceptedGnssTimestampMs != null &&
-                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
-        // A newer timestamp alone is not independent proof of displacement.
-        // Re-anchor must obey the same verified-odometry admission gate as
-        // ordinary GNSS corrections, otherwise it bypasses anti-teleport.
-        if (initialized) {
-            val current = filter.state()
-            if (!odometryPlausibility.permits(eastMetres, northMetres,
-                    current[EAST], current[NORTH])) return false
-        }
+            horizontalAccuracyMetres !in 0.5..30.0 || initialized) return false
+        // Anchoring is a one-time operation. All later GNSS measurements
+        // correct this same filter, never reset it based on packet order.
         val heading = headingDegrees * PI / 180.0
         filter.reset(
             doubleArrayOf(eastMetres, northMetres, normalize(heading), 0.0),
@@ -82,13 +69,7 @@ internal class DeadReckoningEkf {
         initialized = true
         secondsWithoutGnss = 0.0
         previousWheelSpeedMetresPerSecond = null
-        gnssContinuity.reset()
-        odometryPlausibility.reset(eastMetres, northMetres)
-        if (measurementTimestampMs != null) {
-            lastAcceptedGnssTimestampMs = measurementTimestampMs
-            gnssContinuity.confirmed(measurementTimestampMs, eastMetres, northMetres,
-                eastMetres, northMetres)
-        }
+        unobservedMotion = false
         return true
     }
 
@@ -159,7 +140,6 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(next, f, q)
         previousWheelSpeedMetresPerSecond = calibratedSpeedMetresPerSecond
-        odometryPlausibility.onVerifiedMotion(abs(distance))
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
@@ -189,7 +169,7 @@ internal class DeadReckoningEkf {
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(frozen, identity, q)
         previousWheelSpeedMetresPerSecond = null
-        odometryPlausibility.onUnverifiedMotion()
+        unobservedMotion = true
         secondsWithoutGnss += dtSeconds
         return estimate()
     }
@@ -208,12 +188,7 @@ internal class DeadReckoningEkf {
         if (!initialized || !genuineGnss ||
             !eastMetres.isFinite() || !northMetres.isFinite() ||
             !horizontalAccuracyMetres.isFinite() ||
-            horizontalAccuracyMetres !in 0.5..30.0 ||
-            ((lastAcceptedGnssTimestampMs != null && measurementTimestampMs == null) ||
-                (measurementTimestampMs != null &&
-                    (measurementTimestampMs <= 0L ||
-                        (lastAcceptedGnssTimestampMs != null &&
-                            measurementTimestampMs <= lastAcceptedGnssTimestampMs!!))))) return false
+            horizontalAccuracyMetres !in 0.5..30.0) return false
 
         val x = filter.state()
         val p = filter.covariance()
@@ -231,20 +206,26 @@ internal class DeadReckoningEkf {
         if (!determinant.isFinite() || determinant <= 0.0) return false
         val innovationEnergy =
             (s11 * sq(de) - 2.0 * s01 * de * dn + s00 * sq(dn)) / determinant
-        if (!innovationEnergy.isFinite() || innovationEnergy > 25.0) return false
-
-        // This bound does not inflate with EKF covariance during a tunnel.
-        // A stable but displaced GNSS cluster must not be "recovered"
-        // solely because a long blackout made NIS permissive.
-        if (!odometryPlausibility.permits(eastMetres, northMetres,
-            x[EAST], x[NORTH])) return false
-
-        // GNSS local continuity catches 10-20m reflections which can
-        // pass the probabilistic innovation test with a weak GPS accuracy.
-        // Only actual GNSS observation times may order this history.
-        if (measurementTimestampMs != null &&
-            !gnssContinuity.permits(measurementTimestampMs,
-                eastMetres, northMetres, x[EAST], x[NORTH])) return false
+        if (!innovationEnergy.isFinite()) return false
+        if (innovationEnergy > 25.0 && unobservedMotion) {
+            // Wheel/gyro stopped proving displacement. A real, independently
+            // validated GNSS observation may re-anchor position immediately,
+            // without arbitrary sample counts, cooldowns or old-fix timers.
+            // Keep the existing heading and gyro bias; do not invent a new yaw.
+            filter.reset(
+                doubleArrayOf(eastMetres, northMetres, x[HEADING], x[GYRO_BIAS]),
+                doubleArrayOf(uncertainty, uncertainty,
+                    max(p[HEADING * STATE_SIZE + HEADING], sq(8.0 * PI / 180.0)),
+                    max(p[GYRO_BIAS * STATE_SIZE + GYRO_BIAS], sq(0.02)))
+            )
+            unobservedMotion = false
+            previousWheelSpeedMetresPerSecond = null
+            secondsWithoutGnss = 0.0
+            return true
+        }
+        // With continuous verified wheel/yaw evidence, reject a GNSS jump
+        // outside the same EKF innovation ellipse; no extra historical veto.
+        if (innovationEnergy > 25.0) return false
 
         // Mild multipath/urban-canyon disagreement is fed into the SAME
         // TinyEKF update with less measurement weight, not a second GPS
@@ -261,15 +242,7 @@ internal class DeadReckoningEkf {
             doubleArrayOf(x[EAST], x[NORTH]), h, r
         )) return false
         secondsWithoutGnss = 0.0
-        if (measurementTimestampMs != null) {
-            lastAcceptedGnssTimestampMs = measurementTimestampMs
-        }
-        val updated = filter.state()
-        if (measurementTimestampMs != null) {
-            gnssContinuity.confirmed(measurementTimestampMs,
-                eastMetres, northMetres, x[EAST], x[NORTH])
-        }
-        odometryPlausibility.confirmed(updated[EAST], updated[NORTH])
+        unobservedMotion = false
         return true
     }
 
