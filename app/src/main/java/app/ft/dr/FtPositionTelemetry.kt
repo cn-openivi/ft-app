@@ -38,7 +38,7 @@ internal data class FtNavigationPosition(
 
     fun eligibleForDisplay(nowMs: Long): Boolean =
         when (source) {
-            Source.FUSED -> fused?.eligibleForAa(nowMs) == true
+            Source.FUSED -> fused?.eligibleForFt(nowMs) == true
             Source.RAW_UNFILTERED ->
                 raw?.source == "ICCOA" && receivedAtMs > 0L &&
                     nowMs >= receivedAtMs &&
@@ -93,7 +93,7 @@ internal object FtPositionTelemetry {
 
     @Synchronized
     fun acceptFused(fix: DrNavigationFix, nowMs: Long = System.currentTimeMillis()): Boolean {
-        if (!fix.eligibleForAa(nowMs) ||
+        if (!fix.eligibleForFt(nowMs) ||
             fix.producedAtMs < lastPositionAtMs ||
             (fusedAuthority && fix.producedAtMs <= lastPositionAtMs)) return false
         fusedAuthority = true
