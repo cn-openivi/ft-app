@@ -267,9 +267,10 @@ class DeadReckoningEkfTest {
         assertTrue(after.estimated)
         assertTrue(after.horizontalUncertaintyMetres >
             anchored.horizontalUncertaintyMetres)
-        // No synthetic wheel path is accumulated during unverified motion.
-        assertFalse(dr.correctGnss(200.0, 80.0, 2.0, true))
-        assertEquals(100.0, dr.estimate()!!.eastMetres, 0.0)
+        // An independently verified GNSS correction must recover without
+        // waiting for multiple old/new samples after missing wheel evidence.
+        assertTrue(dr.correctGnss(200.0, 80.0, 2.0, true))
+        assertEquals(200.0, dr.estimate()!!.eastMetres, 0.0)
     }
 
     @Test fun unboundedGnssAccuracyCannotConfirmEstimatedPosition() {
@@ -290,10 +291,38 @@ class DeadReckoningEkfTest {
         assertFalse(dr.estimate()!!.estimated)
     }
 
+    @Test fun unmeasurableMotionGapMustStillRevokeTrustedContinuousMovement() {
+        val dr = DeadReckoningEkf()
+        assertTrue(dr.anchor(0.0, 0.0, 90.0, 2.0))
+        assertNotNull(dr.predict(0.1, 10.0, 0.0, true))
+        dr.markMotionUnverified()
+        val unknown = dr.estimate()!!
+        assertTrue(unknown.estimated)
+        assertNull(unknown.wheelSpeedMps)
+        assertEquals(1.0, unknown.eastMetres, 0.01)
+        // No synthetic distance was added for an unmeasurable interval.
+        assertTrue(dr.correctGnss(100.0, 0.0, 2.0, true))
+        assertEquals(100.0, dr.estimate()!!.eastMetres, 0.001)
+    }
+
+    @Test fun fullMeasuredUnknownIntervalMustGrowCovarianceWithoutClipping() {
+        val short = DeadReckoningEkf()
+        val long = DeadReckoningEkf()
+        assertTrue(short.anchor(0.0, 0.0, 0.0, 2.0))
+        assertTrue(long.anchor(0.0, 0.0, 0.0, 2.0))
+        assertNotNull(short.holdUnverifiedMotion(1.0))
+        assertNotNull(long.holdUnverifiedMotion(12.0))
+        assertEquals(12.0, long.estimate()!!.secondsSinceGnss, 0.0)
+        assertTrue(long.estimate()!!.horizontalUncertaintyMetres >
+            short.estimate()!!.horizontalUncertaintyMetres)
+        assertEquals(0.0, long.estimate()!!.eastMetres, 0.0)
+        assertEquals(0.0, long.estimate()!!.northMetres, 0.0)
+    }
+
     @Test fun invalidHoldIntervalDoesNotAdvanceTimeOrPosition() {
         val dr = DeadReckoningEkf()
         dr.anchor(0.0, 0.0, 0.0, 1.0)
-        for (bad in listOf(Double.NaN, -1.0, 0.0, 2.0)) {
+        for (bad in listOf(Double.NaN, Double.POSITIVE_INFINITY, -1.0, 0.0)) {
             assertNull(dr.holdUnverifiedMotion(bad))
         }
         assertEquals(0.0, dr.estimate()!!.secondsSinceGnss, 0.0)

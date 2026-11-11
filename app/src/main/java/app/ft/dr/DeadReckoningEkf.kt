@@ -156,7 +156,7 @@ internal class DeadReckoningEkf {
      */
     fun holdUnverifiedMotion(dtSeconds: Double): Estimate? {
         if (!initialized || !dtSeconds.isFinite() ||
-            dtSeconds !in 0.001..1.0) return null
+            dtSeconds <= 0.0) return null
         val frozen = filter.state()
         val identity = DoubleArray(STATE_SIZE * STATE_SIZE) { i ->
             if (i / STATE_SIZE == i % STATE_SIZE) 1.0 else 0.0
@@ -173,6 +173,17 @@ internal class DeadReckoningEkf {
         unobservedMotion = true
         secondsWithoutGnss += dtSeconds
         return estimate()
+    }
+
+    /**
+     * Explicitly lost trust in the movement stream, even if its timestamp is
+     * corrupt or absent. There is no measured elapsed interval to integrate:
+     * keep coordinates and covariance unchanged, but never pretend that the
+     * last wheel velocity remained continuously verified.
+     */
+    fun markMotionUnverified() {
+        previousWheelSpeedMetresPerSecond = null
+        unobservedMotion = true
     }
 
     /**
@@ -285,7 +296,7 @@ internal class DeadReckoningEkf {
             headingDegrees = degrees,
             horizontalUncertaintyMetres = uncertainty,
             secondsSinceGnss = secondsWithoutGnss,
-            estimated = secondsWithoutGnss > 0.0,
+            estimated = secondsWithoutGnss > 0.0 || unobservedMotion,
             wheelSpeedMps = previousWheelSpeedMetresPerSecond
         )
     }

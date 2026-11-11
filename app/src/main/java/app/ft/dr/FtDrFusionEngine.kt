@@ -63,25 +63,28 @@ internal class FtDrFusionEngine(
     /** No synthetic movement or guessed speed if any trust field is absent. */
     fun onMotion(input: Motion, emittedAtMs: Long): Boolean {
         if (!input.valid() || emittedAtMs <= 0L) {
+            // Bad units, lost provenance or a broken clock invalidate movement
+            // continuity even when elapsed time cannot be measured.
             val prev = lastMotionMs
-            // Do not integrate unknown displacement across this interval.
-            // The next good sample starts a fresh trusted clock, rather than
-            // using the invalid frame as a wheel/yaw measurement.
-            if (prev != null && input.monotonicMs > prev &&
-                input.monotonicMs - prev <= 1000L) {
+            if (prev != null && input.monotonicMs > prev)
                 ekf.holdUnverifiedMotion((input.monotonicMs - prev) / 1000.0)
-            }
+            else ekf.markMotionUnverified()
             lastMotionMs = null
             return false
         }
         val previous = lastMotionMs
-        if (previous != null && input.monotonicMs <= previous) return false
+        if (previous != null && input.monotonicMs <= previous) {
+            ekf.markMotionUnverified()
+            lastMotionMs = null
+            return false
+        }
         lastMotionMs = input.monotonicMs
         if (previous == null) return false
         val elapsedMs = input.monotonicMs - previous
         if (elapsedMs > 1000L) {
-            // Dropout is not a fabricated 1-second displacement.
-            ekf.holdUnverifiedMotion(1.0)
+            // The interval is genuinely unobserved; never synthesize wheel
+            // travel or truncate measured elapsed time to one second.
+            ekf.holdUnverifiedMotion(elapsedMs / 1000.0)
             return false
         }
         val estimate = ekf.predict(

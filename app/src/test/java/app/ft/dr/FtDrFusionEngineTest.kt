@@ -123,6 +123,22 @@ class FtDrFusionEngineTest {
         assertTrue(output.last().eastMetres > before)
     }
 
+    @Test fun badTimestampDoesNotConcealUnknownMotionFromEkf() {
+        val published = mutableListOf<DeadReckoningEkf.Estimate>()
+        val engine = FtDrFusionEngine { _, _, value, _ ->
+            published.add(value); true
+        }
+        assertTrue(engine.onGnss(gnss(1_000L)))
+        assertFalse(engine.onMotion(motion(1_000L), 101_000L))
+        assertTrue(engine.onMotion(motion(1_100L), 101_100L))
+        val last = published.last().eastMetres
+        assertFalse(engine.onMotion(motion(0L), 101_200L))
+        assertFalse(engine.onMotion(motion(1_300L), 101_300L))
+        assertEquals(last, published.last().eastMetres, 0.0001)
+        assertTrue(engine.onMotion(motion(1_400L), 101_400L))
+        assertTrue(published.last().eastMetres > last)
+    }
+
     @Test fun validStationaryGnssWithoutCourseDoesNotRequireMovementOrInventHeading() {
         var publishes = 0
         val engine = FtDrFusionEngine { _, _, _, _ -> publishes++; true }
