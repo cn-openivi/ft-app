@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 178
-        versionName = "3.9.64-xa60-gps-live-events"
+        versionCode = 179
+        versionName = "3.9.65-xa60-ft179-gps-dr-field"
     }
 
     signingConfigs {
