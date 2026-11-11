@@ -6,6 +6,7 @@ import app.ft.core.DiagLog
 import app.ft.core.Prefs
 import app.ft.core.VehicleTelemetry
 import app.ft.dr.DrNavigationTelemetry
+import app.ft.dr.FtDrRuntime
 import app.ft.dr.FtPositionTelemetry
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.CoroutineScope
@@ -55,6 +56,7 @@ class FTApp : Application() {
             VehicleTelemetry.current.collect { snapshot ->
                 if (snapshot?.source == "ICCOA") observedCar = true
                 else if (snapshot == null && observedCar) {
+                    FtDrRuntime.reset()
                     FtPositionTelemetry.clear()
                     observedCar = false
                 }
