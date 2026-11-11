@@ -11,7 +11,6 @@ import app.ft.dr.DrNavigationTelemetry
 import app.ft.core.VehicleLocation
 import app.ft.dr.DrNavigationFix
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
@@ -34,7 +33,6 @@ private val OFF_MAIN = java.util.concurrent.Executors.newSingleThreadExecutor { 
 private sealed class AaLocationSignal {
     data class Oem(val value: VehicleLocation) : AaLocationSignal()
     data class Dr(val value: DrNavigationFix) : AaLocationSignal()
-    object HealthTick : AaLocationSignal()
 }
 
 class AaSession(
@@ -484,7 +482,7 @@ class AaSession(
      * Every new OEM WGS84 fix is forwarded instantly and can correct that EKF;
      * each new verified DR prediction may fill the interval BETWEEN OEM fixes.
      * When OEM GNSS disappears, verified DR simply continues on its next
-     * update: no 5s activation timer, no phone substitute and no SENSOR_ERROR.
+     * update: no loss timer, no phone substitute and no LOCATION SENSOR_ERROR.
      * Five seconds is solely an internal GNSS_LOST diagnostic.
      *
      * If the DR producer is not verified/available or this session did not
@@ -498,7 +496,6 @@ class AaSession(
         carGpsSubscribed = true
         carGpsJob = scope.launch(Dispatchers.IO) {
             val startedWall = System.currentTimeMillis()
-            val health = AaCarGnssHealthGate(android.os.SystemClock.elapsedRealtime())
             val rawGate = AaGpsGate()
             val drGate = AaContinuousDrGate(startedWall)
             var sentCar = 0L
@@ -513,27 +510,16 @@ class AaSession(
                 DrNavigationTelemetry.current.filterNotNull().map {
                     AaLocationSignal.Dr(it)
                 }
-            // Independent timer used ONLY for an internal health log.
-            // Neither GNSS frames nor DR predictions wait for this timer.
-            val healthEvents: Flow<AaLocationSignal> = flow {
-                while (true) {
-                    delay(250L)
-                    emit(AaLocationSignal.HealthTick)
-                }
-            }
-
-            merge(gpsEvents, drEvents, healthEvents).collect { signal ->
+            // GNSS and verified DR are merged directly as new events arrive.
+            merge(gpsEvents, drEvents).collect { signal ->
                 if (!isActive || !lifecycle.running || !carGpsSubscribed ||
                     !sensorChannelOpened) return@collect
-                val nowElapsed = android.os.SystemClock.elapsedRealtime()
                 when (signal) {
                     is AaLocationSignal.Oem -> {
                         val packet = rawGate.accept(signal.value,
                             System.currentTimeMillis())
                         if (packet != null) {
                             drGate.noteCarFix(signal.value.positionAtMs)
-                            if (health.onGnss(nowElapsed))
-                                DiagLog.i(tag, "car GNSS returned; DR continuity intact")
                             sendEnc(AaProtocol.CH_SENSOR,
                                 AaProtocol.SENSOR_EVENT_INDICATION, packet)
                             sentCar++
@@ -559,18 +545,12 @@ class AaSession(
                             }
                         }
                     }
-                    AaLocationSignal.HealthTick -> Unit
-                }
-                if (health.onCheck(nowElapsed)) {
-                    DiagLog.w(tag, "INTERNAL GNSS_LOST: 5s since latest valid " +
-                        "OEM GPS; verified DR continues if available; " +
-                        "NO AA LOCATION SENSOR_ERROR, NO phone auto fallback")
                 }
             }
         }
         DiagLog.i(tag, "AA genuinely subscribed LOCATION intervalMs=$requestedMs; " +
             "new OEM fixes and continuous verified DR merge event-driven; " +
-            "5s GNSS health log only, no AA GPS SENSOR_ERROR")
+            "no GPS-loss timer, no AA GPS SENSOR_ERROR")
     }
 
     /** Satellite counts are equally limited to fresh incoming GPS events. */
