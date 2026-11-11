@@ -144,8 +144,9 @@ internal class AaLocationFeedPolicy(
     characterization: Int,
     subscribedAtMs: Long
 ) {
+    private val declaredCharacterization = characterization
     val fusedOnly: Boolean =
-        AaLocationCharacterization.permitsEstimatedPosition(characterization)
+        AaLocationCharacterization.permitsEstimatedPosition(declaredCharacterization)
     private val rawGate = AaGpsGate()
     private val fusedGate = AaContinuousDrGate(subscribedAtMs)
 
@@ -155,9 +156,9 @@ internal class AaLocationFeedPolicy(
     fun fused(estimate: DrNavigationFix?, nowMs: Long): ByteArray? {
         if (!fusedOnly ||
             !fusedGate.accept(estimate, nowMs,
-                AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)) return null
+                declaredCharacterization)) return null
         return AaCarGps.fusedEvent(estimate, nowMs,
-            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)
+            declaredCharacterization)
     }
 }
 
