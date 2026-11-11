@@ -8,6 +8,8 @@ import app.ft.core.Prefs
 import app.ft.core.CarProtocol
 import app.ft.core.VehicleTelemetry
 import app.ft.dr.DrNavigationTelemetry
+import app.ft.dr.FtPositionTelemetry
+import app.ft.dr.FtNavigationPosition
 import app.ft.core.ProtoReader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -465,18 +467,10 @@ class AaSession(
     }
 
     /**
-     * ONE Android Auto LOCATION stream, decided at SDP and activated ONLY on
-     * a genuine phone SensorStartRequest(LOCATION).
-     *
-     * Verified DR SDP: transmit only newly published, filtered TinyEKF fixes.
-     * OEM GNSS belongs INSIDE the independently validated filter, not on AA
-     * raw passthrough. The EKF producer is responsible for GNSS correction,
-     * NIS/odometry/continuity checks and continuous wheel/yaw prediction.
-     *
-     * Unverified DR SDP: retain the honest RAW_ONLY OEM GNSS baseline.
-     * Raw mode has no multipath suppression claim. Never silently mix
-     * unfiltered GNSS with fused DR within one AA session. No GPS loss timer,
-     * AA LOCATION SENSOR_ERROR, stale replay or automatic PHONE fallback.
+     * Android Auto receives positions FROM FT's authoritative location engine
+     * (the same one consumed by native FT widgets/navigation). Frozen SDP
+     * RAW_ONLY or FUSED_ONLY determines which packets are legal for this AA
+     * session. No direct OEM/DR merge, no duplicate output, no phone fallback.
      */
     private fun startCarGps(requestedMs: Long) {
         carGpsJob?.cancel()
@@ -486,38 +480,26 @@ class AaSession(
             val gate = AaLocationFeedPolicy(
                 sessionCharacterization, System.currentTimeMillis())
             var sent = 0L
-            if (gate.fusedOnly) {
-                // replay=0, one pending frame: new verified TinyEKF outputs only.
-                // NO VehicleTelemetry.gpsUpdates RAW sender in this branch.
-                DrNavigationTelemetry.updates.collect { estimate ->
-                    if (!isActive || !lifecycle.running || !carGpsSubscribed ||
-                        !sensorChannelOpened) return@collect
-                    val packet = gate.fused(estimate, System.currentTimeMillis())
-                    if (packet != null) {
-                        sendEnc(AaProtocol.CH_SENSOR,
-                            AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                        sent++
-                        if (sent == 1L || sent % 100L == 0L)
-                            DiagLog.i(tag,
-                                "AA LOCATION filtered TinyEKF positions=$sent")
-                    }
+            // FT's central position engine is the sole source of all new
+            // coordinates. AA merely subscribes and serializes its permitted
+            // SDP mode. It does NOT independently switch raw GPS and DR.
+            FtPositionTelemetry.updates.collect { position ->
+                if (!isActive || !lifecycle.running || !carGpsSubscribed ||
+                    !sensorChannelOpened) return@collect
+                val nowWall = System.currentTimeMillis()
+                val packet = when (position.source) {
+                    FtNavigationPosition.Source.FUSED ->
+                        position.fused?.let { if (gate.fusedOnly) gate.fused(it, nowWall) else null }
+                    FtNavigationPosition.Source.RAW_UNFILTERED ->
+                        position.raw?.let { if (!gate.fusedOnly) gate.raw(it, nowWall) else null }
                 }
-            } else {
-                // OEM GPS events are a safe source-only baseline while real
-                // validated XA60 motion/accuracy and EKF producer are pending.
-                // This branch does NOT advertise or pretend to have anti-multipath.
-                VehicleTelemetry.gpsUpdates.collect { sample ->
-                    if (!isActive || !lifecycle.running || !carGpsSubscribed ||
-                        !sensorChannelOpened) return@collect
-                    val packet = gate.raw(sample, System.currentTimeMillis())
-                    if (packet != null) {
-                        sendEnc(AaProtocol.CH_SENSOR,
-                            AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                        sent++
-                        if (sent == 1L || sent % 100L == 0L)
-                            DiagLog.i(tag,
-                                "AA LOCATION raw OEM baseline (no DR) frames=$sent")
-                    }
+                if (packet != null) {
+                    sendEnc(AaProtocol.CH_SENSOR,
+                        AaProtocol.SENSOR_EVENT_INDICATION, packet)
+                    sent++
+                    if (sent == 1L || sent % 100L == 0L)
+                        DiagLog.i(tag,
+                            "AA LOCATION from FT source=${position.source} count=$sent")
                 }
             }
         }
