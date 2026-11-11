@@ -39,7 +39,9 @@ internal class FtDrFusionEngine(
         val wheelUnitsVerified: Boolean,
         val yawAxisAndUnitsVerified: Boolean,
         val gearDirectionVerified: Boolean,
-        val reverse: Boolean = false
+        val reverse: Boolean = false,
+        val longitudinalAccelerationMps2: Double? = null,
+        val accelerationVerified: Boolean = false
     )
 
     private val ekf = DeadReckoningEkf()
@@ -88,7 +90,10 @@ internal class FtDrFusionEngine(
             dtSeconds = elapsedMs / 1000.0,
             calibratedSpeedMetresPerSecond = input.signedWheelSpeedMps,
             vehicleYawRateRadiansPerSecond = input.yawRateRadiansPerSecond,
-            wheelAndGyroVerified = true
+            wheelAndGyroVerified = true,
+            longitudinalAccelerationMetresPerSecond2 =
+                input.longitudinalAccelerationMps2,
+            accelerationVerified = input.accelerationVerified
         ) ?: return false
         return publishEstimate(estimate, emittedAtMs)
     }
@@ -143,7 +148,10 @@ internal class FtDrFusionEngine(
             yawRateRadiansPerSecond.isFinite() &&
             kotlin.math.abs(yawRateRadiansPerSecond) <= 3.0 &&
             (reverse || signedWheelSpeedMps >= 0.0) &&
-            (!reverse || signedWheelSpeedMps <= 0.0)
+            (!reverse || signedWheelSpeedMps <= 0.0) &&
+            (!accelerationVerified ||
+                (longitudinalAccelerationMps2?.isFinite() == true &&
+                    kotlin.math.abs(longitudinalAccelerationMps2) <= 20.0))
 
     private fun publishEstimate(
         estimate: DeadReckoningEkf.Estimate, emittedAtMs: Long

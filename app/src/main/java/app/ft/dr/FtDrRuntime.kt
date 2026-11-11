@@ -1,17 +1,24 @@
 package app.ft.dr
 
+import android.content.Context
+import app.ft.core.AndroidWheelCalibrationStorage
 import app.ft.core.GpsSourceMode
+import app.ft.core.WheelCalibrationStore
+import app.ft.core.WheelSpeedAutoCalibration
+import kotlin.math.abs
 
 /**
- * The single process-wide producer for verified position fusion.
- *
- * Only an OEM adapter with independently demonstrated units, axes,
- * vehicle identity and fix-time may call acceptVerified... methods.
- * Existing raw ICCOA GearInfo/IMU/GPS packets do not pass these gates.
- * FT native consumers and Android Auto continue to consume FtPositionTelemetry,
- * never this engine or a separate raw position provider.
+ * Single in-process verified position owner for FT and subscribed Android Auto.
+ * No existing ICCOA raw message is automatically granted verified provenance.
+ * The owner-controlled bridge must authenticate a STABLE vehicle identity,
+ * independently verify the wheel/yaw/accuracy/clock domains, then invoke these
+ * methods. A rotating BLE MAC or FT's virtual AA identity is NOT a car ID.
  */
 internal object FtDrRuntime {
+    private var verifiedVehicleId: String? = null
+    private var wheelCalibration: WheelSpeedAutoCalibration? = null
+    private var calibrationStore: WheelCalibrationStore? = null
+
     private val fusion = FtDrFusionEngine { latitude, longitude, estimate, emittedAtMs ->
         DrNavigationTelemetry.publishFromVerifiedEkf(
             referenceLatitude = latitude,
@@ -23,17 +30,92 @@ internal object FtDrRuntime {
         )
     }
 
+    /** Must be called only after an independently verified car-auth identity. */
     @Synchronized
-    fun acceptVerifiedMotion(motion: FtDrFusionEngine.Motion, emittedAtMs: Long): Boolean =
-        fusion.onMotion(motion, emittedAtMs)
+    fun bindVerifiedVehicle(
+        context: Context, vehicleId: String, independentlyVerifiedIdentity: Boolean
+    ): Boolean {
+        if (!independentlyVerifiedIdentity || vehicleId.isBlank() ||
+            vehicleId.length > 256) return false
+        if (verifiedVehicleId == vehicleId) return true
+        reset()
+        val store = WheelCalibrationStore(AndroidWheelCalibrationStorage(context))
+        val calibration = WheelSpeedAutoCalibration()
+        if (!calibration.bindVehicle(vehicleId, store.restore(vehicleId))) return false
+        wheelCalibration = calibration
+        calibrationStore = store
+        verifiedVehicleId = vehicleId
+        return true
+    }
 
     @Synchronized
-    fun acceptVerifiedGnss(fix: FtDrFusionEngine.Gnss): Boolean =
-        fusion.onGnss(fix)
+    fun acceptVerifiedMotion(motion: FtDrFusionEngine.Motion, emittedAtMs: Long): Boolean {
+        if (verifiedVehicleId == null ||
+            !motion.wheelUnitsVerified || !motion.yawAxisAndUnitsVerified ||
+            !motion.gearDirectionVerified) return false
+
+        val calibration = wheelCalibration
+        if (!motion.reverse && motion.accelerationVerified &&
+            motion.longitudinalAccelerationMps2 != null) {
+            calibration?.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
+                monotonicMs = motion.monotonicMs,
+                forwardSpeedMps = motion.signedWheelSpeedMps,
+                yawRateRadPerSecond = motion.yawRateRadiansPerSecond,
+                longitudinalAccelerationMps2 = motion.longitudinalAccelerationMps2,
+                verifiedWheelAndYawUnits = true,
+                verifiedForwardGear = true
+            ))
+        } else {
+            calibration?.resetSegment()
+        }
+        // Drive with independently verified uncalibrated speed until multiple
+        // quality-gated GNSS/wheel segments establish a correction coefficient.
+        val coefficientSpeed = calibration?.correctedMps(abs(motion.signedWheelSpeedMps))
+        val adjusted = if (coefficientSpeed != null) motion.copy(
+            signedWheelSpeedMps = if (motion.reverse) -coefficientSpeed
+                else coefficientSpeed
+        ) else motion
+        return fusion.onMotion(adjusted, emittedAtMs)
+    }
+
+    @Synchronized
+    fun acceptVerifiedGnss(fix: FtDrFusionEngine.Gnss): Boolean {
+        if (verifiedVehicleId == null) return false
+        val accepted = fusion.onGnss(fix)
+        if (!accepted) {
+            wheelCalibration?.resetSegment()
+            return false
+        }
+        if (fix.genuineCarFix && fix.accuracyVerified && fix.fixTimeVerified &&
+            fix.source == GpsSourceMode.CAR) {
+            val calibration = wheelCalibration
+            if (calibration != null) {
+                calibration.observeGnss(WheelSpeedAutoCalibration.IndependentGnss(
+                    fixMonotonicMs = fix.fixMonotonicMs,
+                    latitude = fix.latitude,
+                    longitude = fix.longitude,
+                    horizontalAccuracyMetres = fix.horizontalAccuracyMetres,
+                    independentCarGnssVerified = true,
+                    monotonicFixEpochVerified = true
+                ))
+                // A segment completion is rare; do not perform synchronous
+                // disk I/O per GNSS, wheel, or IMU frame.
+                if (calibration.estimate().pendingPersistence) {
+                    calibrationStore?.persistIfPending(
+                        calibration, requireNotNull(verifiedVehicleId)
+                    )
+                }
+            }
+        }
+        return true
+    }
 
     @Synchronized
     fun reset() {
         fusion.reset()
         DrNavigationTelemetry.clear()
+        verifiedVehicleId = null
+        wheelCalibration = null
+        calibrationStore = null
     }
 }
