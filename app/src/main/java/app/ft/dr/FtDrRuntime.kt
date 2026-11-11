@@ -56,8 +56,9 @@ internal object FtDrRuntime {
 
     @Synchronized
     fun acceptVerifiedMotion(motion: FtDrFusionEngine.Motion, emittedAtMs: Long): Boolean {
-        if (verifiedVehicleId == null ||
-            !motion.wheelUnitsVerified || !motion.yawAxisAndUnitsVerified ||
+        // Identity is needed for persisted per-car calibration, NOT for live
+        // verified wheel/yaw positioning. A car may be valid before pairing.
+        if (!motion.wheelUnitsVerified || !motion.yawAxisAndUnitsVerified ||
             !motion.gearDirectionVerified) {
             wheelAcceleration.reset()
             wheelCalibration?.resetSegment()
@@ -94,7 +95,8 @@ internal object FtDrRuntime {
 
     @Synchronized
     fun acceptVerifiedGnss(fix: FtDrFusionEngine.Gnss): Boolean {
-        if (verifiedVehicleId == null) return false
+        // A physically verified GNSS fix is valid without prior wheel packets
+        // or a per-car calibration identity. Only persistence is identity-gated.
         val accepted = fusion.onGnss(fix)
         if (!accepted) {
             wheelCalibration?.resetSegment()
