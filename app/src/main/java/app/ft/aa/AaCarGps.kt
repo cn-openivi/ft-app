@@ -129,6 +129,39 @@ internal object AaCarGps {
 }
 
 /**
+ * One authoritative AA LOCATION source per session. The service-discovery
+ * characterization locks the mode before the phone subscribes:
+ *
+ * FUSED_ONLY: downstream sees only the validated TinyEKF output, including
+ * filtered GNSS corrections and uninterrupted DR predictions. A reflected
+ * raw GPS point can NEVER bypass the filter to reach AA.
+ *
+ * RAW_ONLY: when verified car wheel/yaw DR was unavailable at discovery,
+ * pass through only newly accepted OEM WGS84 frames. This baseline does NOT
+ * claim multipath suppression. Never synthesize or auto-switch to PHONE.
+ */
+internal class AaLocationFeedPolicy(
+    characterization: Int,
+    subscribedAtMs: Long
+) {
+    val fusedOnly: Boolean =
+        AaLocationCharacterization.permitsEstimatedPosition(characterization)
+    private val rawGate = AaGpsGate()
+    private val fusedGate = AaContinuousDrGate(subscribedAtMs)
+
+    fun raw(sample: VehicleLocation?, nowMs: Long): ByteArray? =
+        if (fusedOnly) null else rawGate.accept(sample, nowMs)
+
+    fun fused(estimate: DrNavigationFix?, nowMs: Long): ByteArray? {
+        if (!fusedOnly ||
+            !fusedGate.accept(estimate, nowMs,
+                AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)) return null
+        return AaCarGps.fusedEvent(estimate, nowMs,
+            AaLocationCharacterization.VERIFIED_WHEEL_GYRO_DR)
+    }
+}
+
+/**
  * Continuous already-running vehicle DR: NO GNSS-loss timer gating.
  * A new verified prediction is eligible at any time after AA subscription,
  * including between normal 10Hz GNSS observations and the first missed fix.
