@@ -15,6 +15,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.CalendarContract
 import app.ft.FTApp
+import app.ft.dr.FtPositionTelemetry
 import app.ft.R
 import app.ft.ui.car.CarStyle
 import kotlinx.coroutines.CoroutineScope
@@ -236,6 +237,17 @@ object CarInfo {
 
     private fun point(context: Context): Pair<Double, Double>? {
         val prefs = FTApp.instance.prefs
+        // Native FT weather takes the same authoritative vehicle position as
+        // FT navigation and AA. Manual PHONE is an explicit alternative; no
+        // implicit phone GPS fallback for CAR mode after GNSS multipath/loss.
+        if (prefs.gpsSourceMode == GpsSourceMode.CAR) {
+            val position = FtPositionTelemetry.current.value
+                ?.takeIf { it.eligibleForDisplay(System.currentTimeMillis()) }
+            val latitude = position?.latitude
+            val longitude = position?.longitude
+            return if (latitude != null && longitude != null)
+                latitude to longitude else null
+        }
         if (!needsLocation(context)) {
             val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
             val last = try {
