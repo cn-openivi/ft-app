@@ -28,19 +28,18 @@ internal data class DrNavigationFix(
     val verifiedVehicleMotion: Boolean,
     val speedKmh: Float? = null
 ) {
-    // FT is the positioning owner. AA inherits these validity requirements,
-    // never the reverse. This bounded frame-age rejects cached/replayed DR,
-    // it is NOT a 1.5s GNSS-loss timer or a source-switch threshold.
-    fun eligibleForFt(nowMs: Long): Boolean =
+    // This object represents one actual EKF event. Accept by its verified
+    // source and finite physical fields, never by the handset wall clock.
+    // Events are not replayed on subscription; display age is metadata only.
+    fun eligibleForFt(@Suppress("UNUSED_PARAMETER") nowMs: Long): Boolean =
         fromSelectedGps == GpsSourceMode.CAR && verifiedVehicleMotion &&
-            producedAtMs > 0L && nowMs >= producedAtMs &&
-            nowMs - producedAtMs <= 1_500L &&
+            producedAtMs > 0L &&
             latitude.isFinite() && latitude in -90.0..90.0 &&
             longitude.isFinite() && longitude in -180.0..180.0 &&
             accuracyMetres.isFinite() && accuracyMetres >= 0.0 &&
             headingDegrees.isFinite()
 
-    /** AA remains a downstream subscriber of FT's validated DR model. */
+    /** AA inherits FT's genuine EKF provenance, not a separate timeout. */
     fun eligibleForAa(nowMs: Long): Boolean = eligibleForFt(nowMs)
 }
 

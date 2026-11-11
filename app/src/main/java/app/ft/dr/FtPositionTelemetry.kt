@@ -36,12 +36,13 @@ internal data class FtNavigationPosition(
     val horizontalAccuracyMetres: Double? get() =
         if (source == Source.FUSED) fused?.accuracyMetres else null
 
+    // A last-known observation is displayable after a handset clock change.
+    // The caller must label its age; this does not attest live GPS.
     fun eligibleForDisplay(nowMs: Long): Boolean =
         when (source) {
             Source.FUSED -> fused?.eligibleForFt(nowMs) == true
             Source.RAW_UNFILTERED ->
                 raw?.source == "ICCOA" && receivedAtMs > 0L &&
-                    nowMs >= receivedAtMs &&
                     latitude?.isFinite() == true &&
                     longitude?.isFinite() == true
         }

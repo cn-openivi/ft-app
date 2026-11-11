@@ -56,8 +56,20 @@ class FtPositionTelemetryTest {
             raw(12_000L, 55.7010, 3L), 12_000L))
         val stale = FtPositionTelemetry.current.value
         val native = CarGpsSourceSelector().selectFt(stale, null, 12_000L)
-        assertEquals(CarGpsSourceSelector.Source.UNKNOWN, native.source)
-        assertNull(native.latitude)
+        // Time alone does not revoke FT authority or prove another fix.
+        assertEquals(CarGpsSourceSelector.Source.DR, native.source)
+        assertEquals(1_920L, native.lastPacketAgeMs)
+        assertEquals(55.70001, native.latitude!!, 0.000001)
+    }
+
+    @Test fun wallClockCorrectionCannotRejectActuallyReceivedGpsOrFusedEvent() {
+        assertTrue(FtPositionTelemetry.acceptRaw(raw(100_000L), 90_000L))
+        assertTrue(FtPositionTelemetry.current.value!!.eligibleForDisplay(90_000L))
+        assertTrue(FtPositionTelemetry.acceptFused(fused(100_010L), 90_100L))
+        val selected = CarGpsSourceSelector().selectFt(
+            FtPositionTelemetry.current.value, null, 90_100L)
+        assertEquals(CarGpsSourceSelector.Source.DR, selected.source)
+        assertEquals(0L, selected.lastPacketAgeMs)
     }
 
     @Test fun invalidUnverifiedOrPhoneDrNeverClaimAuthoritativeFusion() {

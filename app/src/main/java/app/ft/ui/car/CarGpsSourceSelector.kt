@@ -127,7 +127,11 @@ internal class CarGpsSourceSelector(
             car = if (chosen == Source.ICCOA) candidate else null,
             phone = if (chosen == Source.PHONE) trustedPhone else null,
             dr = if (chosen == Source.DR) newerDr else null,
-            lastPacketAgeMs = carAgeMs?.coerceAtLeast(0L) ?: 0L,
+            lastPacketAgeMs = when (chosen) {
+                Source.ICCOA -> carAgeMs?.coerceAtLeast(0L) ?: 0L
+                Source.DR -> newerDr?.let { (nowMs - it.producedAtMs).coerceAtLeast(0L) } ?: 0L
+                else -> 0L
+            },
             speedKmh = when (chosen) {
                 Source.ICCOA -> carSpeed
                 Source.PHONE -> phoneSpeed

@@ -52,8 +52,8 @@ internal object CarWidgetReadings {
         CarGpsSourceSelector.Source.PHONE ->
             if (reading.phone == null) "PHONE · NO FIX" else "PHONE · MANUAL"
         CarGpsSourceSelector.Source.DR -> reading.dr?.accuracyMetres?.let {
-            "DR estimated ±${kotlin.math.ceil(it).toLong()}m"
-        } ?: "DR estimated"
+            "DR · last estimate ${reading.lastPacketAgeMs}ms ago · ±${kotlin.math.ceil(it).toLong()}m"
+        } ?: "DR · last estimate"
         CarGpsSourceSelector.Source.ICCOA ->
             if (reading.lastPacketAgeMs > 0L)
                 "ICCOA · last fix ${reading.lastPacketAgeMs}ms ago"
