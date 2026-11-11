@@ -50,8 +50,7 @@ internal class GnssContinuityGate {
         // Rejected observations can inform gap detection, but cannot set
         // the ordering floor for a later genuinely accepted GNSS fix.
         // Only the last confirmed fix defines that floor (checked below).
-        val actualGap = lastObservedTimestampMs != Long.MIN_VALUE &&
-            timestampMs - lastObservedTimestampMs > GPS_GAP_MS
+        val actualGap = actualObservationGap(timestampMs)
         // Do not commit a candidate clock before EKF acceptance.
         val last = accepted.peekLast() ?: return true
         if (timestampMs <= last.timestampMs) return false
@@ -87,9 +86,7 @@ internal class GnssContinuityGate {
         // Only a genuine gap in observed GNSS packets clears the local
         // continuity history. Repeated rejected measurements must never
         // reset it or provide a false re-anchor.
-        if (lastObservedTimestampMs != Long.MIN_VALUE &&
-            timestampMs > lastObservedTimestampMs &&
-            timestampMs - lastObservedTimestampMs > GPS_GAP_MS) {
+        if (actualObservationGap(timestampMs)) {
             accepted.clear()
             cleanResiduals.clear()
             }
@@ -139,9 +136,35 @@ internal class GnssContinuityGate {
             resultE to resultN else null
     }
 
+    /**
+     * A genuine observation discontinuity is relative to the ACCEPTED OEM
+     * sample cadence (normally around 10Hz), not a fixed 3s/5s/7s timer.
+     * Used only to retire inappropriate straight-line continuity history,
+     * never to start DR or to notify Android Auto of a GPS outage.
+     */
+    private fun actualObservationGap(timestampMs: Long): Boolean {
+        if (lastObservedTimestampMs == Long.MIN_VALUE ||
+            timestampMs <= lastObservedTimestampMs || accepted.size < 2) return false
+        val gaps = ArrayList<Long>(HISTORY_REQUIRED - 1)
+        var prior: Fix? = null
+        for (item in accepted) {
+            prior?.let { p ->
+                val delta = item.timestampMs - p.timestampMs
+                if (delta > 0L) gaps.add(delta)
+            }
+            prior = item
+        }
+        if (gaps.isEmpty()) return false
+        gaps.sort()
+        val medianCadenceMs = gaps[gaps.size / 2]
+        val elapsed = timestampMs - lastObservedTimestampMs
+        return medianCadenceMs <= Long.MAX_VALUE / HISTORY_GAP_FACTOR &&
+            elapsed > medianCadenceMs * HISTORY_GAP_FACTOR
+    }
+
     private companion object {
         const val HISTORY_REQUIRED = 5
-        const val GPS_GAP_MS = 5_000L
+        const val HISTORY_GAP_FACTOR = 3L
         const val BASE_TOLERANCE_METRES = 4.0
         const val MAX_TOLERANCE_METRES = 15.0
     }
