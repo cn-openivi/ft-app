@@ -134,10 +134,14 @@ internal class IccoaDirectVideo(
     }
 
     fun paused() {
-        if (active || pending) fallback("Receiver paused ICCOA video")
+        if (active || pending) fallback("Receiver paused ICCOA video", resumeTransport = false)
     }
 
-    private fun fallback(reason: String) {
+    fun disconnected() {
+        if (active || pending) fallback("Android Auto disconnected")
+    }
+
+    private fun fallback(reason: String, resumeTransport: Boolean = true) {
         if (closed || failed) return
         failed = true // no re-entry until the next ICCOA connection
         pending = false
@@ -146,7 +150,7 @@ internal class IccoaDirectVideo(
         if (projection.directVideoActive) {
             output.pause()
             projection.resumeCompositedVideo(plan, output::configure, output::frame)
-            output.resume()
+            if (resumeTransport) output.resume()
         }
         onStatus("ICCOA direct video: " + reason + "; normal FT video restored")
         DiagLog.w("ICCOA", "DIRECT_VIDEO fallback: " + reason)
