@@ -64,12 +64,13 @@ internal class IccoaDirectVideo(
         if (this.source != null && this.source !== source) return
         this.source = source
         val sps = IccoaDirectAvc.sps(csd)
-        val supported = IccoaDirectAvc.compatible(
+        val normalized = IccoaDirectAvc.normalizedConfiguration(csd)
+        val supported = normalized != null && IccoaDirectAvc.compatible(
             sps, plan.streamWidth, plan.streamHeight, plan.fps, aaWidth, aaHeight
         )
         val previous = compatibleConfig
-        compatibleConfig = if (supported) csd.copyOf() else null
-        if (active && (!supported || (previous != null && !previous.contentEquals(csd))))
+        compatibleConfig = if (supported) normalized else null
+        if (active && (!supported || (previous != null && !previous.contentEquals(normalized))))
             main.post { fallback("AA video SPS changed or is unsupported") }
         if (!supported) {
             DiagLog.i("ICCOA", "DIRECT_VIDEO declined: AA AVC SPS incompatible with selected WFD raster")
