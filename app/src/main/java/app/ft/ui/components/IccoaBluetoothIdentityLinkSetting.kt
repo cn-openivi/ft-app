@@ -96,7 +96,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
                     configured = false
                     enabled = false
                     confirmed = false
-                    result = "Привязка отключена и удалена"
+                    result = "Локальная настройка удалена; запись в Toyota не изменялась"
                 } else result = "Не удалось удалить настройку"
             }) { Text("Забыть") }
         }
