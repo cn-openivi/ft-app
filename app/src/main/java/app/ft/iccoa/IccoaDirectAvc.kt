@@ -8,8 +8,46 @@ package app.ft.iccoa
 internal object IccoaDirectAvc {
     data class Sps(val width: Int, val height: Int, val profileIdc: Int, val levelIdc: Int)
 
-    fun isIdr(accessUnit: ByteArray): Boolean =
-        units(accessUnit).any { it.isNotEmpty() && it[0].toInt() and 31 == 5 }
+    /** Inspect only NAL headers: copying full IDR frames here would defeat passthrough. */
+    fun isIdr(accessUnit: ByteArray): Boolean {
+        val b = accessUnit
+        if (b.isEmpty() || b.size > 4 * 1024 * 1024) return false
+        fun prefix(at: Int): Int = when {
+            at + 4 <= b.size && b[at] == 0.toByte() && b[at + 1] == 0.toByte() &&
+                b[at + 2] == 0.toByte() && b[at + 3] == 1.toByte() -> 4
+            at + 3 <= b.size && b[at] == 0.toByte() && b[at + 1] == 0.toByte() &&
+                b[at + 2] == 1.toByte() -> 3
+            else -> 0
+        }
+        val first = prefix(0)
+        if (first > 0) {
+            var at = 0
+            while (at < b.size) {
+                val n = prefix(at)
+                if (n > 0) {
+                    val nal = at + n
+                    if (nal < b.size && (b[nal].toInt() and 31) == 5) return true
+                    at = nal
+                } else at++
+            }
+            return false
+        }
+        if (b.size >= 5) {
+            var at = 0
+            var sawLengthPrefix = false
+            while (at + 4 <= b.size) {
+                val n = ((b[at].toInt() and 255) shl 24) or
+                    ((b[at + 1].toInt() and 255) shl 16) or
+                    ((b[at + 2].toInt() and 255) shl 8) or (b[at + 3].toInt() and 255)
+                if (n <= 0 || n > b.size - at - 4) break
+                sawLengthPrefix = true
+                if ((b[at + 4].toInt() and 31) == 5) return true
+                at += 4 + n
+            }
+            if (sawLengthPrefix && at == b.size) return false
+        }
+        return (b[0].toInt() and 31) == 5
+    }
 
     fun sps(configuration: ByteArray): Sps? = runCatching {
         val nal = units(configuration).firstOrNull { it.isNotEmpty() && it[0].toInt() and 31 == 7 }
@@ -112,7 +150,7 @@ internal object IccoaDirectAvc {
             }
             return result
         }
-        if (data.size >= 8) {
+        if (data.size >= 5) {
             val result = ArrayList<ByteArray>()
             var at = 0
             while (at + 4 <= data.size) {
