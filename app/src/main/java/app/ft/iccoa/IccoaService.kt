@@ -50,6 +50,8 @@ class IccoaService : Service() {
     private val main = Handler(Looper.getMainLooper())
     private val lifecycle = Any()
     private val rememberedCar by lazy { IccoaRememberedCar(this) }
+    private val bluetoothIdentityLink by lazy { IccoaBluetoothIdentityLinkStore(this) }
+    private var lastBluetoothLinkSession = -1
     private var pendingCar: IccoaPeer? = null
     private var autoConnectAttempted = false
     private val dropRecovery = IccoaDropRecovery()
@@ -512,6 +514,19 @@ class IccoaService : Service() {
                     if (selected == null) connectionFailed("QUICK: select the car and enter its PIN")
                     else connectTo(selected, forceCurrentPin = true)
                 } else connectionFailed(event.message, event.action == IccoaCloseAction.RETRY_TRANSPORT)
+            } },
+            onVerifiedControlReady = { current {
+                // The OEM crypto response, AuthConfirm and authenticated CONTROL must all be established.
+                // Never send the Classic BT identity on BLE bootstrap or unverified sessions.
+                if (session === connection && lastBluetoothLinkSession != token) {
+                    lastBluetoothLinkSession = token
+                    val payload = bluetoothIdentityLink.addPayload()
+                    if (payload != null) {
+                        // True means queued for this authenticated CONTROL lane, NOT an OEM mapping ACK.
+                        val queued = connection.sendControl(IccoaBluetoothMacInfo.CONTROL_METHOD, payload)
+                        DiagLog.i("ICCOA", "BT identity association method22 queued=$queued; OEM mapping status UNKNOWN")
+                    }
+                }
             } },
             onControlReady = { current {
                 navigationGate.reset()

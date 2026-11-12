@@ -140,7 +140,9 @@ class IccoaSession(
     private val onControlReady: () -> Unit = {},
     private val trustedCarName: String = "",
     private val tryRememberedPin: Boolean = false,
-    private val forceCurrentPin: Boolean = false
+    private val forceCurrentPin: Boolean = false,
+    /** Fires once per session only after AuthConfirm AND authenticated CONTROL. */
+    private val onVerifiedControlReady: () -> Unit = {}
 ) {
     private val main = Handler(Looper.getMainLooper())
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -692,7 +694,10 @@ class IccoaSession(
             synchronized(attempt) {
                 if (pinned == null) attempt.pendingTrustedCarIdentity = verifiedCarIdentity.copyOf()
             }
-            if (attempt.trustedCommitGate.onConfirmSent()) confirmTrustedCarAfterControl(attempt)
+            if (attempt.trustedCommitGate.onConfirmSent()) {
+                confirmTrustedCarAfterControl(attempt)
+                if (active(attempt) && attempt.control != null) onVerifiedControlReady()
+            }
             status(attempt, "ICCOA: аутентификация завершена, ожидание каналов автомобиля…")
             later(attempt, 25_000) {
                 if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
@@ -790,7 +795,10 @@ class IccoaSession(
                 }
                 if (port == IccoaLaneServer.CONTROL_PORT && active(attempt) &&
                     attempt.networkGate.isCurrent(network) && attempt.control === socket) {
-                    if (attempt.trustedCommitGate.onControlReady()) confirmTrustedCarAfterControl(attempt)
+                    if (attempt.trustedCommitGate.onControlReady()) {
+                        confirmTrustedCarAfterControl(attempt)
+                        if (active(attempt)) onVerifiedControlReady()
+                    }
                     onControlReady()
                 }
             },

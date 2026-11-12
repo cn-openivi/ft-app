@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 179
-        versionName = "3.9.65-xa60-ft179-gps-dr-field"
+        versionCode = 180
+        versionName = "3.9.66-xa60-ft180-staging-bt-link"
     }
 
     signingConfigs {

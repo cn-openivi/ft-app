@@ -82,6 +82,7 @@ import app.ft.core.CarAudioBus
 import app.ft.core.CarProtocol
 import app.ft.ui.components.CarProtocolSetting
 import app.ft.ui.components.BluetoothCallsSetting
+import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoPlan
 import app.ft.projection.VideoProfile
@@ -254,6 +255,7 @@ private fun PageContent(page: SettingsPage) {
             if (protocol == CarProtocol.ICCOA) {
                 Text(stringResource(R.string.iccoa_settings_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BluetoothCallsSetting()
+                IccoaBluetoothIdentityLinkSetting()
                 IccoaMicrophoneGainSetting(p.iccoaMicGain) { p.iccoaMicGain = it }
                 BoolSetting(
                     stringResource(R.string.iccoa_sensor_refresh),
