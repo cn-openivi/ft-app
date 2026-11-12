@@ -101,7 +101,7 @@
     <string name="sound_silence_phone">Выключать звук телефона, пока FT передаёт звук</string>
     <string name="guidance_title">Подсказки навигации поверх музыки</string>
     <string name="guidance_like_baidu">Отдельный канал</string>
-    <string name="guidance_like_baidu_body">Для Baidu CarLife подсказки передаются по отдельному каналу TTS. Приглушением музыки управляет головное устройство.</string>
+    <string name="guidance_like_baidu_body">В режиме CarLife подсказки передаются по отдельному каналу TTS. Приглушением музыки управляет головное устройство.</string>
     <string name="guidance_iccoa_title">Звук навигации через ICCOA</string>
     <string name="guidance_iccoa_body">ICCOA передаёт доступный для захвата звук через общий аудиопоток проекции. Отдельный TTS-канал CarLife и режимы его микширования здесь не используются. Голосовые подсказки некоторых приложений Android может не разрешать захватывать.</string>
     <string name="guidance_in_step">Синхронно</string>
