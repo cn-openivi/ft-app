@@ -77,7 +77,10 @@ class Ft179GnssDrPipelineIntegrationTest {
         assertTrue(FtPositionTelemetry.acceptFused(fused, 101_100L))
         val shared = requireNotNull(FtPositionTelemetry.current.value)
         assertEquals(FtNavigationPosition.Source.FUSED, shared.source)
-        assertTrue(shared.latitude!! > 52.0)
+        // Heading 90 degrees means EAST, not north. In local ENU this
+        // advances longitude while latitude remains at the GNSS anchor.
+        assertEquals(52.0, shared.latitude!!, 0.000001)
+        assertTrue(shared.longitude!! > 13.0)
         assertFalse(FtPositionTelemetry.acceptRaw(
             raw(101_200L, latitude = 52.005, seq = 2L),
             101_200L

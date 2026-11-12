@@ -73,12 +73,15 @@ class AaVerifiedDrLocationTest {
         assertEquals(20_250, decoded.int(4))
     }
 
-    @Test fun neverInjectDrUnderRawGpsCharacterizationOrPhoneSource() {
-        assertNull(AaCarGps.fusedEvent(drFix(), 10_000L, 0x100))
+    @Test fun rawSdpMayPromoteToVerifiedFusionButNeverPhoneOrUnverifiedSource() {
+        // SDP is negotiated once; later verified FUSED must not blackhole AA.
+        assertNotNull(AaCarGps.fusedEvent(drFix(), 10_000L, 0x100))
         assertNull(AaCarGps.fusedEvent(drFix(selected=GpsSourceMode.PHONE),
             10_000L, 0x93))
         assertNull(AaCarGps.fusedEvent(drFix(proven=false), 10_000L, 0x93))
-        assertNull(AaCarGps.fusedEvent(drFix(now=10_000L),
+        // Arrival of a fresh EKF event is authoritative; a changed handset
+        // wall clock is not an independent GNSS/DR freshness measurement.
+        assertNotNull(AaCarGps.fusedEvent(drFix(now=10_000L),
             11_501L, 0x93))
         assertNull(AaCarGps.fusedEvent(drFix(accurate=Double.NaN),
             10_000L, 0x93))

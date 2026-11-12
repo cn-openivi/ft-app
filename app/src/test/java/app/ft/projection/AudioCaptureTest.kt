@@ -171,13 +171,23 @@ class AudioCaptureTest {
         val resetFinished = CountDownLatch(1)
         val resetFailure = java.util.concurrent.atomic.AtomicReference<Throwable>()
         val oldReader = java.util.concurrent.atomic.AtomicReference<Thread>()
+        val oldRecordReleased = CountDownLatch(1)
+        val oldReads = AtomicInteger()
         val delivered = AtomicInteger()
+        doAnswer { oldRecordReleased.countDown(); null }.`when`(oldRecord).release()
         `when`(oldRecord.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
             oldReader.set(Thread.currentThread())
-            val bytes = it.arguments[0] as ByteArray
-            bytes[0] = 1
-            bytes[1] = 0
-            2
+            if (oldReads.incrementAndGet() > 1) {
+                // Native read may begin before reset gets the monitor.
+                // Hold the late read until the owner has been invalidated.
+                assertTrue(oldRecordReleased.await(5, TimeUnit.SECONDS))
+                AudioRecord.ERROR_DEAD_OBJECT
+            } else {
+                val bytes = it.arguments[0] as ByteArray
+                bytes[0] = 1
+                bytes[1] = 0
+                2
+            }
         }
         `when`(newRecord.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
             newReadEntered.countDown()

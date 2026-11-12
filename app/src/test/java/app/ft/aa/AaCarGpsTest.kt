@@ -203,7 +203,14 @@ class AaCarGpsTest {
     @Test fun unverifiedAltitudeCannotBeForwardedAsAaAltitude() {
         val sample = car(55.7, 37.6).copy(altitudeMeters = 112.5, altitudeUnit = "UNKNOWN")
         assertFalse(ProtoReader(AaCarGps.event(sample, 1_500L)!!).message(1)!!.has(5))
-        assertNotNull(AaCarGps.satellitesEvent(sample, 4_100L))
+        // Unknown altitude is independent of satellite provenance.
+        // Never emit a satellite event without actual OEM aggregate counters.
+        assertNull(AaCarGps.satellitesEvent(sample, 4_100L))
+        val withVerifiedCounts = sample.copy(satellitesVisible = 12L, satellitesUsed = 8L)
+        val satellites = ProtoReader(AaCarGps.satellitesEvent(
+            withVerifiedCounts, 4_100L)!!).message(21)!!
+        assertEquals(12, satellites.int(1))
+        assertEquals(8, satellites.int(2))
     }
 
     @Test fun aaSdpHasPersistentVehicleIdentityAndSatelliteSensor() {
