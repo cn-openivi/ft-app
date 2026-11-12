@@ -1,4 +1,4 @@
-name: FT179 field candidate full unsigned APK (existing VPS runner)
+name: FT179 XA60 owner-signed regression and release (VPS only)
 
 on:
   push:
@@ -10,32 +10,36 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: ft179-vps-unsigned
+  group: ft179-vps-signed
   cancel-in-progress: false
 
 jobs:
-  verify-full-unsigned:
+  verify-owner-signed:
     runs-on: [self-hosted, linux]
     timeout-minutes: 75
     steps:
-      - name: Checkout triggering exact commit
+      - name: Checkout exact validation commit
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
+          fetch-depth: 0
           persist-credentials: false
-      - name: Verify isolated branch, exact SHA and nonroot user
+      - name: Verify production source unchanged from FT179 field candidate
         shell: bash
         run: |
           set -euo pipefail
           test "$(id -u)" -ne 0
           test "$GITHUB_REF_NAME" = 'openivi/ft179-dr-field-20261111'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 486b2fcf9c20e9d22c56c5e02fb996952cd6f764 "$GITHUB_SHA"
+          git diff --quiet 486b2fcf9c20e9d22c56c5e02fb996952cd6f764 "$GITHUB_SHA" -- app/src/main server/src/main
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 179' app/build.gradle.kts
           grep -Fq 'versionName = "3.9.65-xa60-ft179-gps-dr-field"' app/build.gradle.kts
-          echo "FT179_SOURCE_SHA=$GITHUB_SHA"
+          echo "FT179_PRODUCTION_SOURCE_BASE=486b2fcf9c20e9d22c56c5e02fb996952cd6f764"
+          echo "FT179_CI_COMMIT=$GITHUB_SHA"
       - name: JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
@@ -45,7 +49,43 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - name: Complete regression and full unsigned APK
+      - name: Restore existing FT owner signing bundle from GitHub Secrets
+        shell: bash
+        env:
+          FT_XA60_SIGNING_BUNDLE_JSON: ${{ secrets.FT_XA60_SIGNING_BUNDLE_JSON }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, sys
+          raw = os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON", "")
+          if not raw:
+              sys.exit("Required existing FT_XA60_SIGNING_BUNDLE_JSON is not available to this run")
+          bundle = json.loads(raw)
+          assert bundle["format"] == "openivi-ft-xa60-pkcs12-v1"
+          assert bundle["alias"] == "openivi_ft_xa60"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          assert hashlib.sha256(key).hexdigest() == bundle["keystore_sha256"]
+          password = bundle["store_password"]
+          assert password and all(c in "0123456789abcdef" for c in password)
+          private = pathlib.Path(".ft-xa60")
+          private.mkdir(mode=0o700, exist_ok=True)
+          keystore = private / "ft-xa60-owner.p12"
+          keystore.write_bytes(key)
+          keystore.chmod(0o600)
+          pw_file = private / "password.txt"
+          pw_file.write_text(password)
+          pw_file.chmod(0o600)
+          props = pathlib.Path("ft-xa60-signing.properties")
+          props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+password+
+                          "\nkeyAlias=openivi_ft_xa60\nkeyPassword="+password+"\n")
+          props.chmod(0o600)
+          PY
+          actual="$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | awk '{print $1}')"
+          expected=e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+          test "$actual" = "$expected"
+          echo "FT_XA60_PINNED_SIGNER_SHA256=$actual" >> "$GITHUB_ENV"
+          echo "Existing FT owner cert matched the historical FT173/174 certificate."
+      - name: Full release unit tests, release lint and signed APK
         shell: bash
         run: |
           set -euo pipefail
@@ -53,39 +93,102 @@ jobs:
           ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
             -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
             -Dkotlin.compiler.execution.strategy=in-process \
-            :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit
-      - name: Verify APK content, identity, unsigned status, digest
+            :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease
+      - name: Verify owner certificate package version ZIP and digest
         shell: bash
         run: |
           set -euo pipefail
-          APK=app/build/outputs/apk/unsignedTransit/app-unsignedTransit-unsigned.apk
-          test -s "$APK"
-          unzip -t "$APK" >/dev/null
-          unzip -Z1 "$APK" | grep -Fxq 'classes.dex'
-          unzip -Z1 "$APK" | grep -Fxq 'AndroidManifest.xml'
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" >/dev/null
+          unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
+          unzip -Z1 "$apk" | grep -Fxq 'AndroidManifest.xml'
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          AAPT="$(find "$SDK/build-tools" -maxdepth 2 -name aapt -type f | sort -V | tail -1)"
-          SIGNER="$(find "$SDK/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
-          test -x "$AAPT" && test -x "$SIGNER"
-          "$AAPT" dump badging "$APK" | tee apk-badging.txt
+          BT="$SDK/build-tools/36.0.0"
+          "$BT/aapt" dump badging "$apk" | tee apk-badging.txt
           grep -Fq "package: name='app.ft.xa60' versionCode='179'" apk-badging.txt
-          if "$AAPT" dump badging "$APK" | grep -q '^application-debuggable'; then
-            echo "REFUSE debuggable candidate" >&2; exit 1
+          if grep -q '^application-debuggable' apk-badging.txt; then
+            echo "Refuse debuggable release" >&2; exit 1
           fi
-          if "$SIGNER" verify "$APK" >/dev/null 2>&1; then
-            echo "REFUSE signed candidate" >&2; exit 1
-          fi
+          "$BT/apksigner" verify --verbose --print-certs "$apk" | tee apksigner.txt
+          grep -iq "$FT_XA60_PINNED_SIGNER_SHA256" apksigner.txt
           mkdir -p verified
-          cp "$APK" verified/FT179_XA60_FULL_UNSIGNED.apk
-          test "$(stat -c%s verified/FT179_XA60_FULL_UNSIGNED.apk)" -gt 100000
-          sha256sum verified/FT179_XA60_FULL_UNSIGNED.apk | tee verified/SHA256SUMS
-          printf 'SOURCE_SHA=%s\nVERSION_CODE=179\nAPP_ID=app.ft.xa60\nSIGNATURE=UNSIGNED\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" > verified/PROVENANCE.txt
-          cp apk-badging.txt verified/
-      - name: Retain 1 day only until Drive verification
+          cp "$apk" verified/FT179_XA60_OWNER_SIGNED.apk
+          cp apksigner.txt apk-badging.txt verified/
+          (cd verified && sha256sum FT179_XA60_OWNER_SIGNED.apk > SHA256SUMS)
+          printf 'FEATURE_SOURCE_SHA=486b2fcf9c20e9d22c56c5e02fb996952cd6f764\nCI_VALIDATION_SHA=%s\nVERSION_CODE=179\nAPP_ID=app.ft.xa60\nSIGNATURE=OWNER_SIGNED\nCERT_SHA256=%s\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" "$FT_XA60_PINNED_SIGNER_SHA256" > verified/PROVENANCE.txt
+      - name: Preserve signed APK and attestations until Drive readback
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ft179-unsigned-${{ github.sha }}
+          name: ft179-owner-signed-${{ github.sha }}
           path: verified/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
+      - name: Publish exact production source FT179 signed APK prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, urllib.error, urllib.parse, urllib.request
+          repo = os.environ["GITHUB_REPOSITORY"]
+          apk = pathlib.Path("verified/FT179_XA60_OWNER_SIGNED.apk")
+          checksum = hashlib.sha256(apk.read_bytes()).hexdigest()
+          base_sha = "486b2fcf9c20e9d22c56c5e02fb996952cd6f764"
+          tag = "xa60-ft179-" + base_sha[:12]
+          endpoint = "https://api.github.com/repos/" + repo
+          headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                     "Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28"}
+          def github(url, method="GET", obj=None, data=None, content_type=None):
+              h = dict(headers)
+              if obj is not None:
+                  data = json.dumps(obj).encode()
+                  h["Content-Type"] = "application/json"
+              if content_type:
+                  h["Content-Type"] = content_type
+              req = urllib.request.Request(url, data=data, headers=h, method=method)
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as e:
+                  if method == "GET" and e.code == 404:
+                      return None
+                  raise
+          release = github(endpoint + "/releases/tags/" + tag)
+          if release is None:
+              release = github(endpoint + "/releases", "POST", obj={
+                  "tag_name": tag, "target_commitish": base_sha,
+                  "name": "FT179 XA60 owner-signed field candidate " + base_sha[:12],
+                  "body": "Full FT179 APK (not field-tested). Production source "+base_sha+
+                          ", validation CI "+os.environ["GITHUB_SHA"]+
+                          ". Signed with existing FT owner certificate SHA256 "+
+                          os.environ["FT_XA60_PINNED_SIGNER_SHA256"]+
+                          ". APK SHA256 "+checksum+". No HU acceptance claim.",
+                  "prerelease": True, "draft": False
+              })
+          filename = "ft-179-xa60-" + base_sha[:12] + ".apk"
+          assets = {a["name"]:a for a in release.get("assets",[])}
+          if filename in assets:
+              asset = assets[filename]
+              if asset["size"] != apk.stat().st_size or asset.get("digest") != "sha256:" + checksum:
+                  raise RuntimeError("Conflicting pre-existing FT179 release asset")
+          else:
+              url = ("https://uploads.github.com/repos/" + repo + "/releases/" +
+                     str(release["id"]) + "/assets?name=" + urllib.parse.quote(filename))
+              asset = github(url, "POST", data=apk.read_bytes(),
+                             content_type="application/vnd.android.package-archive")
+          if asset.get("state") != "uploaded":
+              raise RuntimeError("Release asset not uploaded")
+          print("FT179_SIGNED_APK_DOWNLOAD=" + asset["browser_download_url"])
+          print("FT179_SIGNED_APK_SHA256=" + checksum)
+          print("FT179_RELEASE_URL=" + release["html_url"])
+          PY
+      - name: Remove only ephemeral restored signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f ft-xa60-signing.properties .ft-xa60/ft-xa60-owner.p12 .ft-xa60/password.txt

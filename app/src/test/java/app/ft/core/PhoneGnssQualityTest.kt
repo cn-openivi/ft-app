@@ -57,52 +57,48 @@ class PhoneGnssQualityTest {
             fix(speedKmh = Float.NaN), 10_500_000_000L))
     }
 
-    @Test fun estimatorLearnsOnlyWhenBothGnssAndVehicleUnitsAreVerified() {
-        val estimator = WheelSpeedAutoCalibration(minimumSamples = 3)
+    @Test fun independentPhoneGpsAloneCannotTrainWheelCoefficient() {
+        val estimator = WheelSpeedAutoCalibration(minimumSegments = 3)
+        assertTrue(estimator.bindVehicle("verified-vehicle"))
         for (i in 0..2) {
             val nanos = 10_000_000_000L + i * 1_000_000_000L
-            val sample = fix(receivedNanos = nanos)
-            val out = estimator.observePhoneGnss(
-                monotonicNowNanos = nanos + 200_000_000L,
-                vehicleSpeedKmh = 72.0,
-                independentPhoneFix = sample,
-                yawRateDegreesPerSecond = 0.0,
-                accelerationMps2 = 0.0,
-                wheelUnitsConfirmedKmh = true,
-                motionUnitsVerified = false
-            )
-            assertEquals(0, out.acceptedSamples)
-            assertFalse(out.confident)
+            // Phone quality alone is never proof of OEM car GNSS fix epoch.
+            assertTrue(PhoneGnssQuality.usableForWheelCalibration(
+                fix(receivedNanos = nanos), nanos + 200_000_000L))
+            estimator.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
+                monotonicMs = 10_000L + i * 100L,
+                forwardSpeedMps = 20.0,
+                yawRateRadPerSecond = 0.0,
+                longitudinalAccelerationMps2 = 0.0,
+                verifiedWheelAndYawUnits = true,
+                verifiedForwardGear = true
+            ))
         }
-        for (i in 0..2) {
-            val nanos = 20_000_000_000L + i * 1_000_000_000L
-            val out = estimator.observePhoneGnss(
-                monotonicNowNanos = nanos + 200_000_000L,
-                vehicleSpeedKmh = 72.0,
-                independentPhoneFix = fix(receivedNanos = nanos),
-                yawRateDegreesPerSecond = 0.0,
-                accelerationMps2 = 0.0,
-                wheelUnitsConfirmedKmh = true,
-                motionUnitsVerified = true
-            )
-            if (i < 2) assertFalse(out.confident)
-        }
-        assertTrue(estimator.estimate().confident)
-        assertEquals(1.05, estimator.estimate().multiplier, 0.0001)
+        assertEquals(0, estimator.estimate().acceptedSegments)
+        assertFalse(estimator.estimate().confident)
+        assertNull(estimator.snapshotForPersistence())
     }
 
-    @Test fun estimatorRejectsBadGnssEvenIfWheelMotionIsVerified() {
-        val c = WheelSpeedAutoCalibration(minimumSamples = 2)
-        val result = c.observePhoneGnss(
-            monotonicNowNanos = 12_000_000_000L,
-            vehicleSpeedKmh = 72.0,
-            independentPhoneFix = fix(provider = "network"),
-            yawRateDegreesPerSecond = 0.0,
-            accelerationMps2 = 0.0,
-            wheelUnitsConfirmedKmh = true,
-            motionUnitsVerified = true
-        )
-        assertEquals(0, result.acceptedSamples)
+    @Test fun unverifiedIndependentCarGnssIsRejectedEvenWithVerifiedWheelMotion() {
+        val estimator = WheelSpeedAutoCalibration(minimumSegments = 3)
+        assertTrue(estimator.bindVehicle("verified-vehicle"))
+        estimator.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
+            monotonicMs = 20_000L,
+            forwardSpeedMps = 20.0,
+            yawRateRadPerSecond = 0.0,
+            longitudinalAccelerationMps2 = 0.0,
+            verifiedWheelAndYawUnits = true,
+            verifiedForwardGear = true
+        ))
+        val result = estimator.observeGnss(WheelSpeedAutoCalibration.IndependentGnss(
+            fixMonotonicMs = 20_000L,
+            latitude = 55.7558, longitude = 37.6172,
+            horizontalAccuracyMetres = 1.0,
+            independentCarGnssVerified = false,
+            monotonicFixEpochVerified = false
+        ))
+        assertEquals(0, result.acceptedSegments)
         assertFalse(result.confident)
+        assertNull(estimator.snapshotForPersistence())
     }
 }

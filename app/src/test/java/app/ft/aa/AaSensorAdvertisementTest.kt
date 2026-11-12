@@ -108,7 +108,7 @@ class AaSensorAdvertisementTest {
         assertEquals(AaProtocol.SENSOR_LOCATION, AaMessages.sensorRequestType(requestBody))
         assertEquals(1_000L, ProtoReader(requestBody).long(2))
         assertArrayEquals(byteArrayOf(8, 0), AaMessages.sensorStartResponse())
-        assertArrayEquals(byteArrayOf(8, 1, 16, 2), AaCarGps.sensorError(2))
+        assertNull(AaCarGps.event(null)) // Missing car fix must not fabricate LOCATION or SENSOR_ERROR.
     }
 
     @Test fun locationCharacterizationIsNotRefreshIntervalOrInventedFusion() {
