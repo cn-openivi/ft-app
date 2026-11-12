@@ -112,6 +112,8 @@ object AaProtocol {
     const val POINTER_DOWN = 0
     const val POINTER_UP = 1
     const val POINTER_MOVED = 2
+    // AA TouchEvent.PointerAction enum (input.proto); not a synthetic UP.
+    const val POINTER_CANCEL = 3
 
     const val WIRELESS_PORT = 5277
     const val BT_UUID = "4de17a00-52cb-11e6-bdf4-0800200c9a66"

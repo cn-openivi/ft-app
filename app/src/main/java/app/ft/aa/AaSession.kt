@@ -670,7 +670,9 @@ class AaSession(
         val aaAction = when (action) {
             0 -> AaProtocol.POINTER_DOWN
             1 -> AaProtocol.POINTER_UP
-            else -> AaProtocol.POINTER_MOVED
+            2 -> AaProtocol.POINTER_MOVED
+            3 -> AaProtocol.POINTER_CANCEL
+            else -> return // Do not turn unknown actions into spurious MOVE.
         }
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputTouch(System.nanoTime(), x, y, aaAction))
     }

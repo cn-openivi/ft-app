@@ -49,5 +49,13 @@ internal class AaTouchGestureViewport {
         return mapped
     }
 
+    /** Emit a real AA CANCEL using the DOWN geometry; never fake a tap-producing UP. */
+    fun cancel(x: Int, y: Int): Pair<Int, Int>? {
+        val captured = active ?: return null
+        val mapped = captured.map(x, y, targetWidth, targetHeight)
+        reset()
+        return mapped
+    }
+
     fun reset() { active = null }
 }

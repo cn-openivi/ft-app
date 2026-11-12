@@ -175,6 +175,16 @@ class AaViewportTest {
         }
     }
 
+    @Test fun cancellationUsesFrozenAaInputGeometryAndDoesNotProduceUp() {
+        val gesture = AaTouchGestureViewport()
+        val landscape = AaViewport(100, 40, 800, 450)
+        assertEquals(640 to 360, gesture.map(0, 500, 265, landscape, 1280, 720))
+        // Even if display rotates before CANCEL, the touch remains in DOWN coordinates.
+        assertEquals(960 to 480, gesture.cancel(700, 340))
+        assertEquals(null, gesture.cancel(700, 340))
+        assertEquals(null, gesture.map(1, 700, 340, null, 720, 1280))
+    }
+
     @Test fun routeSwitchWithoutIntermediateTouchMustDiscardStaleDown() {
         val gesture = AaTouchGestureViewport()
         val original = AaViewport(100, 40, 800, 450)

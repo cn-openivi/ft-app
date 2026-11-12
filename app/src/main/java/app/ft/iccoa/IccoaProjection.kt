@@ -19,6 +19,7 @@ import app.ft.MainActivity
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSession
 import app.ft.aa.AaTouchViewport
+import app.ft.aa.AaTouchGestureViewport
 import app.ft.core.CarAudioBus
 import app.ft.core.DiagLog
 import app.ft.core.Root
@@ -79,6 +80,8 @@ class IccoaProjection(
     private var touchFt = false
     private var touchBeside = false
     private val mirrorTouches = MirrorTouchSequence()
+    private val aaTouchGesture = AaTouchGestureViewport()
+    private var mirrorTouchGestureMap: MirrorTouchMap? = null
     private var active = false
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
@@ -204,33 +207,50 @@ class IccoaProjection(
         val t = raw.copy(x = mappedX, y = mappedY, x2 = mappedX2, y2 = mappedY2)
         if (t.action == CarTouch.DOWN) touchFt = CarTouchZones.hit(mappedX, mappedY)
         if (touchFt) {
-            if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA", "touch route=FT content=$mappedX,$mappedY")
+            if (t.action == CarTouch.DOWN) {
+                aaTouchGesture.reset()
+                mirrorTouchGestureMap = null
+                mirrorTouches.reset()
+                DiagLog.i("ICCOA", "touch route=FT content=$mappedX,$mappedY")
+            }
             display.dispatchTouch(t)
+            if (t.action == CarTouch.UP || t.action == CarTouch.CANCEL) touchFt = false
             return@onMain
         }
         val aa = AaHeadUnitService.current
         when {
             state.value.aaOverlay && aa != null && aa.phase.value >= AaSession.Phase.DISCOVERED -> {
-                if (t.action !in 0..2) return@onMain
-                val viewport = AaTouchViewport.bounds ?: return@onMain
-                if (t.action == CarTouch.DOWN) touchBeside = !viewport.contains(mappedX, mappedY)
-                if (touchBeside) {
+                if (t.action !in 0..CarTouch.CANCEL) return@onMain
+                val viewport = AaTouchViewport.bounds
+                val point = if (t.action == CarTouch.CANCEL) aaTouchGesture.cancel(mappedX, mappedY)
+                else aaTouchGesture.map(t.action, mappedX, mappedY, viewport, app.prefs.aaWidth, app.prefs.aaHeight)
+                if (point == null) {
                     if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA", "touch beside AA content=$mappedX,$mappedY viewport=$viewport")
                     return@onMain
                 }
-                val point = viewport.map(mappedX, mappedY, app.prefs.aaWidth, app.prefs.aaHeight)
                 if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA",
                     "touch route=AA content=$mappedX,$mappedY viewport=$viewport target=${app.prefs.aaWidth}x${app.prefs.aaHeight} mapped=${point.first},${point.second}")
                 aa.sendTouch(point.first, point.second, t.action)
             }
             state.value.mirroring -> {
-                if (!mirror.active || t.action !in 0..2) return@onMain
+                if (!mirror.active || t.action !in 0..CarTouch.CANCEL) return@onMain
+                if (t.action == CarTouch.CANCEL) {
+                    // An interrupted gesture must not complete as an Accessibility tap.
+                    mirrorTouches.reset()
+                    mirrorTouchGestureMap = null
+                    touchBeside = false
+                    return@onMain
+                }
                 val frame = MirrorSink.frame.value
-                if (t.action == CarTouch.DOWN) auditMirrorGeometry("mirror touch")
-                val viewport = MirrorTouchMap(
-                    display.width, display.height, frame.width, frame.height,
-                    mirror.width, mirror.height
-                )
+                if (t.action == CarTouch.DOWN) {
+                    auditMirrorGeometry("mirror touch")
+                    mirrorTouchGestureMap = MirrorTouchMap(
+                        display.width, display.height, frame.width, frame.height,
+                        mirror.width, mirror.height
+                    )
+                }
+                // Preserve the geometry captured at DOWN across phone rotation/resize.
+                val viewport = mirrorTouchGestureMap ?: return@onMain
                 val mapped = viewport.map(mappedX, mappedY, clipToBounds = t.action != CarTouch.DOWN)
                 if (t.action == CarTouch.DOWN) {
                     mirrorTouches.reset()
@@ -244,6 +264,10 @@ class IccoaProjection(
                         if (cmd.action == MirrorTouchSequence.TAP) injector?.tap(cmd.x, cmd.y, cmd.durationMs)
                         else injector?.inject(cmd.action, cmd.x, cmd.y)
                     }
+                }
+                if (t.action == CarTouch.UP) {
+                    mirrorTouchGestureMap = null
+                    touchBeside = false
                 }
             }
             else -> display.dispatchTouch(t)
@@ -398,6 +422,7 @@ class IccoaProjection(
     override fun stopMirror() = onMain { hideMirror() }
     private fun hideMirror() {
         mirrorTouches.reset()
+        mirrorTouchGestureMap = null
         pendingLaunch = null
         mirrorJob?.cancel()
         mirrorJob = null
@@ -408,6 +433,7 @@ class IccoaProjection(
 
     override fun startAa() = onMain {
         if (!active) return@onMain
+        aaTouchGesture.reset()
         if (runCatching { context.packageManager.getPackageInfo(app.prefs.aaPackage, 0) }.isFailure) return@onMain
         hideMirror()
         if (app.prefs.aaMatchCar) {
@@ -450,6 +476,7 @@ class IccoaProjection(
     }
 
     private fun stopAa() {
+        aaTouchGesture.reset()
         aaJob?.cancel()
         aaJob = null
         aaStartJob?.cancel()
