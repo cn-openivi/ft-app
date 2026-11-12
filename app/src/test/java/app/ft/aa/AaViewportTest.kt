@@ -185,6 +185,20 @@ class AaViewportTest {
         assertEquals(null, gesture.map(1, 700, 340, null, 720, 1280))
     }
 
+    @Test fun routeSwitchSendsCancelUsingLastMappedCoordinatesOnce() {
+        val gesture = AaTouchGestureViewport()
+        val landscape = AaViewport(100, 40, 800, 450)
+        assertNull(gesture.cancelActive())
+        assertEquals(640 to 360, gesture.map(0, 500, 265, landscape, 1280, 720))
+        assertEquals(800 to 400, gesture.map(2, 600, 290, null, 1, 1))
+        assertEquals(800 to 400, gesture.cancelActive())
+        assertNull(gesture.cancelActive())
+        assertNull(gesture.map(1, 700, 340, landscape, 1280, 720))
+        assertEquals(640 to 360, gesture.map(0, 500, 265, landscape, 1280, 720))
+        assertEquals(640 to 360, gesture.map(1, 500, 265, landscape, 1280, 720))
+        assertNull(gesture.cancelActive()) // Normal UP was already terminal.
+    }
+
     @Test fun routeSwitchWithoutIntermediateTouchMustDiscardStaleDown() {
         val gesture = AaTouchGestureViewport()
         val original = AaViewport(100, 40, 800, 450)

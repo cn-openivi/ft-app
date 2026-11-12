@@ -224,10 +224,8 @@ class CarDisplay(private val context: Context) {
                 fingers = 2
                 second = (if (t.x2 >= 0) t.x2 else t.x).toFloat() to (if (t.y2 >= 0) t.y2 else t.y).toFloat()
             } else return
-            else -> if (downTime == 0L) {
-                downTime = now
-                fingers = 1
-            }
+            // A stale MOVE/UP after CANCEL must not fabricate a new gesture.
+            else -> if (downTime == 0L) return
         }
         if (t.x2 >= 0 && t.y2 >= 0 && fingers == 2 && t.action == CarTouch.MOVE) second = t.x2.toFloat() to t.y2.toFloat()
         val ev = if (fingers == 2) {

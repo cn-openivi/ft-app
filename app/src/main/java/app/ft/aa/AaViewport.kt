@@ -26,6 +26,7 @@ internal class AaTouchGestureViewport {
     private var active: AaViewport? = null
     private var targetWidth = 0
     private var targetHeight = 0
+    private var lastMapped: Pair<Int, Int>? = null
 
     fun map(
         action: Int, x: Int, y: Int,
@@ -36,7 +37,7 @@ internal class AaTouchGestureViewport {
             return null
         }
         if (action == 0) {
-            active = null
+            reset()
             if (viewport == null || !viewport.contains(x, y) || width <= 0 || height <= 0)
                 return null
             active = viewport.copy()
@@ -45,7 +46,8 @@ internal class AaTouchGestureViewport {
         }
         val captured = active ?: return null
         val mapped = captured.map(x, y, targetWidth, targetHeight)
-        if (action == 1) active = null
+        lastMapped = mapped
+        if (action == 1) reset()
         return mapped
     }
 
@@ -57,5 +59,15 @@ internal class AaTouchGestureViewport {
         return mapped
     }
 
-    fun reset() { active = null }
+    /** Route teardown sends CANCEL at the last accepted AA point, not an UP. */
+    fun cancelActive(): Pair<Int, Int>? {
+        val point = if (active == null) null else lastMapped
+        reset()
+        return point
+    }
+
+    fun reset() {
+        active = null
+        lastMapped = null
+    }
 }

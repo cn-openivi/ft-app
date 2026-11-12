@@ -86,6 +86,10 @@ class IccoaProjection(
     private val aaTouchGesture = AaTouchGestureViewport()
     private var mirrorTouchGestureMap: MirrorTouchMap? = null
     private var mirrorTouchGestureBounds: MirrorTouchBounds? = null
+    private fun cancelAaGestureOnRouteChange() {
+        val point = aaTouchGesture.cancelActive() ?: return
+        AaHeadUnitService.current?.sendTouch(point.first, point.second, CarTouch.CANCEL)
+    }
     private var active = false
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
@@ -212,7 +216,7 @@ class IccoaProjection(
         if (t.action == CarTouch.DOWN) touchFt = CarTouchZones.hit(mappedX, mappedY)
         if (touchFt) {
             if (t.action == CarTouch.DOWN) {
-                aaTouchGesture.reset()
+                cancelAaGestureOnRouteChange()
                 mirrorTouchGestureMap = null
                 mirrorTouchGestureBounds = null
                 mirrorTouches.reset()
@@ -472,7 +476,7 @@ class IccoaProjection(
 
     override fun startAa() = onMain {
         if (!active) return@onMain
-        aaTouchGesture.reset()
+        cancelAaGestureOnRouteChange()
         if (runCatching { context.packageManager.getPackageInfo(app.prefs.aaPackage, 0) }.isFailure) return@onMain
         hideMirror()
         if (app.prefs.aaMatchCar) {
@@ -491,6 +495,7 @@ class IccoaProjection(
             AaHeadUnitService.state.collect { aa ->
                 val connected = aa.connected
                 val changed = mutableState.value.aaOverlay != connected
+                if (changed && !connected) cancelAaGestureOnRouteChange()
                 mutableState.update { it.copy(aaOverlay = connected) }
                 if (changed) onAaConnectionChanged(connected)
             }
@@ -515,7 +520,7 @@ class IccoaProjection(
     }
 
     private fun stopAa() {
-        aaTouchGesture.reset()
+        cancelAaGestureOnRouteChange()
         aaJob?.cancel()
         aaJob = null
         aaStartJob?.cancel()
