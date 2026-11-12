@@ -582,6 +582,14 @@ private fun IccoaPictureSettings() {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    Text(
+        stringResource(R.string.picture_density_shared),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    IntSetting(stringResource(R.string.picture_density), prefs.carDensity) {
+        prefs.carDensity = it
+    }
     BoolSetting(
         stringResource(R.string.picture_save_power),
         prefs.encoderSavePower,
