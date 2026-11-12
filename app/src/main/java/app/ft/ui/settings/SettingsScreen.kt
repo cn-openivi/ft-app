@@ -87,6 +87,7 @@ import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
 import app.ft.iccoa.IccoaService
 import app.ft.projection.MirrorTouchCalibration
+import app.ft.projection.CarControls
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoPlan
 import app.ft.projection.VideoProfile
@@ -544,6 +545,52 @@ private val FLOOR_CHOICES = listOf(0 to "", 18 to "18", 22 to "22", 26 to "26")
 
 @Composable
 private fun PictureSettings() {
+    when (rememberCarProtocol()) {
+        CarProtocol.CARLIFE -> CarLifePictureSettings()
+        CarProtocol.ICCOA -> IccoaPictureSettings()
+    }
+}
+
+/**
+ * ICCOA negotiates its video size and frame rate with the receiver.
+ * CarLife's SIZE_BAIDU / FPS / bitrate / QP preferences never configure it.
+ * Only encoderSavePower is shared by the actual CarDisplay encoder.
+ */
+@Composable
+private fun IccoaPictureSettings() {
+    val prefs = FTApp.instance.prefs
+    val screen by CarControls.state.collectAsStateWithLifecycle()
+    Text(
+        stringResource(R.string.picture_iccoa_about),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    if (screen.phase == CarControls.Phase.PROJECTING) {
+        Text(
+            stringResource(R.string.picture_iccoa_live, screen.width, screen.height, screen.fps),
+            style = MaterialTheme.typography.bodyMedium
+        )
+    } else {
+        Text(
+            stringResource(R.string.picture_iccoa_disconnected),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+    Text(
+        stringResource(R.string.picture_iccoa_codec),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    BoolSetting(
+        stringResource(R.string.picture_save_power),
+        prefs.encoderSavePower,
+        stringResource(R.string.picture_save_power_body)
+    ) { prefs.encoderSavePower = it }
+}
+
+@Composable
+private fun CarLifePictureSettings() {
     val p = FTApp.instance.prefs
     var rev by remember { mutableIntStateOf(0) }
     var size by remember(rev) { mutableIntStateOf(p.videoSize) }
