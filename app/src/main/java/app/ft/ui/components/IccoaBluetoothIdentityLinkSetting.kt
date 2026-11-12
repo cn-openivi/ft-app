@@ -37,10 +37,10 @@ fun IccoaBluetoothIdentityLinkSetting() {
     val valid = IccoaBluetoothMacInfo.hashHuObservedPhoneMac(address) != null
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Text("ICCOA ↔ Bluetooth звонки (эксперимент)", style = MaterialTheme.typography.titleMedium)
+        Text("ICCOA ↔ Bluetooth: привязка звонков", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Toyota CarLink Control/22 связывает телефон ICCOA с MAC обычного Bluetooth. " +
-                "Функция выключена по умолчанию. Не гарантирует сохранение HFP.",
+            "Некоторые ГУ поддерживают привязку ICCOA к классическому Bluetooth. " +
+                "По умолчанию выключено. Поддержка ГУ и работа HFP не гарантированы.",
             style = MaterialTheme.typography.bodySmall
         )
         Text(
@@ -65,7 +65,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
             value = address,
             onValueChange = { address = it; confirmed = false; result = "" },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("MAC Samsung из списка устройств Toyota") },
+            label = { Text("Bluetooth MAC телефона из списка устройств ГУ") },
             placeholder = { Text("AA:BB:CC:DD:EE:FF") },
             singleLine = true,
             isError = address.isNotEmpty() && !valid
@@ -86,7 +86,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
                         confirmed = false
                         configured = store.configured()
                         enabled = store.enabled()
-                        result = "SHA-256 сохранён. Включите эксперимент отдельно."
+                        result = "SHA-256 сохранён. Передачу привязки включите отдельно."
                     } else result = "Недопустимый адрес или сбой сохранения"
                 }
             ) { Text("Сохранить") }
@@ -96,7 +96,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
                     configured = false
                     enabled = false
                     confirmed = false
-                    result = "Локальная настройка удалена; запись в Toyota не изменялась"
+                    result = "Локальная настройка удалена; запись на ГУ не изменялась"
                 } else result = "Не удалось удалить настройку"
             }) { Text("Забыть") }
         }
