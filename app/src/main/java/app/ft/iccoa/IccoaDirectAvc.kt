@@ -8,6 +8,16 @@ package app.ft.iccoa
 internal object IccoaDirectAvc {
     data class Sps(val width: Int, val height: Int, val profileIdc: Int, val levelIdc: Int)
 
+    /** Compatibility is scoped to the AVC raster already announced for THIS WFD PLAY. */
+    fun compatible(
+        sps: Sps?, streamWidth: Int, streamHeight: Int, fps: Int,
+        aaWidth: Int, aaHeight: Int
+    ): Boolean = sps != null &&
+        sps.width == streamWidth && sps.height == streamHeight &&
+        sps.profileIdc in setOf(66, 77, 100) && sps.levelIdc in 10..42 &&
+        fps in 1..30 && streamWidth in 320..1920 && streamHeight in 240..1080 &&
+        app.ft.aa.AaProtocol.standardSize(aaWidth, aaHeight) == (streamWidth to streamHeight)
+
     /** Inspect only NAL headers: copying full IDR frames here would defeat passthrough. */
     fun isIdr(accessUnit: ByteArray): Boolean {
         val b = accessUnit
