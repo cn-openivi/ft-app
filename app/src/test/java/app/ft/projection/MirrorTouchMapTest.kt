@@ -6,6 +6,13 @@ import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class MirrorTouchMapTest {
+    @Test fun normalizedCalibrationCoordinatesMapExactlyOnceToPhonePixels() {
+        assertEquals(0f to 0f, MirrorTouchMap.normalizedPhonePoint(0, 0, 2400, 1080))
+        assertEquals(1200f to 540f, MirrorTouchMap.normalizedPhonePoint(500, 500, 2400, 1080))
+        assertEquals(2397.6f, MirrorTouchMap.normalizedPhonePoint(999, 999, 2400, 1080)!!.first, 0.01f)
+        assertNull(MirrorTouchMap.normalizedPhonePoint(500, 500, 0, 1080))
+    }
+
     @Test fun portraitCenterAndCornersUseActualScaledOutput() {
         val map = MirrorTouchMap(2422, 1272, 586, 1272, 1080, 2340)
         val center = map.map(1211, 636)!!

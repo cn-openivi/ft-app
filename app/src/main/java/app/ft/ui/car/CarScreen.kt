@@ -124,6 +124,7 @@ import app.ft.media.MediaLibrary
 import app.ft.projection.CarTouchZones
 import app.ft.projection.CarTouchCalibration
 import app.ft.projection.MirrorSink
+import app.ft.projection.MirrorTouchViewport
 import app.ft.ui.theme.CarTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -817,6 +818,10 @@ private fun AaOverlay(aa: app.ft.aa.AaState, modifier: Modifier = Modifier) {
 @Composable
 private fun MirrorOverlay(corner: Int) {
     val frame by MirrorSink.frame.collectAsState()
+    // Dispose stale HU geometry when the mirror surface goes away or rotates.
+    DisposableEffect(frame.width, frame.height, frame.own) {
+        onDispose { MirrorTouchViewport.clear() }
+    }
     val touch by produceState(FTTouchService.enabled) {
         while (true) {
             value = FTTouchService.enabled
@@ -837,7 +842,17 @@ private fun MirrorOverlay(corner: Int) {
                         })
                     }
                 },
-                modifier = Modifier.aspectRatio(ratio)
+                modifier = Modifier.aspectRatio(ratio).onGloballyPositioned { coordinates ->
+                    // Exact rendered picture bounds on the FT virtual display.
+                    val r = coordinates.boundsInWindow()
+                    if (frame.width > 0 && frame.height > 0) {
+                        MirrorTouchViewport.update(
+                            r.left.roundToInt(), r.top.roundToInt(),
+                            r.right.roundToInt(), r.bottom.roundToInt(),
+                            frame.width, frame.height
+                        )
+                    }
+                }
             )
         }
         if (!touch) {

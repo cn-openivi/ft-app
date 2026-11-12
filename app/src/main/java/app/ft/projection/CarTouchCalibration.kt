@@ -124,6 +124,7 @@ internal object CarTouchCalibration {
 
     fun cancel() {
         points.clear()
+        swallowUntilUp = false
         _state.value = TouchCalibrationState()
     }
 
@@ -138,6 +139,10 @@ internal object CarTouchCalibration {
     /** Receive uncorrected incoming touches; preserve whole DOWN..UP gesture. */
     fun consume(context: Context, action: Int, x: Int, y: Int): Boolean {
         val c = _state.value
+        if (action == CarTouch.CANCEL) {
+            swallowUntilUp = false
+            return c.step in 1..4
+        }
         if (c.step !in 1..4) {
             if (!swallowUntilUp) return false
             if (action == CarTouch.UP) swallowUntilUp = false

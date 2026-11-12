@@ -32,6 +32,9 @@ import app.ft.projection.CarTouchZones
 import app.ft.projection.CarTouchCalibration
 import app.ft.projection.MirrorSink
 import app.ft.projection.MirrorTouchMap
+import app.ft.projection.MirrorTouchBounds
+import app.ft.projection.MirrorTouchViewport
+import app.ft.projection.MirrorTouchCalibration
 import app.ft.projection.MirrorTouchSequence
 import app.ft.projection.PhoneMirror
 import app.ft.projection.VideoPlan
@@ -82,6 +85,7 @@ class IccoaProjection(
     private val mirrorTouches = MirrorTouchSequence()
     private val aaTouchGesture = AaTouchGestureViewport()
     private var mirrorTouchGestureMap: MirrorTouchMap? = null
+    private var mirrorTouchGestureBounds: MirrorTouchBounds? = null
     private var active = false
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
@@ -210,7 +214,9 @@ class IccoaProjection(
             if (t.action == CarTouch.DOWN) {
                 aaTouchGesture.reset()
                 mirrorTouchGestureMap = null
+                mirrorTouchGestureBounds = null
                 mirrorTouches.reset()
+                FTTouchService.instance?.cancelStroke()
                 DiagLog.i("ICCOA", "touch route=FT content=$mappedX,$mappedY")
             }
             display.dispatchTouch(t)
@@ -235,9 +241,15 @@ class IccoaProjection(
             state.value.mirroring -> {
                 if (!mirror.active || t.action !in 0..CarTouch.CANCEL) return@onMain
                 if (t.action == CarTouch.CANCEL) {
-                    // An interrupted gesture must not complete as an Accessibility tap.
+                    // Never turn a transport disconnect into a click.
+                    mirrorTouchGestureBounds?.let { bounds ->
+                        MirrorTouchCalibration.consume(context, t.action, mappedX, mappedY,
+                            bounds, display.width, display.height)
+                    }
                     mirrorTouches.reset()
+                    FTTouchService.instance?.cancelStroke()
                     mirrorTouchGestureMap = null
+                    mirrorTouchGestureBounds = null
                     touchBeside = false
                     return@onMain
                 }
@@ -248,10 +260,32 @@ class IccoaProjection(
                         display.width, display.height, frame.width, frame.height,
                         mirror.width, mirror.height
                     )
+                    mirrorTouchGestureBounds = MirrorTouchViewport.current(frame)
                 }
-                // Preserve the geometry captured at DOWN across phone rotation/resize.
+                // Freeze both dimensions and measured picture bounds at DOWN. One shared
+                // HU calibration is already applied above; mirror quad correction is once only.
                 val viewport = mirrorTouchGestureMap ?: return@onMain
-                val mapped = viewport.map(mappedX, mappedY, clipToBounds = t.action != CarTouch.DOWN)
+                val bounds = mirrorTouchGestureBounds
+                if (bounds != null && MirrorTouchCalibration.consume(context, t.action,
+                        mappedX, mappedY, bounds, display.width, display.height)) {
+                    if (t.action == CarTouch.UP) {
+                        mirrorTouches.reset()
+                        mirrorTouchGestureMap = null
+                        mirrorTouchGestureBounds = null
+                    }
+                    return@onMain
+                }
+                val mapped = if (bounds == null) {
+                    // Layout not measured yet: preserve previously working letterbox mapping.
+                    viewport.map(mappedX, mappedY, clipToBounds = t.action != CarTouch.DOWN)
+                } else if (t.action == CarTouch.DOWN && !bounds.inside(mappedX, mappedY)) {
+                    null
+                } else {
+                    val corrected = MirrorTouchCalibration.map(context, bounds, mappedX, mappedY,
+                        display.width, display.height)
+                    MirrorTouchMap.normalizedPhonePoint(corrected.first, corrected.second,
+                        viewport.phoneWidth, viewport.phoneHeight)
+                }
                 if (t.action == CarTouch.DOWN) {
                     mirrorTouches.reset()
                     touchBeside = mapped == null
@@ -267,6 +301,7 @@ class IccoaProjection(
                 }
                 if (t.action == CarTouch.UP) {
                     mirrorTouchGestureMap = null
+                    mirrorTouchGestureBounds = null
                     touchBeside = false
                 }
             }
@@ -422,7 +457,11 @@ class IccoaProjection(
     override fun stopMirror() = onMain { hideMirror() }
     private fun hideMirror() {
         mirrorTouches.reset()
+        FTTouchService.instance?.cancelStroke()
         mirrorTouchGestureMap = null
+        mirrorTouchGestureBounds = null
+        touchBeside = false
+        MirrorTouchViewport.clear()
         pendingLaunch = null
         mirrorJob?.cancel()
         mirrorJob = null

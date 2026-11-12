@@ -20,6 +20,17 @@ internal data class MirrorTouchMap(
     val valid: Boolean get() = carWidth > 0 && carHeight > 0 &&
         outputWidth > 0 && outputHeight > 0 && phoneWidth > 0 && phoneHeight > 0
 
+    companion object {
+        /** Inverse of MirrorTouchBounds.normalized: corrected 0..999 units -> phone pixels. */
+        fun normalizedPhonePoint(nx: Int, ny: Int, phoneWidth: Int, phoneHeight: Int): Pair<Float, Float>? {
+            if (phoneWidth <= 0 || phoneHeight <= 0) return null
+            return (nx.toLong().coerceIn(0, 999) * phoneWidth / 1000f)
+                .coerceIn(0f, (phoneWidth - 1).toFloat()) to
+                (ny.toLong().coerceIn(0, 999) * phoneHeight / 1000f)
+                    .coerceIn(0f, (phoneHeight - 1).toFloat())
+        }
+    }
+
     fun map(x: Int, y: Int, clipToBounds: Boolean = false): Pair<Float, Float>? {
         if (!valid) return null
         val scale = min(carWidth.toDouble() / outputWidth, carHeight.toDouble() / outputHeight)

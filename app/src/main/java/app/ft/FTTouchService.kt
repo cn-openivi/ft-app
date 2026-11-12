@@ -85,6 +85,9 @@ class FTTouchService : AccessibilityService() {
         }
     }
 
+    /** Best-effort local abandon: do not issue an Android UP or an accidental tap. */
+    fun cancelStroke() { stroke = null }
+
     private fun dispatch(s: GestureDescription.StrokeDescription) {
         val ok = runCatching {
             val b = GestureDescription.Builder().addStroke(s)

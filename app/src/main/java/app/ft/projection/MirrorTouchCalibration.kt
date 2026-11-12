@@ -57,6 +57,7 @@ internal object MirrorTouchCalibration {
 
     fun cancel() {
         taps.clear()
+        swallowUp = false
         _state.value = MirrorCalibrationState()
     }
 
@@ -73,6 +74,10 @@ internal object MirrorTouchCalibration {
     fun consume(context: Context, action: Int, x: Int, y: Int, bounds: MirrorTouchBounds,
                 carWidth: Int, carHeight: Int): Boolean {
         val st = _state.value
+        if (action == CarTouch.CANCEL) {
+            swallowUp = false
+            return st.step in 1..4
+        }
         if (st.step !in 1..4) {
             if (!swallowUp) return false
             if (action == CarTouch.UP) swallowUp = false
