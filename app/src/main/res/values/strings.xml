@@ -19,7 +19,7 @@
     <string name="settings_aa_title">Android Auto</string>
     <string name="settings_aa_about">How Android Auto is drawn on the car</string>
     <string name="settings_advanced_title">Advanced</string>
-    <string name="settings_advanced_about">CarLife ports the head unit connects to</string>
+    <string name="settings_advanced_about">Diagnostics and selected-protocol network channels</string>
     <string name="look_language">Language</string>
     <string name="look_language_system">Same as the phone</string>
     <string name="look_theme">Look</string>
@@ -77,6 +77,13 @@
     <string name="state_ready">Ready</string>
     <string name="state_checking">Checking</string>
     <string name="choice_auto">Auto</string>
+    <string name="adv_network_details_show">Network channels (%1$s)</string>
+    <string name="adv_network_details_hide">Hide network channels (%1$s)</string>
+    <string name="adv_network_source_note">Configured transport channels, not proof of live socket connectivity.</string>
+    <string name="adv_carlife_channel_map">CarLife TCP: command %1$d, video %2$d, media %3$d, TTS %4$d, voice %5$d, touch %6$d.</string>
+    <string name="adv_carlife_edit_ports">Edit CarLife TCP ports (advanced)</string>
+    <string name="adv_carlife_hide_edit">Hide CarLife port editor</string>
+    <string name="adv_iccoa_channel_map">ICCOA source configuration: control 57219, audio 57229, sensor 57239, other lanes 57249/57259, RTSP 7236, UIBC 4321. The receiver negotiates the RTP destination port.</string>
     <string name="adv_ports">Ports the head unit connects to</string>
     <string name="adv_command">Command</string>
     <string name="adv_video">Video</string>
