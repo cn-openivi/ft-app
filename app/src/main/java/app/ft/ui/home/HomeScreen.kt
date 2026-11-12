@@ -209,7 +209,7 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
         if (iccoa && projecting && !screenState.aaOverlay && !screenState.mirroring) item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Калибровка экрана Toyota", style = MaterialTheme.typography.titleMedium)
+                    Text("Калибровка экрана автомобиля", style = MaterialTheme.typography.titleMedium)
                     Text(if (touchCalibration.step > 0)
                         "На экране автомобиля нажмите точно в центр зелёного круга. Точка ${touchCalibration.step} из 4."
                         else "Запуск с телефона: четыре точки откалибруют горизонтальные и вертикальные касания.")
@@ -231,8 +231,10 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                     Text("Android разрешает FT захватывать мультимедиа, но не отдельные " +
                         "подсказки NAVIGATION_GUIDANCE. Видео зеркалируется, звук подсказок " +
                         "нужно направить на Bluetooth автомобиля через настройки телефона.")
-                    Text("Samsung: Звуки и вибрация → Раздельный вывод звука → " +
-                        "Яндекс Навигатор → Bluetooth автомобиля. Проверьте голос подсказки.")
+                    Text("Если телефон поддерживает раздельный вывод звука приложений, " +
+                        "направьте подсказки навигатора на Bluetooth автомобиля. " +
+                        "Название и доступность настройки зависят от производителя телефона. " +
+                        "Проверьте голос подсказки.")
                     TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS)) }
                     }) { Text("Открыть настройки звука") }
