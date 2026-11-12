@@ -124,7 +124,7 @@
     <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
     <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>
     <string name="picture_iccoa_video_mode_direct">Direct H.264 (trial)</string>
-    <string name="picture_iccoa_video_mode_info">Direct mode is tested only for full-screen Android Auto with compatible H.264. FT returns to normal video if the stream is incompatible or interrupted. The change takes effect the next time ICCOA reconnects.</string>
+    <string name="picture_iccoa_video_mode_info">Direct mode is tested only for full-screen Android Auto with compatible H.264. FT returns to normal video if the stream is incompatible or interrupted. Switching back to Normal takes effect immediately. Direct mode starts on the next ICCOA connection.</string>
     <string name="picture_iccoa_about">ICCOA: the head unit negotiates resolution and frame rate. CarLife video stream settings do not apply here.</string>
     <string name="picture_iccoa_live">ICCOA video stream: %1$d × %2$d, %3$d fps.</string>
     <string name="picture_iccoa_disconnected">ICCOA video is not streaming yet.</string>
