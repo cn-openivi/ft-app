@@ -116,7 +116,7 @@
     <string name="picture_iccoa_video_mode_title">Режим передачи видео ICCOA</string>
     <string name="picture_iccoa_video_mode_normal">Обычный (перекодирование FT)</string>
     <string name="picture_iccoa_video_mode_direct">Прямой H.264 (тестовый)</string>
-    <string name="picture_iccoa_video_mode_info">Прямой режим предназначен только для полноэкранного Android Auto при совместимом H.264. При несовместимости или сбое FT возвращается к обычному видео. Настройка применяется после нового подключения ICCOA.</string>
+    <string name="picture_iccoa_video_mode_info">Прямой режим предназначен только для полноэкранного Android Auto при совместимом H.264. При несовместимости или сбое FT возвращается к обычному видео. Возврат к обычному видео выполняется сразу, а прямой режим включается при следующем подключении ICCOA.</string>
     <string name="picture_iccoa_about">ICCOA: разрешение и частоту кадров согласует головное устройство. Настройки видеопотока CarLife здесь не применяются.</string>
     <string name="picture_iccoa_live">Текущий видеопоток ICCOA: %1$d × %2$d, %3$d кадр/с.</string>
     <string name="picture_iccoa_disconnected">Видеопоток ICCOA пока не запущен.</string>
