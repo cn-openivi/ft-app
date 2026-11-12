@@ -103,6 +103,7 @@ class IccoaService : Service() {
     @Volatile private var media: IccoaMediaTransport? = null
     private var projection: IccoaProjection? = null
     private var directVideo: IccoaDirectVideo? = null
+    private var connectionVideoMode = 0
     private var microphone: IccoaMicrophone? = null
     private var microphoneHook: ((Boolean) -> Unit)? = null
     private var navigationHook: ((NavigationInfo) -> Unit)? = null
@@ -494,6 +495,7 @@ class IccoaService : Service() {
                             connectionFailed(reason, retryableTransportFailure = true)
                         } })
                     transport.start()
+                    connectionVideoMode = FTApp.instance.prefs.iccoaVideoMode
                     media = transport
                 }
                 current {
@@ -565,7 +567,8 @@ class IccoaService : Service() {
         val output = media ?: return
         // Read once for this connection. Preference changes apply on the next
         // car reconnect, never in the middle of an agreed RTSP/WFD session.
-        if (directVideo == null && FTApp.instance.prefs.iccoaVideoMode == 1) {
+        directVideo?.videoPlanChanged(plan)
+        if (directVideo == null && connectionVideoMode == 1) {
             val prefs = FTApp.instance.prefs
             val (aaWidth, aaHeight) = if (prefs.aaMatchCar)
                 IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
@@ -687,6 +690,7 @@ class IccoaService : Service() {
     private fun endConnection() {
         directVideo?.close()
         directVideo = null
+        connectionVideoMode = 0
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(audioStateRetry)
         main.removeCallbacks(requestConfig)
