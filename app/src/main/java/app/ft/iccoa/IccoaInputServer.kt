@@ -99,14 +99,14 @@ internal object IccoaInputReader {
     }
 }
 
-/** A complete UIBC lane can close independently; release held fingers before reconnecting. */
+/** On UIBC close cancel held fingers; never synthesize a successful tap/UP. */
 internal class IccoaInputGesture(private val release: () -> Unit = {}) {
     private var active = false
     fun accept(action: Int) {
         when (action and 255) {
             0 -> active = true
-            1 -> active = false
-            // CANCEL is not consistently supported by the projection backends yet.
+            1, 3 -> active = false
+            // POINTER_DOWN/UP do not terminate the primary finger's gesture.
         }
     }
     fun finish() {

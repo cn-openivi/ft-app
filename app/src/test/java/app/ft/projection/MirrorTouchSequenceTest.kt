@@ -25,6 +25,18 @@ class MirrorTouchSequenceTest {
             seq.accept(CarTouch.UP, 150f, 220f, 110).map { it.action })
     }
 
+    @Test fun cancelNeverCommitsTapOrRelease() {
+        val seq = MirrorTouchSequence()
+        seq.accept(CarTouch.DOWN, 100f, 200f, 1000)
+        assertTrue(seq.accept(CarTouch.CANCEL, 100f, 200f, 1010).isEmpty())
+        assertTrue(seq.accept(CarTouch.UP, 100f, 200f, 1050).isEmpty())
+        seq.accept(CarTouch.DOWN, 100f, 200f, 1100)
+        assertEquals(listOf(CarTouch.DOWN, CarTouch.MOVE),
+            seq.accept(CarTouch.MOVE, 160f, 210f, 1120).map { it.action })
+        assertTrue(seq.accept(CarTouch.CANCEL, 160f, 210f, 1130).isEmpty())
+        assertTrue(seq.accept(CarTouch.UP, 160f, 210f, 1150).isEmpty())
+    }
+
     @Test fun releaseWithoutDownAndResetRemainSafe() {
         val seq = MirrorTouchSequence()
         assertTrue(seq.accept(CarTouch.UP, 1f, 1f, 100).isEmpty())

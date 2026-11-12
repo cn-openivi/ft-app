@@ -39,6 +39,11 @@ internal class MirrorTouchSequence {
                 listOf(start, Command(CarTouch.MOVE, x, y))
             } else if (dragging) listOf(Command(CarTouch.MOVE, x, y)) else emptyList()
         }
+        CarTouch.CANCEL -> {
+            // No atomic tap and no synthetic UP from an interrupted mirror gesture.
+            reset()
+            emptyList()
+        }
         CarTouch.UP -> {
             val start = origin
             val wasDragging = dragging

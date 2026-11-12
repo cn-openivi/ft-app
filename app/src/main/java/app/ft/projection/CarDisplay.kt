@@ -209,8 +209,9 @@ class CarDisplay(private val context: Context) {
         main.removeCallbacks(flushMove)
         main.post {
             // A fast finger release may arrive before the coalesced MOVE runs.
-            // Do not discard that MOVE: sliders and swipes need it before UP.
-            if (t.action == CarTouch.UP || t.action == CarTouch.POINTER_UP) {
+            // Preserve ordered MOVE before UP and before a new finger joins.
+            // CANCEL intentionally discards pending movement (not a committed gesture).
+            if (t.action == CarTouch.UP || t.action == CarTouch.POINTER_UP || t.action == CarTouch.POINTER_DOWN) {
                 finalMove?.let { deliver(it) }
             }
             deliver(t)
@@ -227,6 +228,7 @@ class CarDisplay(private val context: Context) {
                 firstId = 0
                 second = null
             }
+            CarTouch.CANCEL -> if (downTime == 0L) return
             CarTouch.POINTER_DOWN -> if (fingers == 1) {
                 fingers = 2
                 second = (if (t.x2 >= 0) t.x2 else t.x).toFloat() to (if (t.y2 >= 0) t.y2 else t.y).toFloat()
@@ -242,6 +244,7 @@ class CarDisplay(private val context: Context) {
             val action = when (t.action) {
                 CarTouch.POINTER_DOWN -> MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
                 CarTouch.POINTER_UP -> MotionEvent.ACTION_POINTER_UP or (t.index.coerceIn(0, 1) shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+                CarTouch.CANCEL -> MotionEvent.ACTION_CANCEL
                 CarTouch.UP -> MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
                 else -> MotionEvent.ACTION_MOVE
             }
@@ -250,6 +253,7 @@ class CarDisplay(private val context: Context) {
             val action = when (t.action) {
                 CarTouch.DOWN -> MotionEvent.ACTION_DOWN
                 CarTouch.UP -> MotionEvent.ACTION_UP
+                CarTouch.CANCEL -> MotionEvent.ACTION_CANCEL
                 else -> MotionEvent.ACTION_MOVE
             }
             val x = t.x.toFloat()
@@ -270,6 +274,14 @@ class CarDisplay(private val context: Context) {
                 if (t.index == 0) firstId = 1
                 fingers = 1
                 second = null
+            }
+            CarTouch.CANCEL -> {
+                downTime = 0L
+                fingers = 0
+                second = null
+                firstId = 0
+                lastX = Float.NaN
+                lastY = Float.NaN
             }
             CarTouch.UP -> if (fingers == 2) {
                 fingers = 1

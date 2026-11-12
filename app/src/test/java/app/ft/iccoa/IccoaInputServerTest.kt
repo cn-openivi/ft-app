@@ -109,10 +109,14 @@ class IccoaInputServerTest {
         var releases = 0
         val gesture = IccoaInputGesture { releases++ }
         gesture.accept(0)
-        for (action in listOf(2, 5 or (1 shl 8), 6 or (1 shl 8), 3)) {
+        for (action in listOf(2, 5 or (1 shl 8), 6 or (1 shl 8))) {
             gesture.accept(action)
         }
         gesture.finish()
+        gesture.finish()
+        assertEquals(1, releases)
+        gesture.accept(0)
+        gesture.accept(3) // An explicit CANCEL completes the gesture; EOF must not emit UP.
         gesture.finish()
         assertEquals(1, releases)
         gesture.accept(0)

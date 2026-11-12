@@ -206,8 +206,8 @@ internal class IccoaMediaTransport(
         socket.soTimeout = 0
         var lastTouch: CarTouch? = null
         val gesture = IccoaInputGesture {
-            lastTouch?.let { onTouch(it.copy(action = CarTouch.UP)) }
-            DiagLog.i("ICCOA", "UIBC clean-eof; released active gesture")
+            lastTouch?.let { onTouch(it.copy(action = CarTouch.CANCEL)) }
+            DiagLog.i("ICCOA", "UIBC closed; cancelled active gesture without synthetic UP")
         }
         val json = IccoaInputJson { event ->
             if (event.optInt("type") == 1) {
@@ -228,8 +228,12 @@ internal class IccoaMediaTransport(
                 onKey(event.optInt("keycode"))
             }
         }
-        IccoaInputReader.read(socket.getInputStream(), decryptInput, json) { DiagLog.i("ICCOA", it) }
-        gesture.finish()
+        try {
+            IccoaInputReader.read(socket.getInputStream(), decryptInput, json) { DiagLog.i("ICCOA", it) }
+        } finally {
+            // Also cancel after a truncated packet, decrypt error or transport reset.
+            gesture.finish()
+        }
     }
 
     private fun fail(reason: String) { if (!closed.get()) onClosed(reason) }
