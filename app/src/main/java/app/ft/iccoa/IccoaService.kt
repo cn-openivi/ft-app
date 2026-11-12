@@ -789,6 +789,10 @@ class IccoaService : Service() {
         fun resetTouchCalibration() { if (_state.value.connected) instance?.projection?.resetTouchCalibration() }
         fun calibrateMirrorTouch() { if (_state.value.connected) instance?.projection?.startMirrorTouchCalibration() }
         fun resetMirrorTouchCalibration() { if (_state.value.connected) instance?.projection?.resetMirrorTouchCalibration() }
+        /** Safety control usable on the phone even when the HU cannot display direct H.264. */
+        fun restoreNormalVideo() {
+            instance?.let { service -> service.main.post { service.directVideo?.restoreNormalByUser() } }
+        }
         fun stop(context: Context) { if (instance != null) send(context, STOP) }
         private fun send(context: Context, action: String, address: String? = null, pin: String? = null) {
             val intent = Intent(context, IccoaService::class.java).setAction(action)
