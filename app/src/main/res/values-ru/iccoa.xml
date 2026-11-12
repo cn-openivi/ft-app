@@ -2,10 +2,10 @@
 <resources>
     <string name="car_protocol">Транспорт подключения</string>
     <string name="car_protocol_about">Выберите систему подключения, указанную на экране автомобиля. Если FT включён, смена транспорта перезапустит подключение.</string>
-    <string name="iccoa_title">ICCOA Carlink (экспериментальный)</string>
+    <string name="iccoa_title">ICCOA Carlink</string>
     <string name="iccoa_home_setup">Откройте ICCOA Carlink на экране автомобиля, затем выберите свой автомобиль ниже.</string>
     <string name="iccoa_settings_about">Беспроводное подключение через Bluetooth и Wi-Fi. Найти автомобиль и ввести его код можно на вкладке «Главная».</string>
-    <string name="iccoa_experimental">Экспериментальная беспроводная проекция</string>
+    <string name="iccoa_experimental">Беспроводная проекция через ICCOA</string>
     <string name="iccoa_experimental_body">Откройте ICCOA Carlink на экране автомобиля, затем подключитесь к нему из списка ниже. Включите Bluetooth, Wi-Fi и геолокацию. Android может запросить подключение к Wi-Fi автомобиля.</string>
     <string name="iccoa_ready">Готово к подключению</string>
     <string name="iccoa_scanning">Поиск автомобиля — до 60 секунд</string>
