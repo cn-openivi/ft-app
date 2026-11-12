@@ -111,7 +111,7 @@
     <string name="guidance_like_baidu">Separate voice channel</string>
     <string name="guidance_like_baidu_body">With CarLife, directions are sent over a separate TTS channel. The head unit controls how music is ducked.</string>
     <string name="guidance_iccoa_title">Navigation audio over ICCOA</string>
-    <string name="guidance_iccoa_body">ICCOA streams capturable audio using the projection's shared audio channel. CarLife's separate TTS channel and mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
+    <string name="guidance_iccoa_body">ICCOA streams capturable audio through a shared projection audio channel. The separate CarLife TTS channel and its mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
     <string name="guidance_in_step">In step</string>
     <string name="guidance_in_step_body">FT mixes directions into the music and dips the music exactly while they speak. On drives where the car holds the music longer, directions wait for it.</string>
     <string name="guidance_on_time">On time</string>
