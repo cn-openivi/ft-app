@@ -201,6 +201,30 @@ class IccoaProjection(
         if (!active) return@onMain
         CarTouchCalibration.reset(context, display.width, display.height)
     }
+
+    /** Start a four-target mirror calibration from the PHONE, not the misaligned HU. */
+    fun startMirrorTouchCalibration() = onMain {
+        val bounds = MirrorTouchViewport.current(MirrorSink.frame.value)
+        if (!active || !state.value.mirroring || !mirror.active || bounds == null) {
+            DiagLog.w("Mirror", "mirror calibration requires a visible measured phone picture")
+            return@onMain
+        }
+        mirrorTouches.reset()
+        FTTouchService.instance?.cancelStroke()
+        MirrorTouchCalibration.begin(bounds)
+        DiagLog.i("Mirror", "four-point calibration started orientation=${if (bounds.portrait) "portrait" else "landscape"}")
+    }
+
+    fun resetMirrorTouchCalibration() = onMain {
+        val bounds = MirrorTouchViewport.current(MirrorSink.frame.value)
+        if (!active || !state.value.mirroring || bounds == null) {
+            DiagLog.w("Mirror", "mirror calibration reset requires an active measured picture")
+            return@onMain
+        }
+        mirrorTouches.reset()
+        FTTouchService.instance?.cancelStroke()
+        MirrorTouchCalibration.reset(context, bounds, display.width, display.height)
+    }
     fun touch(action: Int, x: Int, y: Int) = touch(CarTouch(action, x, y))
     fun touch(raw: CarTouch) = onMain {
         if (!active) return@onMain
@@ -469,6 +493,7 @@ class IccoaProjection(
 
     override fun stopMirror() = onMain { hideMirror() }
     private fun hideMirror() {
+        MirrorTouchCalibration.cancel()
         mirrorTouches.reset()
         FTTouchService.instance?.cancelStroke()
         mirrorTouchGestureMap = null

@@ -125,6 +125,7 @@ import app.ft.projection.CarTouchZones
 import app.ft.projection.CarTouchCalibration
 import app.ft.projection.MirrorSink
 import app.ft.projection.MirrorTouchViewport
+import app.ft.projection.MirrorTouchCalibration
 import app.ft.ui.theme.CarTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -818,6 +819,7 @@ private fun AaOverlay(aa: app.ft.aa.AaState, modifier: Modifier = Modifier) {
 @Composable
 private fun MirrorOverlay(corner: Int) {
     val frame by MirrorSink.frame.collectAsState()
+    val mirrorCalibration by MirrorTouchCalibration.state.collectAsState()
     // Dispose stale HU geometry when the mirror surface goes away or rotates.
     DisposableEffect(frame.width, frame.height, frame.own) {
         onDispose { MirrorTouchViewport.clear() }
@@ -854,6 +856,24 @@ private fun MirrorOverlay(corner: Int) {
                     }
                 }
             )
+        }
+        if (mirrorCalibration.step in 1..4) {
+            val bounds = MirrorTouchViewport.current(frame)
+            if (bounds != null) {
+                val targetX = if (mirrorCalibration.step == 1 || mirrorCalibration.step == 3) 0.15f else 0.85f
+                val targetY = if (mirrorCalibration.step <= 2) 0.15f else 0.85f
+                Canvas(Modifier.fillMaxSize()) {
+                    drawCircle(
+                        color = Color(0xFF53E5BB),
+                        radius = 22.dp.toPx(),
+                        center = Offset(bounds.left + bounds.width * targetX,
+                            bounds.top + bounds.height * targetY)
+                    )
+                }
+                Text("Зеркало: касание ${mirrorCalibration.step}/4",
+                    color = Color.White,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 36.dp))
+            }
         }
         if (!touch) {
             Surface(

@@ -83,6 +83,8 @@ import app.ft.core.CarProtocol
 import app.ft.ui.components.CarProtocolSetting
 import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
+import app.ft.iccoa.IccoaService
+import app.ft.projection.MirrorTouchCalibration
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoPlan
 import app.ft.projection.VideoProfile
@@ -256,6 +258,21 @@ private fun PageContent(page: SettingsPage) {
                 Text(stringResource(R.string.iccoa_settings_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BluetoothCallsSetting()
                 IccoaBluetoothIdentityLinkSetting()
+                val iccoa by IccoaService.state.collectAsStateWithLifecycle()
+                val mirrorCalibration by MirrorTouchCalibration.state.collectAsStateWithLifecycle()
+                Text("Зеркалирование: калибровка касаний Toyota", style = MaterialTheme.typography.titleMedium)
+                Text("Сначала откройте зеркалирование телефона на ГУ. Запустите четыре точки отсюда, " +
+                    "затем последовательно коснитесь кружков на экране автомобиля. " +
+                    "Профили портрет/альбом сохраняются раздельно.",
+                    style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { IccoaService.calibrateMirrorTouch() },
+                        enabled = iccoa.connected) {
+                        Text(if (mirrorCalibration.step in 1..4) "Калибровка ${mirrorCalibration.step}/4" else "4 точки")
+                    }
+                    OutlinedButton(onClick = { IccoaService.resetMirrorTouchCalibration() },
+                        enabled = iccoa.connected) { Text("Сброс") }
+                }
                 IccoaMicrophoneGainSetting(p.iccoaMicGain) { p.iccoaMicGain = it }
                 BoolSetting(
                     stringResource(R.string.iccoa_sensor_refresh),

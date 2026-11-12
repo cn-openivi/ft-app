@@ -763,6 +763,8 @@ class IccoaService : Service() {
         fun disconnect(context: Context) = send(context, DISCONNECT)
         fun calibrateTouch() { if (_state.value.connected) instance?.projection?.startTouchCalibration() }
         fun resetTouchCalibration() { if (_state.value.connected) instance?.projection?.resetTouchCalibration() }
+        fun calibrateMirrorTouch() { if (_state.value.connected) instance?.projection?.startMirrorTouchCalibration() }
+        fun resetMirrorTouchCalibration() { if (_state.value.connected) instance?.projection?.resetMirrorTouchCalibration() }
         fun stop(context: Context) { if (instance != null) send(context, STOP) }
         private fun send(context: Context, action: String, address: String? = null, pin: String? = null) {
             val intent = Intent(context, IccoaService::class.java).setAction(action)
