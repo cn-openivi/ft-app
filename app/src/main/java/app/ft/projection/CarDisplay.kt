@@ -179,21 +179,12 @@ class CarDisplay(private val context: Context) {
         }
     }
 
-    fun toContent(x: Int, y: Int): Pair<Int, Int> {
-        val sw = streamWidth.coerceAtLeast(1)
-        val sh = streamHeight.coerceAtLeast(1)
-        if (sw == width && sh == height) return x to y
-        if (video?.preserveAspect == true) {
-            val scale = minOf(sw.toDouble() / width, sh.toDouble() / height)
-            val visibleW = width * scale
-            val visibleH = height * scale
-            val left = (sw - visibleW) / 2.0
-            val top = (sh - visibleH) / 2.0
-            return ((x - left) / scale).toInt().coerceIn(0, width - 1) to
-                ((y - top) / scale).toInt().coerceIn(0, height - 1)
-        }
-        return (x.toLong() * width / sw).toInt() to (y.toLong() * height / sh).toInt()
-    }
+    fun toContent(x: Int, y: Int): Pair<Int, Int> =
+        TouchVideoGeometry(
+            width.coerceAtLeast(1), height.coerceAtLeast(1),
+            streamWidth.coerceAtLeast(1), streamHeight.coerceAtLeast(1),
+            video?.preserveAspect == true
+        ).toContent(x, y)
 
     fun dispatchTouch(t: CarTouch) {
         if (t.action == CarTouch.MOVE) {

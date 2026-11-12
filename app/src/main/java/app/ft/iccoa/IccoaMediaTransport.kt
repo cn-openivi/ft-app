@@ -214,10 +214,20 @@ internal class IccoaMediaTransport(
                 val video = videoConfig ?: return@IccoaInputJson
                 val nativeTouch = IccoaInputEvent.touch(event, video) ?: return@IccoaInputJson
                 val plan = IccoaVideoPlan.from(video)
-                fun sx(x: Int) = if (x < 0) -1 else (x.toLong() * plan.streamWidth / video.width).toInt()
-                fun sy(y: Int) = if (y < 0) -1 else (y.toLong() * plan.streamHeight / video.height).toInt()
-                val touch = nativeTouch.copy(x = sx(nativeTouch.x), y = sy(nativeTouch.y),
-                    x2 = sx(nativeTouch.x2), y2 = sy(nativeTouch.y2))
+                // Match FrameGate's actual letterbox (rather than stretching X/Y).
+                // CarDisplay uses the exact inverse of this same geometry.
+                val geometry = app.ft.projection.TouchVideoGeometry(
+                    plan.contentWidth, plan.contentHeight, plan.streamWidth, plan.streamHeight,
+                    plan.preserveAspect
+                )
+                fun toStream(x: Int, y: Int): Pair<Int, Int> = if (x < 0 || y < 0) -1 to -1
+                else geometry.toStream(
+                    (x.toLong() * plan.contentWidth / video.width).toInt(),
+                    (y.toLong() * plan.contentHeight / video.height).toInt()
+                )
+                val (x, y) = toStream(nativeTouch.x, nativeTouch.y)
+                val (x2, y2) = toStream(nativeTouch.x2, nativeTouch.y2)
+                val touch = nativeTouch.copy(x = x, y = y, x2 = x2, y2 = y2)
                 if (touch.action != CarTouch.MOVE) DiagLog.i("ICCOA",
                     "UIBC touch action=${touch.action} x=${touch.x} y=${touch.y} dst=${video.width}x${video.height}" +
                         " source=${event.optInt("width")}x${event.optInt("height")} raw=${event.optDouble("x0")},${event.optDouble("y0")}")
