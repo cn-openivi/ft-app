@@ -109,7 +109,7 @@
     <string name="sound_silence_phone">Silence the phone while FT streams the sound</string>
     <string name="guidance_title">Directions over music</string>
     <string name="guidance_like_baidu">Separate voice channel</string>
-    <string name="guidance_like_baidu_body">For Baidu CarLife, directions are sent over a separate TTS channel. The head unit controls how music is ducked.</string>
+    <string name="guidance_like_baidu_body">With CarLife, directions are sent over a separate TTS channel. The head unit controls how music is ducked.</string>
     <string name="guidance_iccoa_title">Navigation audio over ICCOA</string>
     <string name="guidance_iccoa_body">ICCOA streams capturable audio using the projection's shared audio channel. CarLife's separate TTS channel and mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
     <string name="guidance_in_step">In step</string>
