@@ -572,6 +572,7 @@ private fun IccoaPictureSettings() {
     ) { mode ->
         selectedMode = mode.coerceIn(0, 1)
         prefs.iccoaVideoMode = selectedMode
+        if (selectedMode == 0) IccoaService.restoreNormalVideo()
     }
     Text(
         stringResource(R.string.picture_iccoa_about),
