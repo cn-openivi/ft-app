@@ -74,6 +74,17 @@ class IccoaDirectAvcTest {
         assertTrue(IccoaDirectAvc.isIdr(byteArrayOf(0, 0, 0, 2, 0x65, 0x11)))
     }
 
+    @Test fun onlyMatchingWfdAvcGeometryAndSafeLevelQualifyForDirectMode() {
+        val good = IccoaDirectAvc.Sps(1920, 1080, 66, 40)
+        assertTrue(IccoaDirectAvc.compatible(good, 1920, 1080, 30, 1920, 1008))
+        assertFalse(IccoaDirectAvc.compatible(good, 1280, 720, 30, 1280, 720))
+        assertFalse(IccoaDirectAvc.compatible(good, 1920, 1080, 60, 1920, 1008))
+        assertFalse(IccoaDirectAvc.compatible(good.copy(levelIdc = 51), 1920, 1080, 30, 1920, 1008))
+        assertFalse(IccoaDirectAvc.compatible(good.copy(profileIdc = 110), 1920, 1080, 30, 1920, 1008))
+        assertFalse(IccoaDirectAvc.compatible(null, 1920, 1080, 30, 1920, 1008))
+        assertFalse(IccoaDirectAvc.compatible(good, 1920, 1080, 30, 1280, 720))
+    }
+
     @Test fun directRtpPtsUsesMonotonicHostClockEvenIfSamplesRepeatOrRewind() {
         var now = 1_000_000L
         val clock = IccoaDirectClock { now }
