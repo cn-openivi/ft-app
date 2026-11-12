@@ -148,6 +148,12 @@ internal class IccoaDirectVideo(
         if (active || pending) fallback("Android Auto disconnected")
     }
 
+    /** Phone UI emergency recovery: immediately stop direct mode in this car session. */
+    fun restoreNormalByUser() {
+        if (active || pending) fallback("Selected normal video on the phone")
+        else failed = true
+    }
+
     private fun fallback(reason: String, resumeTransport: Boolean = true) {
         if (closed || failed) return
         failed = true // no re-entry until the next ICCOA connection
