@@ -65,8 +65,10 @@ internal class IccoaDirectVideo(
             plan.fps <= 30 && plan.streamWidth in 320..1920 && plan.streamHeight in 240..1080 &&
             app.ft.aa.AaProtocol.standardSize(aaWidth, aaHeight) ==
                 (plan.streamWidth to plan.streamHeight)
+        val previous = compatibleConfig
         compatibleConfig = if (supported) csd.copyOf() else null
-        if (active && !supported) main.post { fallback("AA video SPS changed or is unsupported") }
+        if (active && (!supported || (previous != null && !previous.contentEquals(csd))))
+            main.post { fallback("AA video SPS changed or is unsupported") }
         if (!supported) {
             DiagLog.i("ICCOA", "DIRECT_VIDEO declined: AA AVC SPS incompatible with selected WFD raster")
             onStatus("H.264 direct unavailable for this stream; normal FT video remains active")
@@ -131,6 +133,11 @@ internal class IccoaDirectVideo(
         if (source !== this.source || closed) return
         compatibleConfig = null
         main.post { fallback("Android Auto video stopped") }
+    }
+
+    /** A new WFD mode is never fed the previous AA bitstream. */
+    fun videoPlanChanged(next: VideoPlan) {
+        if (next != plan && !closed && !failed) fallback("Receiver changed WFD video format")
     }
 
     fun paused() {
