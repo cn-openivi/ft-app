@@ -102,6 +102,7 @@ class IccoaService : Service() {
     @Volatile private var session: IccoaSession? = null
     @Volatile private var media: IccoaMediaTransport? = null
     private var projection: IccoaProjection? = null
+    private var directVideo: IccoaDirectVideo? = null
     private var microphone: IccoaMicrophone? = null
     private var microphoneHook: ((Boolean) -> Unit)? = null
     private var navigationHook: ((NavigationInfo) -> Unit)? = null
@@ -308,6 +309,7 @@ class IccoaService : Service() {
         }, { pcm -> media?.audio(pcm) }, onFailure = { reason -> connectionFailed(reason) },
             onAaConnectionChanged = { connected ->
                 main.post {
+                    if (!connected) directVideo?.disconnected()
                     if (aaSensorAssist != connected) {
                         aaSensorAssist = connected
                         navigationRetries = 0
@@ -483,7 +485,9 @@ class IccoaService : Service() {
                         decryptInput = { session?.decryptInput(it) ?: error("Session ended") },
                         onPlay = { config -> current { play(config) } },
                         onPause = { current { pauseProjection() } },
-                        onKeyframe = { current { projection?.requestKeyFrame() } },
+                        onKeyframe = { current {
+                            if (directVideo?.requestKeyframe() != true) projection?.requestKeyFrame()
+                        } },
                         onTouch = { touch -> current { projection?.touch(touch) } },
                         onKey = { code -> current { projection?.key(code) } },
                         onClosed = { reason -> current {
@@ -559,8 +563,21 @@ class IccoaService : Service() {
         lastVideoConfig = config
         val plan = IccoaVideoPlan.from(config)
         val output = media ?: return
+        // Read once for this connection. Preference changes apply on the next
+        // car reconnect, never in the middle of an agreed RTSP/WFD session.
+        if (directVideo == null && FTApp.instance.prefs.iccoaVideoMode == 1) {
+            val prefs = FTApp.instance.prefs
+            val (aaWidth, aaHeight) = if (prefs.aaMatchCar)
+                IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
+            else prefs.aaWidth to prefs.aaHeight
+            projection?.let { target ->
+                directVideo = IccoaDirectVideo(main, output, target, plan, aaWidth, aaHeight) { status ->
+                    main.post { if (media === output) _state.update { it.copy(status = status) } }
+                }.also { app.ft.aa.AaH264Tap.listener = it }
+            }
+        }
         DiagLog.i("ICCOA", "video profile ${plan.streamWidth}x${plan.streamHeight}@${plan.fps} CBR ${plan.bitrate / 1000} kbps; receiver asked ${config.fps} fps")
-        projection?.start(plan, output::configure, output::frame)
+        if (directVideo?.active != true) projection?.start(plan, output::configure, output::frame)
         if (media !== output) return // A synchronous projection failure has already ended this connection.
         if (!ftProjectionSensorAssist) {
             ftProjectionSensorAssist = true
@@ -622,6 +639,7 @@ class IccoaService : Service() {
 
     private fun pauseProjection() {
         // The car can hide its projection surface without ending capture or Android Auto.
+        directVideo?.paused()
         media?.pause()
         audioPlayerState.pause()
         flushAudioState()
@@ -667,6 +685,8 @@ class IccoaService : Service() {
     }
 
     private fun endConnection() {
+        directVideo?.close()
+        directVideo = null
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(audioStateRetry)
         main.removeCallbacks(requestConfig)
@@ -708,7 +728,7 @@ class IccoaService : Service() {
         val launch = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val note = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tile_ft)
-            .setContentTitle("FT · ICCOA Carlink").setContentText("Experimental wireless projection")
+            .setContentTitle("FT · ICCOA Carlink").setContentText("ICCOA wireless projection")
             .setContentIntent(launch).setOngoing(true).build()
         val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
             (if (withProjection) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
