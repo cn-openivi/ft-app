@@ -12,7 +12,6 @@ import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import app.ft.FTApp
 import app.ft.core.DiagLog
-import app.ft.core.Sizing
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -119,7 +118,10 @@ class CarDisplay(private val context: Context) {
         }
         encoder = enc
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        val density = Sizing.carDpi(height)
+        // Honor the user's video UI density preference for both transports.
+        // CarLife and ICCOA have independent video plans, but the rendered FT
+        // virtual display is shared. Unset prefs default to 240 dpi in FT181.
+        val density = FTApp.instance.prefs.carDensity.coerceIn(120, 640)
         val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
         val vd = dm.createVirtualDisplay("FT", width, height, density, surface, flags)
         virtualDisplay = vd
