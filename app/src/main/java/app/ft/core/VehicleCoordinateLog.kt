@@ -8,8 +8,8 @@ import java.util.Locale
  */
 internal object VehicleCoordinateLog {
     private val coordinateValues = Regex("(?i)\\b(latitude|longitude|rawLat|rawLon)=\\S+")
-    private val touchPair = Regex("(?i)\\b(content|car|phone|mapped)=(-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)")
-    private val uibcPosition = Regex("(?i)\\b([xy])=-?\\d+(?:\\.\\d+)?")
+    private val touchPair = Regex("(?i)\\b(content|car|phone|mapped|raw)=(-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)")
+    private val uibcPosition = Regex("(?i)\\b(x|y|x0|y0)=-?\\d+(?:\\.\\d+)?")
 
     fun format(
         sample: VehicleLocation,

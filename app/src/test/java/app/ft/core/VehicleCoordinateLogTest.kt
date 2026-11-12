@@ -78,6 +78,23 @@ class VehicleCoordinateLogTest {
         assertEquals("OTHER: latitude=55.7558260", VehicleCoordinateLog.scrubStoredLine("OTHER: latitude=55.7558260"))
     }
 
+    @Test fun previousIccoaTouchCoordinatesAreRedactedDuringZipExport() {
+        val old = "11:11 I ICCOA: UIBC touch action=0 x=472 y=635 raw=253.7,522.2 dst=1920x1080"
+        val safe = VehicleCoordinateLog.scrubStoredLine(old)
+        assertFalse(safe.contains("x=472"))
+        assertFalse(safe.contains("y=635"))
+        assertFalse(safe.contains("253.7,522.2"))
+        assertTrue(safe.contains("dst=1920x1080"))
+        val mirror = VehicleCoordinateLog.scrubStoredLine(
+            "11:11 I Mirror: touch DOWN car=500,250 phone=1024.5,700.2 source=1080x2340"
+        )
+        assertFalse(mirror.contains("500,250"))
+        assertFalse(mirror.contains("1024.5,700.2"))
+        assertTrue(mirror.contains("source=1080x2340"))
+        // No generic numeric redaction of unrelated records.
+        assertEquals("Other: x=472 y=635", VehicleCoordinateLog.scrubStoredLine("Other: x=472 y=635"))
+    }
+
     @Test fun opaqueProtocolPayloadCannotLeakFromOldLogs() {
         val old = "11:11 D CarLife: RX CMD_CAR_GPS  0A FF 23 4C"
         assertEquals("11:11 D CarLife: RX payload=<redacted>", VehicleCoordinateLog.scrubStoredLine(old))

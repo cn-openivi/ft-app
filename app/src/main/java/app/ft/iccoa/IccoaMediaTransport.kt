@@ -228,9 +228,15 @@ internal class IccoaMediaTransport(
                 val (x, y) = toStream(nativeTouch.x, nativeTouch.y)
                 val (x2, y2) = toStream(nativeTouch.x2, nativeTouch.y2)
                 val touch = nativeTouch.copy(x = x, y = y, x2 = x2, y2 = y2)
-                if (touch.action != CarTouch.MOVE) DiagLog.i("ICCOA",
-                    "UIBC touch action=${touch.action} x=${touch.x} y=${touch.y} dst=${video.width}x${video.height}" +
-                        " source=${event.optInt("width")}x${event.optInt("height")} raw=${event.optDouble("x0")},${event.optDouble("y0")}")
+                if (touch.action != CarTouch.MOVE) {
+                    val detailed = runCatching { app.ft.FTApp.instance.prefs.vehicleCoordinateLogging }
+                        .getOrDefault(false)
+                    val position = if (detailed) {
+                        "x=${touch.x} y=${touch.y} raw=${event.optDouble("x0")},${event.optDouble("y0")}"
+                    } else "coordinates=OMITTED"
+                    DiagLog.i("ICCOA", "UIBC touch action=${touch.action} " +
+                        "dst=${video.width}x${video.height} source=${event.optInt("width")}x${event.optInt("height")} $position")
+                }
                 gesture.accept(touch.action)
                 lastTouch = touch
                 onTouch(touch)

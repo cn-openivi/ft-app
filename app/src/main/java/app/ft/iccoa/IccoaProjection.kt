@@ -90,6 +90,9 @@ class IccoaProjection(
         val point = aaTouchGesture.cancelActive() ?: return
         AaHeadUnitService.current?.sendTouch(point.first, point.second, CarTouch.CANCEL)
     }
+    private fun touchDebug(key: String, x: Int, y: Int): String =
+        if (app.prefs.vehicleCoordinateLogging) "$key=$x,$y" else "$key=OMITTED"
+
     private var active = false
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
@@ -221,7 +224,7 @@ class IccoaProjection(
                 mirrorTouchGestureBounds = null
                 mirrorTouches.reset()
                 FTTouchService.instance?.cancelStroke()
-                DiagLog.i("ICCOA", "touch route=FT content=$mappedX,$mappedY")
+                DiagLog.i("ICCOA", "touch route=FT ${touchDebug("content", mappedX, mappedY)}")
             }
             display.dispatchTouch(t)
             if (t.action == CarTouch.UP || t.action == CarTouch.CANCEL) touchFt = false
@@ -235,11 +238,16 @@ class IccoaProjection(
                 val point = if (t.action == CarTouch.CANCEL) aaTouchGesture.cancel(mappedX, mappedY)
                 else aaTouchGesture.map(t.action, mappedX, mappedY, viewport, app.prefs.aaWidth, app.prefs.aaHeight)
                 if (point == null) {
-                    if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA", "touch beside AA content=$mappedX,$mappedY viewport=$viewport")
+                    if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA",
+                        "touch beside AA ${touchDebug("content", mappedX, mappedY)} " +
+                            "viewport=${if (app.prefs.vehicleCoordinateLogging) viewport else "OMITTED"}")
                     return@onMain
                 }
                 if (t.action == CarTouch.DOWN) DiagLog.i("ICCOA",
-                    "touch route=AA content=$mappedX,$mappedY viewport=$viewport target=${app.prefs.aaWidth}x${app.prefs.aaHeight} mapped=${point.first},${point.second}")
+                    "touch route=AA ${touchDebug("content", mappedX, mappedY)} " +
+                        "viewport=${if (app.prefs.vehicleCoordinateLogging) viewport else "OMITTED"} " +
+                        "target=${app.prefs.aaWidth}x${app.prefs.aaHeight} " +
+                        "${touchDebug("mapped", point.first, point.second)}")
                 aa.sendTouch(point.first, point.second, t.action)
             }
             state.value.mirroring -> {
@@ -293,7 +301,8 @@ class IccoaProjection(
                 if (t.action == CarTouch.DOWN) {
                     mirrorTouches.reset()
                     touchBeside = mapped == null
-                    DiagLog.i("Mirror", "touch DOWN car=$mappedX,$mappedY phone=${mapped?.first},${mapped?.second} " +
+                    DiagLog.i("Mirror", "touch DOWN ${touchDebug("car", mappedX, mappedY)} " +
+                        "phone=${if (app.prefs.vehicleCoordinateLogging) "${mapped?.first},${mapped?.second}" else "OMITTED"} " +
                         "source=${mirror.width}x${mirror.height} surface=${frame.width}x${frame.height}")
                 }
                 if (!touchBeside && mapped != null) {
