@@ -125,7 +125,9 @@ class FrameGate(
             if (urgent) {
                 empty = 0
                 urgentFresh.arm()
-                if (fresh) requestDraw(priority = urgentFresh.takeOnFreshBuffer())
+                // The pending buffer may predate this touch. Only onFrame() may
+                // consume urgency after a truly new SurfaceTexture buffer arrives.
+                requestDraw()
             }
         }
     }
@@ -143,8 +145,8 @@ class FrameGate(
             refreshRate()
             empty = 0
             urgentFresh.arm()
-            if (fresh) requestDraw(priority = urgentFresh.takeOnFreshBuffer())
-            else requestDraw()
+            // Reserve urgency for the next buffer rather than resending stale UI.
+            requestDraw()
         }
     }
 
