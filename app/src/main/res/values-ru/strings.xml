@@ -100,8 +100,10 @@
     <string name="sound_bluetooth">Выводить звук через Bluetooth автомобиля</string>
     <string name="sound_silence_phone">Выключать звук телефона, пока FT передаёт звук</string>
     <string name="guidance_title">Подсказки навигации поверх музыки</string>
-    <string name="guidance_like_baidu">Как в Baidu</string>
-    <string name="guidance_like_baidu_body">Подсказки сразу передаются в автомобиль по отдельному каналу, а как приглушить музыку, решает сам автомобиль — так же, как в Baidu CarLife.</string>
+    <string name="guidance_like_baidu">Отдельный канал</string>
+    <string name="guidance_like_baidu_body">Для Baidu CarLife подсказки передаются по отдельному каналу TTS. Приглушением музыки управляет головное устройство.</string>
+    <string name="guidance_iccoa_title">Звук навигации через ICCOA</string>
+    <string name="guidance_iccoa_body">ICCOA передаёт доступный для захвата звук через общий аудиопоток проекции. Отдельный TTS-канал CarLife и режимы его микширования здесь не используются. Голосовые подсказки некоторых приложений Android может не разрешать захватывать.</string>
     <string name="guidance_in_step">Синхронно</string>
     <string name="guidance_in_step_body">FT подмешивает подсказки в музыку и приглушает её точно на время их звучания. Если в какой-то поездке автомобиль воспроизводит музыку с большей задержкой, подсказки задерживаются вместе с ней.</string>
     <string name="guidance_on_time">Без задержки</string>
