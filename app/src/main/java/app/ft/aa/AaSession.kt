@@ -91,7 +91,7 @@ class AaSession(
             audioMeasured.clear()
             runCatching { synchronized(navigation) { AaHeadUnitService.onNavigation?.invoke(navigation.reset()) } }
             synchronized(music) { AaHeadUnitService.publishMusic(music.reset()) }
-            try { decoder.reset() } finally { onClosed(reason) }
+            try { AaH264Tap.stop(this@AaSession); decoder.reset() } finally { onClosed(reason) }
         }
     )
     private var videoSession = 0
@@ -372,16 +372,19 @@ class AaSession(
                 // Never wait for session cleanup from that callback.
                 decoder.askForAFreshPicture = { scope.launch { askForAFreshPicture() } }
                 _phase.value = Phase.STREAMING
+                AaH264Tap.start(this)
                 DiagLog.i(tag, "video start session=$videoSession")
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, false))
             }
             AaProtocol.AV_STOP_INDICATION -> {
                 DiagLog.i(tag, "video stop")
+                AaH264Tap.stop(this)
                 decoder.stop()
                 _phase.value = Phase.DISCOVERED
             }
             AaProtocol.AV_MEDIA_INDICATION -> {
                 DiagLog.i(tag, "video codec config ${body.size} bytes")
+                AaH264Tap.config(this, body)
                 decoder.onConfig(body)
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(videoSession))
             }
@@ -390,7 +393,8 @@ class AaSession(
                     val ts = Bytes.u64(body, 0)
                     mediaFrames++
                     if (mediaFrames <= 3 || mediaFrames % 300 == 0L) DiagLog.d(tag, "video frame #$mediaFrames ${body.size - 8} bytes, ${decoder.frames.value} drawn on the car screen")
-                    decoder.onFrame(body.copyOfRange(8, body.size), ts)
+                    val frame = body.copyOfRange(8, body.size)
+                    if (!AaH264Tap.frame(this, frame, ts)) decoder.onFrame(frame, ts)
                 }
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(videoSession))
             }
