@@ -18,7 +18,7 @@
     <string name="settings_aa_title">Android Auto</string>
     <string name="settings_aa_about">Как Android Auto отображается на экране автомобиля</string>
     <string name="settings_advanced_title">Дополнительно</string>
-    <string name="settings_advanced_about">Порты CarLife, к которым подключается магнитола</string>
+    <string name="settings_advanced_about">Диагностика и сетевые каналы выбранного протокола</string>
     <string name="look_language">Язык</string>
     <string name="look_language_system">Как на телефоне</string>
     <string name="look_theme">Тема</string>
@@ -76,6 +76,13 @@
     <string name="state_ready">Готов</string>
     <string name="state_checking">Проверка</string>
     <string name="choice_auto">Авто</string>
+    <string name="adv_network_details_show">Сетевые каналы (%1$s)</string>
+    <string name="adv_network_details_hide">Скрыть сетевые каналы (%1$s)</string>
+    <string name="adv_network_source_note">Схема настроенных каналов, а не подтверждение активного соединения.</string>
+    <string name="adv_carlife_channel_map">TCP CarLife: команды %1$d, видео %2$d, медиа %3$d, TTS %4$d, голос %5$d, касания %6$d.</string>
+    <string name="adv_carlife_edit_ports">Изменить TCP-порты CarLife (для специалистов)</string>
+    <string name="adv_carlife_hide_edit">Скрыть изменение портов CarLife</string>
+    <string name="adv_iccoa_channel_map">Конфигурация ICCOA в исходниках: управление 57219, аудио 57229, датчики 57239, дополнительные каналы 57249/57259, RTSP 7236, UIBC 4321. RTP-порт назначения согласуется с головным устройством.</string>
     <string name="adv_ports">Порты, к которым подключается магнитола</string>
     <string name="adv_command">Команды</string>
     <string name="adv_video">Видео</string>
