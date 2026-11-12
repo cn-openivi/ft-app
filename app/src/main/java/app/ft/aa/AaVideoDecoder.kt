@@ -51,6 +51,10 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
     @Volatile private var generation = 0L
     @Volatile private var missed = 0
     @Volatile var askForAFreshPicture: (() -> Unit)? = null
+    // Input starvation can drop a reference P frame; a bounded fresh-picture hint
+    // is safer than silently waiting forever for an independent IDR.
+    private val recoveryGate = AaVideoRecoveryGate()
+    private var droppedInputFrames = 0L
 
     init {
         if (mediaTek) {
@@ -130,6 +134,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             return
         }
         if (!running.compareAndSet(false, true)) return
+        recoveryGate.reset()
         val mine = generation + 1
         generation = mine
         var made: MediaCodec? = null
@@ -159,6 +164,15 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         }
     }
 
+    /** Reuse the existing AA VIDEO_FOCUS hint; never send an invented IDR packet. */
+    private fun lostInput(reason: String) {
+        droppedInputFrames++
+        if (recoveryGate.onLoss(System.nanoTime())) {
+            DiagLog.w(tag, "decoder input dropped=$droppedInputFrames reason=$reason; requesting a fresh frame")
+            runCatching { askForAFreshPicture?.invoke() }
+        }
+    }
+
     private fun feedLocked(data: ByteArray, isConfig: Boolean, ptsUs: Long = 0L) {
         val c = codec ?: return
         var slot = -1
@@ -170,7 +184,10 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             // Drop this late H.264 input if no slot appears within 2ms;
             // AA remains free to deliver a fresh picture on the next frame.
             slot = c.dequeueInputBuffer(INPUT_DEQUEUE_TIMEOUT_US)
-            if (slot < 0) return
+            if (slot < 0) {
+                lostInput("no-slot")
+                return
+            }
             val buf = c.getInputBuffer(slot)
             // A recycled codec ByteBuffer may retain a nonzero position/limit.
             // Capacity, not pre-clear remaining(), determines whether the
@@ -180,6 +197,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                 if (buf != null) DiagLog.w(tag, "a ${data.size} byte picture did not fit the decoder, skipping it")
                 c.queueInputBuffer(slot, 0, 0, ptsUs, 0)
                 given = true
+                lostInput("too-large")
                 return
             }
             buf.put(data)
@@ -188,6 +206,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         } catch (t: Throwable) {
             DiagLog.e(tag, "feed failed", t)
             if (slot >= 0 && !given) runCatching { c.queueInputBuffer(slot, 0, 0, ptsUs, 0) }
+            lostInput("codec-error")
         }
     }
 
@@ -258,6 +277,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
     // Never execute MediaCodec.stop/release synchronously under the AA input lock,
     // even when outputLock is uncontended: hardware stop itself can hang.
     private fun stopLocked(): Thread? {
+        recoveryGate.reset()
         val old = codec
         generation++
         running.set(false)
