@@ -33,6 +33,7 @@ internal class IccoaDirectVideo(
     private var firstKeyAtMs = 0L
     private var frameAtMs = 0L
     private var activatedAtMs = 0L
+    private var lastKeyRequestMs = 0L
     private val watchdog = object : Runnable {
         override fun run() {
             if (closed || !active) return
@@ -126,6 +127,10 @@ internal class IccoaDirectVideo(
     fun requestKeyframe(): Boolean {
         if (!active) return false
         val session = source?.takeIf { sourceValid(it) } ?: return false
+        val now = SystemClock.elapsedRealtime()
+        // A backed-up RTP queue must not flood the AA control lane with VIDEO_FOCUS.
+        if (lastKeyRequestMs > 0 && now - lastKeyRequestMs < KEY_REQUEST_COOLDOWN_MS) return true
+        lastKeyRequestMs = now
         session.askForAFreshPicture()
         return true
     }
@@ -185,5 +190,6 @@ internal class IccoaDirectVideo(
         private const val WATCH_MS = 1_000L
         private const val START_TIMEOUT_MS = 5_000L
         private const val STALL_TIMEOUT_MS = 8_000L
+        private const val KEY_REQUEST_COOLDOWN_MS = 2_500L
     }
 }
