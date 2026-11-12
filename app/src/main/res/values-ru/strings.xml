@@ -111,6 +111,10 @@
     <string name="quiet_title">Передавать звук без запроса</string>
     <string name="quiet_on_body">FT сам передаёт звук других приложений в автомобиль, без запроса на телефоне. Чтобы отключить это, выполните команду:</string>
     <string name="quiet_off_body">Прежде чем FT передаст звук других приложений в автомобиль, Android запрашивает разрешение на телефоне. Выполните эту команду один раз с компьютера при включённой отладке по USB, и запросов больше не будет:</string>
+    <string name="picture_iccoa_about">ICCOA: разрешение и частоту кадров согласует головное устройство. Настройки видеопотока CarLife здесь не применяются.</string>
+    <string name="picture_iccoa_live">Текущий видеопоток ICCOA: %1$d × %2$d, %3$d кадр/с.</string>
+    <string name="picture_iccoa_disconnected">Видеопоток ICCOA пока не запущен.</string>
+    <string name="picture_iccoa_codec">Кодек H.264, целевой битрейт 8 Мбит/с, максимум 1920 × 1080 и 30 кадров/с в текущей реализации FT. Экономия энергии кодировщика — общая для обоих протоколов.</string>
     <string name="picture_defaults_body">По умолчанию FT использует размер экрана автомобиля, битрейт 3 Мбит/с и автоматическую частоту кадров. Рабочие параметры потока сохраняются для следующего подключения.</string>
     <string name="picture_stream_now">Сейчас передаётся в автомобиль</string>
     <string name="picture_stream_saved">Сохранено для следующего подключения</string>
@@ -124,7 +128,7 @@
     <string name="picture_changed_body">Изменения вступят в силу при следующем подключении автомобиля.</string>
     <string name="picture_size_label">Размер для автомобиля</string>
     <string name="picture_size_car">Как у автомобиля</string>
-    <string name="picture_size_baidu">Как в Baidu</string>
+    <string name="picture_size_baidu">Режим совместимости CarLife</string>
     <string name="picture_size_custom">Свой</string>
     <string name="picture_width">Ширина</string>
     <string name="picture_height">Высота</string>
