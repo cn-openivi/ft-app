@@ -34,7 +34,10 @@ class AaVideoDecoderTest {
                 try {
                     decoder.setSurface(mock(Surface::class.java))
                     decoder.onConfig(byteArrayOf(0, 0, 1, 103))
+                    var requests = 0
+                    decoder.askForAFreshPicture = { requests++ }
                     decoder.onFrame(byteArrayOf(0, 0, 1, 65, 7), 1_000L)
+                    assertEquals("a lost reference picture must ask recovery", 1, requests)
                     // Exact MediaCodec API argument: 2000 MICROseconds,
                     // rather than the prior blocking 20_000us.
                     verify(codec).dequeueInputBuffer(AaVideoDecoder.INPUT_DEQUEUE_TIMEOUT_US)
