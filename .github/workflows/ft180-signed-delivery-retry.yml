@@ -1,0 +1,84 @@
+name: FT180 signed APK Drive retry (no recompile, VPS only)
+
+on:
+  push:
+    branches: [openivi/ft180-staging-btmac-20261112]
+    paths: ['.github/workflows/ft180-signed-delivery-retry.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft180-signed-delivery-only
+  cancel-in-progress: false
+
+jobs:
+  deliver-existing-apk:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout without cleaning retained owner-signed APK
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          clean: false
+      - name: Verify exact existing signed FT180 APK and production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft180-staging-btmac-20261112'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor d3c2e59e976b6814cf22c399788107adafc24e99 "$GITHUB_SHA"
+          git diff --quiet d3c2e59e976b6814cf22c399788107adafc24e99 "$GITHUB_SHA" -- app/src/main app/src/test app/build.gradle.kts server/src/main
+          ROOT="$(realpath -e -- "$GITHUB_WORKSPACE")"
+          case "$ROOT" in
+            /srv/openivi-ci/_work/ft-app/ft-app|/var/lib/openivi-agent/actions-runner/_work/ft-app/ft-app) ;;
+            *) echo "Unknown runner workspace" >&2; exit 1 ;;
+          esac
+          apk="verified/FT180_XA60_OWNER_SIGNED.apk"
+          test ! -L "$apk"
+          test -s "$apk"
+          test -s "verified/SHA256SUMS"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          (cd verified && sha256sum -c SHA256SUMS)
+          unzip -t "$apk" >/dev/null
+          BT="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/srv/openivi-ci/.android/sdk}}/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          test -x "$BT"
+          "$BT" verify --verbose --print-certs "$apk" > signer-verified.txt
+          grep -iq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' signer-verified.txt
+          AAPT="$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/srv/openivi-ci/.android/sdk}}/build-tools" -maxdepth 2 -name aapt -type f | sort -V | tail -1)"
+          "$AAPT" dump badging "$apk" | grep -Fq "package: name='app.ft.xa60' versionCode='180'"
+          echo "FT180_EXISTING_OWNER_SIGNED_SHA256=$(sha256sum "$apk" | cut -d' ' -f1)"
+      - name: Retry Drive transfer with explicit one-request-per-second pacing and readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          local="verified/FT180_XA60_OWNER_SIGNED.apk"
+          remote="openivi-drive:CI_BUILDS/FT180_XA60_OWNER_SIGNED_760e5f31.apk"
+          common=(--tpslimit 1 --tpslimit-burst 1 --drive-pacer-min-sleep 1s --drive-pacer-burst 1 --retries 10 --low-level-retries 20)
+          rclone copyto "$local" "$remote" "${common[@]}"
+          expected="$(sha256sum "$local" | cut -d' ' -f1)"
+          actual="$(rclone cat "$remote" "${common[@]}" | sha256sum | cut -d' ' -f1)"
+          test "$expected" = "$actual"
+          for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
+            rclone copyto "verified/$name" "openivi-drive:CI_BUILDS/FT180_760e5f31_$name" "${common[@]}"
+            test "$(sha256sum "verified/$name" | cut -d' ' -f1)" = "$(rclone cat "openivi-drive:CI_BUILDS/FT180_760e5f31_$name" "${common[@]}" | sha256sum | cut -d' ' -f1)"
+          done
+          echo "FT180_SIGNED_DRIVE_SHA256=$expected"
+          echo "FT180_GOOGLE_DRIVE_READBACK=PASS"
+      - name: Clean exact local build outputs only after verified Drive readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build verified; do
+            test ! -L "$p"
+            if test -d "$p"; then rm -rf -- "$p"; fi
+          done
+          rm -f apk-badging.txt apksigner.txt signer-verified.txt
+          echo "FT180_LOCAL_CLEANUP_AFTER_DRIVE_READBACK=PASS"
