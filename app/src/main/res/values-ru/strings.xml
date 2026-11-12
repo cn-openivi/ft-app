@@ -111,6 +111,7 @@
     <string name="quiet_title">Передавать звук без запроса</string>
     <string name="quiet_on_body">FT сам передаёт звук других приложений в автомобиль, без запроса на телефоне. Чтобы отключить это, выполните команду:</string>
     <string name="quiet_off_body">Прежде чем FT передаст звук других приложений в автомобиль, Android запрашивает разрешение на телефоне. Выполните эту команду один раз с компьютера при включённой отладке по USB, и запросов больше не будет:</string>
+    <string name="picture_density_shared">Масштаб интерфейса FT общий для CarLife и ICCOA. Изменение применяется при следующем запуске видеопотока; значение по умолчанию — 240 dpi.</string>
     <string name="picture_iccoa_about">ICCOA: разрешение и частоту кадров согласует головное устройство. Настройки видеопотока CarLife здесь не применяются.</string>
     <string name="picture_iccoa_live">Текущий видеопоток ICCOA: %1$d × %2$d, %3$d кадр/с.</string>
     <string name="picture_iccoa_disconnected">Видеопоток ICCOA пока не запущен.</string>
