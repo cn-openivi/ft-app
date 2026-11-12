@@ -8,7 +8,7 @@ import org.mockito.ArgumentMatchers.*
 import org.mockito.Mockito.*
 
 class FrameGateTest {
-    @Test fun wakeAndRedrawDoNotBypassFrameRateOrMultiplyTicks() {
+    @Test fun wakeAndRedrawDoNotSendStaleFramesOrMultiplyTicks() {
         // Exercise the real scheduler without constructing Android's EGL sentinels.
         val gate = mock(FrameGate::class.java, CALLS_REAL_METHODS)
         val handler = mock(Handler::class.java)
@@ -33,7 +33,7 @@ class FrameGateTest {
         set("lastNs", System.nanoTime())
         repeat(20) { gate.wake(2000); gate.redraw() }
         while (immediate.isNotEmpty()) immediate.removeFirst().run()
-        assertEquals("wakeups must wait for the next frame", 0, count())
+        assertEquals("wakeups must not encode an unchanged stale frame", 0, count())
         assertEquals("only one tick may be pending", 1, delayed.size)
         // An early tick (e.g. after lowering FPS) must also respect the interval.
         delayed.removeAt(0).run()

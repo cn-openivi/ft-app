@@ -287,6 +287,7 @@ class IccoaProjection(
     fun touch(action: Int, x: Int, y: Int) = touch(CarTouch(action, x, y))
     fun touch(raw: CarTouch) = onMain {
         if (!active) return@onMain
+        display.noteTouch(raw.action)
         if (directVideoActive) {
             directTouch(raw)
             return@onMain

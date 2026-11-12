@@ -28,7 +28,9 @@ class FrameGate(
     private val height: Int,
     private val output: Surface,
     private val preserveAspect: Boolean = false,
-    private val onFailure: ((Throwable) -> Unit)? = null
+    private val onFailure: ((Throwable) -> Unit)? = null,
+    private val smartSavePower: Boolean = false,
+    private val onEffectiveRate: ((Int, String) -> Unit)? = null
 ) {
     private val tag = "Gate"
     private val failed = AtomicBoolean(false)
@@ -62,6 +64,9 @@ class FrameGate(
     private var reportedNs = 0L
     private var lateNs = 0L
     @Volatile private var intervalNs = 33_333_333L
+    private val pacer = SmartVideoPacer(smartSavePower)
+    private val urgentFresh = UrgentFreshFrame()
+    private var effectiveFps = 0
     @Volatile private var awakeUntilNs = 0L
     var input: Surface? = null
         private set
@@ -77,7 +82,7 @@ class FrameGate(
         val done = CountDownLatch(1)
         var ok = false
         h.post {
-            ok = runCatching { setUp(h) }
+            ok = runCatching { setUp(h); refreshRate() }
                 .onFailure { DiagLog.e(tag, "frame gate unavailable, the car gets every frame", it) }
                 .isSuccess
             done.countDown()
@@ -88,7 +93,41 @@ class FrameGate(
     }
 
     fun setRate(fps: Int) {
-        intervalNs = 1_000_000_000L / fps.coerceIn(1, 60)
+        val h = handler
+        if (h == null) {
+            pacer.setRequestedFps(fps)
+            intervalNs = 1_000_000_000L / fps.coerceIn(1, 60)
+        } else h.post {
+            if (handler !== h) return@post
+            pacer.setRequestedFps(fps)
+            refreshRate()
+            requestDraw()
+        }
+    }
+
+    fun setThermalCap(fps: Int) {
+        val h = handler ?: return
+        h.post {
+            if (handler !== h) return@post
+            pacer.setThermalCeiling(fps)
+            refreshRate()
+            requestDraw()
+        }
+    }
+
+    /** Never delay delivery of input; only the video frames are paced. */
+    fun touchActivity(urgent: Boolean) {
+        val h = handler ?: return
+        h.post {
+            if (handler !== h) return@post
+            pacer.onInput()
+            refreshRate()
+            if (urgent) {
+                empty = 0
+                urgentFresh.arm()
+                if (fresh) requestDraw(priority = urgentFresh.takeOnFreshBuffer())
+            }
+        }
     }
 
     fun redraw() {
@@ -96,11 +135,26 @@ class FrameGate(
     }
 
     fun wake(ms: Long) {
-        awakeUntilNs = System.nanoTime() + ms * 1_000_000L
-        handler?.post {
+        awakeUntilNs = System.nanoTime() + ms.coerceIn(0L, 10_000L) * 1_000_000L
+        val h = handler ?: return
+        h.post {
+            if (handler !== h) return@post
+            pacer.onInput()
+            refreshRate()
             empty = 0
-            requestDraw()
+            urgentFresh.arm()
+            if (fresh) requestDraw(priority = urgentFresh.takeOnFreshBuffer())
+            else requestDraw()
         }
+    }
+
+    private fun refreshRate() {
+        val state = pacer.state()
+        if (state.fps == effectiveFps) return
+        effectiveFps = state.fps
+        intervalNs = 1_000_000_000L / state.fps
+        DiagLog.i(tag, "video pacing ${state.mode} ${state.fps} fps")
+        onEffectiveRate?.invoke(state.fps, state.mode.name)
     }
 
     private fun setUp(h: Handler) {
@@ -161,14 +215,16 @@ class FrameGate(
         fresh = true
         empty = 0
         ready = true
-        requestDraw()
+        pacer.onFreshBuffer()
+        refreshRate()
+        requestDraw(priority = urgentFresh.takeOnFreshBuffer())
     }
 
     // All requests run on the gate handler, including touch wakeups and redraws.
-    private fun requestDraw() {
+    private fun requestDraw(priority: Boolean = false) {
         val h = handler ?: return
         if (!ready) return
-        val wait = lastNs + intervalNs - System.nanoTime()
+        val wait = if (priority && fresh) 0L else lastNs + intervalNs - System.nanoTime()
         if (wait <= SLACK_NS) {
             h.removeCallbacks(tick)
             draw()
@@ -180,6 +236,7 @@ class FrameGate(
     private fun onTick() {
         val h = handler ?: return
         if (!ready) return
+        refreshRate()
         val wait = lastNs + intervalNs - System.nanoTime()
         if (wait > SLACK_NS) {
             h.removeCallbacks(tick)
@@ -188,9 +245,11 @@ class FrameGate(
         }
         if (!fresh) {
             empty++
-            if (empty > IDLE_TICKS && empty % IDLE_EVERY != 0 && System.nanoTime() >= awakeUntilNs) {
+            val untilHeartbeatNs = lastNs + IDLE_KEEPALIVE_NS - System.nanoTime()
+            if (empty > IDLE_TICKS && untilHeartbeatNs > SLACK_NS &&
+                System.nanoTime() >= awakeUntilNs) {
                 h.removeCallbacks(tick)
-                h.postDelayed(tick, intervalNs / 1_000_000)
+                h.postDelayed(tick, (untilHeartbeatNs / 1_000_000L).coerceAtLeast(1L))
                 return
             }
         }
@@ -275,6 +334,7 @@ class FrameGate(
         val done = CountDownLatch(1)
         h.post {
             h.removeCallbacks(tick)
+            urgentFresh.cancel()
             runCatching { texture?.setOnFrameAvailableListener(null) }
             runCatching { input?.release() }
             runCatching { texture?.release() }
@@ -306,7 +366,7 @@ class FrameGate(
         private const val EGL_RECORDABLE_ANDROID = 0x3142
         private const val SLACK_NS = 4_000_000L
         private const val IDLE_TICKS = 8
-        private const val IDLE_EVERY = 20
+        private const val IDLE_KEEPALIVE_NS = 1_000_000_000L
         private const val REPORT_NS = 30_000_000_000L
 
         private val VERTEX = """

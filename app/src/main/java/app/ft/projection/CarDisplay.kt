@@ -6,6 +6,7 @@ import android.hardware.display.VirtualDisplay
 import android.media.MediaCodec
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -44,6 +45,27 @@ class CarDisplay(private val context: Context) {
         }
     }
     private val watch = DrawWatch(context)
+    private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
+    private var thermalManager: PowerManager? = null
+
+    private fun startThermalWatch() {
+        val pm = context.getSystemService(PowerManager::class.java) ?: return
+        thermalManager = pm
+        val listener = PowerManager.OnThermalStatusChangedListener { status ->
+            gate?.setThermalCap(VideoPlans.thermalCap(status))
+        }
+        thermalListener = listener
+        runCatching { pm.addThermalStatusListener(context.mainExecutor, listener) }
+            .onFailure { DiagLog.w(tag, "thermal listener unavailable: ${it.javaClass.simpleName}") }
+        gate?.setThermalCap(VideoPlans.thermalCap(pm.currentThermalStatus))
+    }
+
+    private fun stopThermalWatch() {
+        val listener = thermalListener
+        thermalListener = null
+        if (listener != null) runCatching { thermalManager?.removeThermalStatusListener(listener) }
+        thermalManager = null
+    }
     private val _active = MutableStateFlow(false)
     val active: StateFlow<Boolean> = _active
     var onVideoChanged: ((VideoPlan?) -> Unit)? = null
@@ -101,7 +123,9 @@ class CarDisplay(private val context: Context) {
         var enc = SurfaceEncoder(streamWidth, streamHeight, fps, plan.bitrate, plan.qpFloor, onConfig, onFrame, gated = true, onTimedFrame = onTimedFrame, savePower = savePower, constantBitrate = plan.constantBitrate, onFailure = codecFailure, startCandidateIndex = codecAttempt)
         encoder = enc
         enc.start()
-        val g = FrameGate(width, height, streamWidth, streamHeight, enc.surface ?: throw IllegalStateException("no encoder surface"), preserveAspect = plan.preserveAspect, onFailure = codecFailure)
+        val g = FrameGate(width, height, streamWidth, streamHeight, enc.surface ?: throw IllegalStateException("no encoder surface"),
+            preserveAspect = plan.preserveAspect, onFailure = codecFailure, smartSavePower = savePower,
+            onEffectiveRate = { actualFps, _ -> encoder?.setOperatingRate(actualFps) })
         val surface = if (g.start(fps)) {
             gate = g
             g.input ?: throw IllegalStateException("no frame gate surface")
@@ -117,6 +141,7 @@ class CarDisplay(private val context: Context) {
             enc.surface ?: throw IllegalStateException("no encoder surface")
         }
         encoder = enc
+        if (gate != null) startThermalWatch()
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         // Honor the user's video UI density preference for both transports.
         // CarLife and ICCOA have independent video plans, but the rendered FT
@@ -164,6 +189,11 @@ class CarDisplay(private val context: Context) {
         gate?.wake(WAKE_MS)
     }
 
+    /** Called before routing HU touch to FT, Android Auto or phone mirroring. */
+    fun noteTouch(action: Int) {
+        gate?.touchActivity(action == CarTouch.DOWN || action == CarTouch.POINTER_DOWN)
+    }
+
     fun setFrameRate(fps: Int) {
         val f = fps.coerceIn(1, 120)
         val interval = (1000L / f).coerceAtLeast(8L)
@@ -189,6 +219,7 @@ class CarDisplay(private val context: Context) {
         ).toContent(x, y)
 
     fun dispatchTouch(t: CarTouch) {
+        noteTouch(t.action)
         if (t.action == CarTouch.MOVE) {
             val first = synchronized(moveLock) {
                 val none = pendingMove == null
@@ -312,6 +343,7 @@ class CarDisplay(private val context: Context) {
         video = null
         onVideoChanged?.invoke(null)
         watch.stop()
+        stopThermalWatch()
         main.removeCallbacks(ticker)
         main.removeCallbacks(flushMove)
         synchronized(moveLock) { pendingMove = null }

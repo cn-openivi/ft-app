@@ -1503,6 +1503,7 @@ class CarLifeService : Service() {
     private val aaGestureViewport = AaTouchGestureViewport()
 
     private fun routeTouch(raw: CarTouch) {
+        carDisplay.noteTouch(raw.action)
         val st = _state.value
         val (x, y) = carDisplay.toContent(raw.x, raw.y)
         val second = if (raw.x2 >= 0 && raw.y2 >= 0) carDisplay.toContent(raw.x2, raw.y2) else -1 to -1
