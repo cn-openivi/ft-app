@@ -24,7 +24,8 @@ object DiagReport {
 
     fun build(c: Context): Result {
         DiagLog.i("Report", "making a report for the developer")
-        DiagLog.flush()
+        val durableFlush = DiagLog.flush()
+        val logCompleteness = DiagLog.completeness()
         val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
         val who = "${Build.MANUFACTURER}-${Build.MODEL}".replace(Regex("[^A-Za-z0-9-]"), "")
         val name = "FT-report-$who-$stamp.zip"
@@ -38,6 +39,8 @@ object DiagReport {
                 zip.closeEntry()
             }
             put("report.txt", snapshot(c))
+            put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
+                "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))
             DiagLog.files().forEach { f ->
                 zip.write("===== ${f.name} (${f.length()} bytes) =====\n".toByteArray())

@@ -8,6 +8,8 @@ import java.util.Locale
  */
 internal object VehicleCoordinateLog {
     private val coordinateValues = Regex("(?i)\\b(latitude|longitude|rawLat|rawLon)=\\S+")
+    private val touchPair = Regex("(?i)\\b(content|car|phone|mapped)=(-?\\d+(?:\\.\\d+)?),(-?\\d+(?:\\.\\d+)?)")
+    private val uibcPosition = Regex("(?i)\\b([xy])=-?\\d+(?:\\.\\d+)?")
 
     fun format(
         sample: VehicleLocation,
@@ -47,8 +49,15 @@ internal object VehicleCoordinateLog {
         // carry position data. Do not export those bytes without current opt-in.
         if (line.contains(": RX ")) return line.substringBefore(": RX ") + ": RX payload=<redacted>"
         if (line.contains(": TX ")) return line.substringBefore(": TX ") + ": TX payload=<redacted>"
-        if (!line.contains("VehicleGPS:", ignoreCase = true)) return line
-        return coordinateValues.replace(line) { match ->
+        var safe = line
+        // Older releases logged raw touchscreen coordinates; respect current
+        // privacy setting when an old diagnostic file is exported.
+        if (safe.contains("touch", ignoreCase = true) || safe.contains("UIBC", ignoreCase = true)) {
+            safe = touchPair.replace(safe) { "${it.groupValues[1]}=<redacted>" }
+            safe = uibcPosition.replace(safe) { "${it.groupValues[1]}=<redacted>" }
+        }
+        if (!safe.contains("VehicleGPS:", ignoreCase = true)) return safe
+        return coordinateValues.replace(safe) { match ->
             "${match.groupValues[1]}=<redacted>"
         }
     }
