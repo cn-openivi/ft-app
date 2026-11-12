@@ -591,7 +591,8 @@ private fun IccoaPictureSettings() {
         )
     }
     Text(
-        stringResource(R.string.picture_iccoa_codec),
+        stringResource(if (selectedMode == 1) R.string.picture_iccoa_direct_codec
+            else R.string.picture_iccoa_codec),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
