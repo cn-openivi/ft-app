@@ -1,0 +1,73 @@
+name: FT181 ICCOA H264 direct video source validation
+
+on:
+  push:
+    branches:
+      - openivi/ft181-default-picture-dpi-240-20261112
+    paths:
+      - 'app/**'
+      - '.github/workflows/ft181-direct-video-source-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft181-direct-video-source
+  cancel-in-progress: true
+
+jobs:
+  unit-and-compile:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact owner FT181 source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify version and exact GitHub source SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'versionCode = 181' app/build.gradle.kts
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          echo "FT181_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Compile changed application and run tests without assembling APK
+        shell: bash
+        env:
+          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest --stacktrace
+      - name: Record exact source-only proof
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "source_sha=$GITHUB_SHA"
+          echo "app_version=181"
+          echo "test_gate=SOURCE_ONLY_UNIT_PASS"
+          echo "apk=NOT_ASSEMBLED"
+          echo "field_hu=NOT_TESTED"
+      - name: Remove temporary Gradle build outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
