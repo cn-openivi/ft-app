@@ -19,6 +19,7 @@ import app.ft.MainActivity
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSession
 import app.ft.aa.AaTouchViewport
+import app.ft.aa.AaViewport
 import app.ft.aa.AaTouchGestureViewport
 import app.ft.core.CarAudioBus
 import app.ft.core.DiagLog
@@ -38,6 +39,7 @@ import app.ft.projection.MirrorTouchCalibration
 import app.ft.projection.MirrorTouchSequence
 import app.ft.projection.PhoneMirror
 import app.ft.projection.VideoPlan
+import app.ft.projection.TouchVideoGeometry
 import app.ft.ui.car.CarScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -97,6 +99,10 @@ class IccoaProjection(
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
     private var displayPlan: VideoPlan? = null
+    @Volatile var directVideoActive = false
+        private set
+    private var directPlan: VideoPlan? = null
+    private var directAaSize: Pair<Int, Int>? = null
     private var closed = false
     private var soundDeclined = false
     private var ownsAa = false
@@ -146,7 +152,7 @@ class IccoaProjection(
     }
 
     fun start(plan: VideoPlan, onConfig: (ByteArray) -> Unit, onTimedFrame: (ByteArray, Boolean, Long) -> Unit) = onMain {
-        if (active && displayPlan == plan) {
+        if (active && displayPlan == plan && !directVideoActive) {
             display.requestKeyframe()
             return@onMain
         }
@@ -186,7 +192,60 @@ class IccoaProjection(
         onFailure("Could not create FT's car display (${error.javaClass.simpleName})")
     }
 
-    fun requestKeyFrame() = onMain { display.requestKeyframe() }
+    fun requestKeyFrame() = onMain { if (!directVideoActive) display.requestKeyframe() }
+
+    /** Drop the virtual FT display only after a matching AA IDR and SPS were observed. */
+    fun beginDirectVideo(plan: VideoPlan, aaWidth: Int, aaHeight: Int): Boolean {
+        if (!active || !state.value.aaOverlay || state.value.mirroring || closed ||
+            displayPlan != plan || aaWidth <= 0 || aaHeight <= 0) return false
+        cancelAaGestureOnRouteChange()
+        touchFt = false
+        directAaSize = aaWidth to aaHeight
+        directPlan = plan
+        directVideoActive = true
+        display.stop() // destroys the FT encoder and GL gate; AA session remains alive
+        displayPlan = null
+        AaTouchViewport.bounds = null // the old Compose overlay bounds no longer exist
+        DiagLog.i("ICCOA", "DIRECT_VIDEO replaced FT virtual display with AA compressed picture")
+        return true
+    }
+
+    /** Return to the original FT compositor without disconnecting AA/ICCOA. */
+    fun resumeCompositedVideo(
+        plan: VideoPlan,
+        onConfig: (ByteArray) -> Unit,
+        onTimedFrame: (ByteArray, Boolean, Long) -> Unit
+    ) {
+        if (!active || !directVideoActive) return
+        cancelAaGestureOnRouteChange()
+        directVideoActive = false
+        directPlan = null
+        directAaSize = null
+        start(plan, onConfig, onTimedFrame)
+    }
+
+    /** Direct H.264 has an AA-coded raster, NOT the removed FT Compose viewport. */
+    private fun directTouch(raw: CarTouch) {
+        val plan = directPlan ?: return
+        val (aaWidth, aaHeight) = directAaSize ?: return
+        val session = AaHeadUnitService.current ?: return
+        val geom = TouchVideoGeometry(
+            plan.contentWidth, plan.contentHeight,
+            plan.streamWidth, plan.streamHeight, plan.preserveAspect
+        )
+        val (contentX, contentY) = geom.toContent(raw.x, raw.y)
+        val (correctedX, correctedY) = CarTouchCalibration.correct(
+            context, contentX, contentY, plan.contentWidth, plan.contentHeight
+        )
+        val (streamX, streamY) = geom.toStream(correctedX, correctedY)
+        val left = (plan.streamWidth - aaWidth) / 2
+        val top = (plan.streamHeight - aaHeight) / 2
+        val bounds = AaViewport(left, top, aaWidth, aaHeight)
+        val point = if (raw.action == CarTouch.CANCEL)
+            aaTouchGesture.cancel(streamX, streamY)
+        else aaTouchGesture.map(raw.action, streamX, streamY, bounds, aaWidth, aaHeight)
+        if (point != null) session.sendTouch(point.first, point.second, raw.action)
+    }
 
     /** Phone-side button: never require the misaligned HU touch to start calibration. */
     fun startTouchCalibration() = onMain {
@@ -228,6 +287,10 @@ class IccoaProjection(
     fun touch(action: Int, x: Int, y: Int) = touch(CarTouch(action, x, y))
     fun touch(raw: CarTouch) = onMain {
         if (!active) return@onMain
+        if (directVideoActive) {
+            directTouch(raw)
+            return@onMain
+        }
         val (initialX, y) = display.toContent(raw.x, raw.y)
         val second = if (raw.x2 >= 0 && raw.y2 >= 0) display.toContent(raw.x2, raw.y2) else -1 to -1
         // FT owns its UI hit testing. AA and phone mirror have independent touch mapping.
@@ -620,6 +683,9 @@ class IccoaProjection(
     fun stop() = onMain { stopInternal() }
     private fun stopInternal() {
         displayEpoch++
+        directVideoActive = false
+        directPlan = null
+        directAaSize = null
         active = false
         displayPlan = null
         hideMirror()
