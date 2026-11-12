@@ -560,6 +560,19 @@ private fun PictureSettings() {
 private fun IccoaPictureSettings() {
     val prefs = FTApp.instance.prefs
     val screen by CarControls.state.collectAsStateWithLifecycle()
+    var selectedMode by remember { mutableIntStateOf(prefs.iccoaVideoMode) }
+    PickSetting(
+        stringResource(R.string.picture_iccoa_video_mode_title),
+        listOf(
+            Option(stringResource(R.string.picture_iccoa_video_mode_normal)),
+            Option(stringResource(R.string.picture_iccoa_video_mode_direct))
+        ),
+        selectedMode,
+        about = stringResource(R.string.picture_iccoa_video_mode_info)
+    ) { mode ->
+        selectedMode = mode.coerceIn(0, 1)
+        prefs.iccoaVideoMode = selectedMode
+    }
     Text(
         stringResource(R.string.picture_iccoa_about),
         style = MaterialTheme.typography.bodyMedium,
