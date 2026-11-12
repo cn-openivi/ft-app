@@ -24,6 +24,8 @@ class FrameGateTest {
         set("tick", Runnable { onTick.invoke(gate) })
         set("tag", "GateTest")
         set("matrix", FloatArray(16))
+        set("pacer", SmartVideoPacer(false))
+        set("urgentFresh", UrgentFreshFrame())
         set("reportedNs", System.nanoTime())
         set("handler", handler)
         set("texture", mock(SurfaceTexture::class.java))

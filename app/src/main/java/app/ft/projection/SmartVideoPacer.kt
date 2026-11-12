@@ -73,3 +73,8 @@ internal class UrgentFreshFrame(
 
     fun cancel() { untilNs = Long.MIN_VALUE }
 }
+
+/** Human input priority is independent of the video FPS limit. */
+internal object VideoTouchPriority {
+    fun urgent(action: Int): Boolean = action == CarTouch.DOWN || action == CarTouch.POINTER_DOWN
+}

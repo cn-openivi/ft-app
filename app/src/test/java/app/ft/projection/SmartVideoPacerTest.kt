@@ -68,4 +68,11 @@ class SmartVideoPacerTest {
         urgent.cancel()
         assertFalse(urgent.takeOnFreshBuffer())
     }
+    @Test fun firstTouchAndSecondFingerWakeButMoveAndReleaseNeverInjectExtraPriority() {
+        assertTrue(VideoTouchPriority.urgent(CarTouch.DOWN))
+        assertTrue(VideoTouchPriority.urgent(CarTouch.POINTER_DOWN))
+        for (action in listOf(CarTouch.MOVE, CarTouch.UP, CarTouch.POINTER_UP, CarTouch.CANCEL)) {
+            assertFalse("action=$action must not arm a new urgent frame", VideoTouchPriority.urgent(action))
+        }
+    }
 }

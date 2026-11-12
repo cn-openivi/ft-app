@@ -191,7 +191,7 @@ class CarDisplay(private val context: Context) {
 
     /** Called before routing HU touch to FT, Android Auto or phone mirroring. */
     fun noteTouch(action: Int) {
-        gate?.touchActivity(action == CarTouch.DOWN || action == CarTouch.POINTER_DOWN)
+        gate?.touchActivity(VideoTouchPriority.urgent(action))
     }
 
     fun setFrameRate(fps: Int) {
