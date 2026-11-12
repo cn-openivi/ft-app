@@ -50,14 +50,18 @@ internal class IccoaDirectVideo(
 
     override fun onStart(source: AaSession) {
         if (closed) return
+        if (this.source !== source) compatibleConfig = null
         this.source = source
-        compatibleConfig = null
         pending = false
         if (active) main.post { fallback("Android Auto started a new video session") }
     }
 
     override fun onConfig(source: AaSession, csd: ByteArray) {
-        if (!sourceValid(source) || failed) return
+        // Some AA implementations send CSD just before AV_START. Accept the
+        // current authenticated source, but never its video frames before STREAMING.
+        if (closed || AaHeadUnitService.current !== source || failed) return
+        if (this.source != null && this.source !== source) return
+        this.source = source
         val sps = IccoaDirectAvc.sps(csd)
         val supported = IccoaDirectAvc.compatible(
             sps, plan.streamWidth, plan.streamHeight, plan.fps, aaWidth, aaHeight
