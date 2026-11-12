@@ -1,0 +1,76 @@
+name: FT179 Drive-verified bounded VPS build-output purge
+
+on:
+  push:
+    branches: [openivi/ft179-dr-field-20261111]
+    paths: ['.github/workflows/ft179-postdrive-purge.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft179-drive-confirmed-purge
+  cancel-in-progress: false
+
+jobs:
+  post-drive-purge:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout without automatic removal of untracked build outputs
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          clean: false
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Purge exact FT179 outputs only after independently checked Drive readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF" = 'refs/heads/openivi/ft179-dr-field-20261111'
+          ROOT="$(realpath -e -- "$GITHUB_WORKSPACE")"
+          case "$ROOT" in
+            /srv/openivi-ci/_work/ft-app/ft-app|/var/lib/openivi-agent/actions-runner/_work/ft-app/ft-app) ;;
+            *) echo "Unexpected runner workspace: $ROOT" >&2; exit 1 ;;
+          esac
+          test "$(git -C "$ROOT" rev-parse --show-toplevel)" = "$ROOT"
+          test "$(git -C "$ROOT" rev-parse HEAD)" = "$GITHUB_SHA"
+          git -C "$ROOT" merge-base --is-ancestor 486b2fcf9c20e9d22c56c5e02fb996952cd6f764 "$GITHUB_SHA"
+          git -C "$ROOT" diff --quiet 486b2fcf9c20e9d22c56c5e02fb996952cd6f764 "$GITHUB_SHA" -- app/src/main app/build.gradle.kts server/src/main
+          # Drive ID 1V9_fL8yyEW_-s9QyvQJavcxahjcv41lB independently downloaded and
+          # byte-verified (30600722 bytes, SHA256 below) before this approved purge.
+          APK="$ROOT/app/build/outputs/apk/release/app-release.apk"
+          if test ! -f "$APK"; then
+            echo "No original signed APK at expected path: keep any other outputs, no deletion"
+            exit 0
+          fi
+          test ! -L "$APK"
+          test "$(stat -c%s "$APK")" = "30600722"
+          expected=2df79769aaceff9e6c1a34296098fb3f1faeb6d4589798ec4f672c4c623cb8d6
+          actual="$(sha256sum "$APK" | cut -d' ' -f1)"
+          test "$actual" = "$expected"
+          for rel in app/build server/build verified; do
+            target="$ROOT/$rel"
+            if test -L "$target"; then
+              echo "Refusing symlink cleanup: $rel" >&2
+              exit 1
+            fi
+          done
+          for rel in app/build server/build verified; do
+            target="$ROOT/$rel"
+            if test -d "$target"; then
+              du -sh "$target"
+              rm -rf -- "$target"
+              test ! -e "$target"
+              echo "REMOVED_DRIVE_VERIFIED_BUILD_OUTPUT=$rel"
+            fi
+          done
+          for rel in apksigner.txt apk-badging.txt; do
+            target="$ROOT/$rel"
+            test ! -L "$target"
+            if test -f "$target"; then rm -f -- "$target"; fi
+          done
+          # Owner signing secrets and keystore are NOT removed by this cleanup.
+          echo "FT179_POSTDRIVE_PURGE_OK=$GITHUB_SHA"
+          df -h -- "$ROOT"
