@@ -8,6 +8,19 @@ package app.ft.iccoa
 internal object IccoaDirectAvc {
     data class Sps(val width: Int, val height: Int, val profileIdc: Int, val levelIdc: Int)
 
+    /** Ensure the ICCOA TS muxer receives Annex B SPS/PPS even if AA used avcC. */
+    fun normalizedConfiguration(csd: ByteArray): ByteArray? {
+        val nal = units(csd)
+        if (nal.none { it.isNotEmpty() && (it[0].toInt() and 31) == 7 } ||
+            nal.none { it.isNotEmpty() && (it[0].toInt() and 31) == 8 }) return null
+        val result = java.io.ByteArrayOutputStream()
+        for (entry in nal) {
+            result.write(byteArrayOf(0, 0, 0, 1))
+            result.write(entry)
+        }
+        return result.toByteArray()
+    }
+
     /** Compatibility is scoped to the AVC raster already announced for THIS WFD PLAY. */
     fun compatible(
         sps: Sps?, streamWidth: Int, streamHeight: Int, fps: Int,
@@ -159,6 +172,27 @@ internal object IccoaDirectAvc {
                 at = to
             }
             return result
+        }
+        // ISO/IEC 14496-15 AVCDecoderConfigurationRecord (avcC).
+        if (data.size >= 8 && (data[0].toInt() and 255) == 1) {
+            val result = ArrayList<ByteArray>()
+            var at = 5
+            val count = data[at++].toInt() and 31
+            if (count == 0) return emptyList()
+            fun takeNal(): Boolean {
+                if (at + 2 > data.size) return false
+                val size = ((data[at].toInt() and 255) shl 8) or (data[at + 1].toInt() and 255)
+                at += 2
+                if (size <= 0 || size > data.size - at) return false
+                result.add(data.copyOfRange(at, at + size))
+                at += size
+                return true
+            }
+            repeat(count) { if (!takeNal()) return emptyList() }
+            if (at >= data.size) return emptyList()
+            val ppsCount = data[at++].toInt() and 255
+            repeat(ppsCount) { if (!takeNal()) return emptyList() }
+            if (at == data.size) return result
         }
         if (data.size >= 5) {
             val result = ArrayList<ByteArray>()
