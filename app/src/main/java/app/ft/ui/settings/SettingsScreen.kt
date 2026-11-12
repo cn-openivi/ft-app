@@ -82,6 +82,7 @@ import app.ft.core.CarAudioBus
 import app.ft.core.CarProtocol
 import app.ft.core.Prefs
 import app.ft.ui.components.CarProtocolSetting
+import app.ft.ui.components.rememberCarProtocol
 import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
 import app.ft.iccoa.IccoaService
@@ -261,7 +262,7 @@ private fun PageContent(page: SettingsPage) {
                 IccoaBluetoothIdentityLinkSetting()
                 val iccoa by IccoaService.state.collectAsStateWithLifecycle()
                 val mirrorCalibration by MirrorTouchCalibration.state.collectAsStateWithLifecycle()
-                Text("Зеркалирование: калибровка касаний Toyota", style = MaterialTheme.typography.titleMedium)
+                Text("Зеркалирование: калибровка касаний ГУ", style = MaterialTheme.typography.titleMedium)
                 Text("Сначала откройте зеркалирование телефона на ГУ. Запустите четыре точки отсюда, " +
                     "затем последовательно коснитесь кружков на экране автомобиля. " +
                     "Профили портрет/альбом сохраняются раздельно.",
@@ -346,13 +347,50 @@ private fun PageContent(page: SettingsPage) {
                 p.vehicleCoordinateLogging,
                 detail = stringResource(R.string.vehicle_coordinate_log_about)
             ) { p.vehicleCoordinateLogging = it }
-            Text(stringResource(R.string.adv_ports), style = MaterialTheme.typography.labelLarge)
-            IntSetting(stringResource(R.string.adv_command), p.cmdPort) { p.cmdPort = it }
-            IntSetting(stringResource(R.string.adv_video), p.videoPort) { p.videoPort = it }
-            IntSetting(stringResource(R.string.adv_media), p.mediaPort) { p.mediaPort = it }
-            IntSetting(stringResource(R.string.adv_tts), p.ttsPort) { p.ttsPort = it }
-            IntSetting(stringResource(R.string.adv_voice), p.vrPort) { p.vrPort = it }
-            IntSetting(stringResource(R.string.adv_touch), p.touchPort) { p.touchPort = it }
+            // Both connection backends already select their own sockets in CarConnection.
+            // The ordinary settings screen must not pretend that CarLife's ports configure ICCOA.
+            val selectedProtocol = rememberCarProtocol()
+            val protocolLabel = if (selectedProtocol == CarProtocol.ICCOA) "ICCOA" else "Baidu CarLife"
+            var networkChannelsVisible by remember { mutableStateOf(false) }
+            var editCarLifePorts by remember { mutableStateOf(false) }
+            TextButton(onClick = { networkChannelsVisible = !networkChannelsVisible }) {
+                Text(stringResource(
+                    if (networkChannelsVisible) R.string.adv_network_details_hide
+                    else R.string.adv_network_details_show, protocolLabel
+                ))
+            }
+            if (networkChannelsVisible) {
+                Text(stringResource(R.string.adv_network_source_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                when (selectedProtocol) {
+                    CarProtocol.CARLIFE -> {
+                        Text(stringResource(R.string.adv_carlife_channel_map,
+                            p.cmdPort, p.videoPort, p.mediaPort, p.ttsPort, p.vrPort, p.touchPort),
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { editCarLifePorts = !editCarLifePorts }) {
+                            Text(stringResource(
+                                if (editCarLifePorts) R.string.adv_carlife_hide_edit
+                                else R.string.adv_carlife_edit_ports
+                            ))
+                        }
+                        if (editCarLifePorts) {
+                            IntSetting(stringResource(R.string.adv_command), p.cmdPort) { p.cmdPort = it }
+                            IntSetting(stringResource(R.string.adv_video), p.videoPort) { p.videoPort = it }
+                            IntSetting(stringResource(R.string.adv_media), p.mediaPort) { p.mediaPort = it }
+                            IntSetting(stringResource(R.string.adv_tts), p.ttsPort) { p.ttsPort = it }
+                            IntSetting(stringResource(R.string.adv_voice), p.vrPort) { p.vrPort = it }
+                            IntSetting(stringResource(R.string.adv_touch), p.touchPort) { p.touchPort = it }
+                        }
+                    }
+                    CarProtocol.ICCOA -> {
+                        // Static source-defined channels, not measured socket/listener status.
+                        // RTP is negotiated by the receiver and cannot be set with CarLife port prefs.
+                        Text(stringResource(R.string.adv_iccoa_channel_map),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
         }
         SettingsPage.SUPERCAST -> SuperCastSettings()
         SettingsPage.BACKUP -> BackupSettings()
