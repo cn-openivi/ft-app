@@ -19,9 +19,9 @@ internal object AaH264Tap {
     private fun selected(source: AaSession): Listener? =
         listener?.takeIf { AaHeadUnitService.current === source }
 
-    fun start(source: AaSession) { selected(source)?.onStart(source) }
-    fun config(source: AaSession, csd: ByteArray) { selected(source)?.onConfig(source, csd) }
+    fun start(source: AaSession) { runCatching { selected(source)?.onStart(source) } }
+    fun config(source: AaSession, csd: ByteArray) { runCatching { selected(source)?.onConfig(source, csd) } }
     fun frame(source: AaSession, data: ByteArray, timestamp: Long): Boolean =
-        selected(source)?.onFrame(source, data, timestamp) == true
-    fun stop(source: AaSession) { selected(source)?.onStop(source) }
+        runCatching { selected(source)?.onFrame(source, data, timestamp) == true }.getOrDefault(false)
+    fun stop(source: AaSession) { runCatching { selected(source)?.onStop(source) } }
 }
