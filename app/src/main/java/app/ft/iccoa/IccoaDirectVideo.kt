@@ -59,12 +59,9 @@ internal class IccoaDirectVideo(
     override fun onConfig(source: AaSession, csd: ByteArray) {
         if (!sourceValid(source) || failed) return
         val sps = IccoaDirectAvc.sps(csd)
-        val supported = sps != null &&
-            sps.width == plan.streamWidth && sps.height == plan.streamHeight &&
-            sps.profileIdc in setOf(66, 77, 100) && sps.levelIdc in 10..42 &&
-            plan.fps <= 30 && plan.streamWidth in 320..1920 && plan.streamHeight in 240..1080 &&
-            app.ft.aa.AaProtocol.standardSize(aaWidth, aaHeight) ==
-                (plan.streamWidth to plan.streamHeight)
+        val supported = IccoaDirectAvc.compatible(
+            sps, plan.streamWidth, plan.streamHeight, plan.fps, aaWidth, aaHeight
+        )
         val previous = compatibleConfig
         compatibleConfig = if (supported) csd.copyOf() else null
         if (active && (!supported || (previous != null && !previous.contentEquals(csd))))
