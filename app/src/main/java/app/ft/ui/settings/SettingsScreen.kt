@@ -244,7 +244,19 @@ private fun PageContent(page: SettingsPage) {
         SettingsPage.CAR_SCREEN -> Unit
         SettingsPage.PICTURE -> PictureSettings()
         SettingsPage.SOUND -> {
-            GuidanceSetting()
+            // CarLife has a dedicated voice/TTS transport. ICCOA uses the
+            // projection's shared AAC/RTP audio path instead; CarLife's
+            // guidance strategy is not a usable ICCOA user setting.
+            when (rememberCarProtocol()) {
+                CarProtocol.CARLIFE -> GuidanceSetting()
+                CarProtocol.ICCOA -> {
+                    Text(stringResource(R.string.guidance_iccoa_title),
+                        style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.guidance_iccoa_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             BoolSetting(stringResource(R.string.sound_bluetooth), p.soundOverBluetooth) { p.soundOverBluetooth = it }
             BoolSetting(stringResource(R.string.sound_silence_phone), p.muteWhileProjecting) { p.muteWhileProjecting = it }
             Text(stringResource(R.string.sound_music_section), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
