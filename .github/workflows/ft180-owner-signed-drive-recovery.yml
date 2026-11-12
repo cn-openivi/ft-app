@@ -1,0 +1,160 @@
+name: FT180 owner-signed Drive root recovery (VPS only)
+
+on:
+  push:
+    branches: [openivi/ft180-staging-btmac-20261112]
+    paths: ['.github/workflows/ft180-owner-signed-drive-recovery.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft180-signed-delivery-only
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 80
+    steps:
+      - name: Checkout with retained signed APK preserved
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+      - name: Confirm exact FT180 release candidate and fixed source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft180-staging-btmac-20261112'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor d3c2e59e976b6814cf22c399788107adafc24e99 "$GITHUB_SHA"
+          git diff --quiet d3c2e59e976b6814cf22c399788107adafc24e99 "$GITHUB_SHA" -- app/src/main app/src/test app/build.gradle.kts server/src/main
+          grep -Fq 'versionCode = 180' app/build.gradle.kts
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          case "$(realpath -e "$GITHUB_WORKSPACE")" in
+            /srv/openivi-ci/_work/ft-app/ft-app|/var/lib/openivi-agent/actions-runner/_work/ft-app/ft-app) ;;
+            *) echo 'Unexpected runner workspace' >&2; exit 1 ;;
+          esac
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Restore existing permanent owner signing only if APK missing
+        shell: bash
+        env:
+          FT_XA60_SIGNING_BUNDLE_JSON: ${{ secrets.FT_XA60_SIGNING_BUNDLE_JSON }}
+        run: |
+          set -euo pipefail
+          if test -s verified/FT180_XA60_OWNER_SIGNED.apk; then
+            echo 'Existing signed APK retained; no Gradle rebuild'
+            exit 0
+          fi
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, sys
+          raw = os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON", "")
+          if not raw: sys.exit("Required owner signing secret unavailable")
+          bundle = json.loads(raw)
+          assert bundle["format"] == "openivi-ft-xa60-pkcs12-v1"
+          assert bundle["alias"] == "openivi_ft_xa60"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          assert hashlib.sha256(key).hexdigest() == bundle["keystore_sha256"]
+          password = bundle["store_password"]
+          assert password and all(c in "0123456789abcdef" for c in password)
+          private = pathlib.Path(".ft-xa60")
+          private.mkdir(mode=0o700, exist_ok=True)
+          keystore = private / "ft-xa60-owner.p12"
+          keystore.write_bytes(key)
+          keystore.chmod(0o600)
+          pw = private / "password.txt"
+          pw.write_text(password)
+          pw.chmod(0o600)
+          props = pathlib.Path("ft-xa60-signing.properties")
+          props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+password+
+                           "\nkeyAlias=openivi_ft_xa60\nkeyPassword="+password+"\n")
+          props.chmod(0o600)
+          PY
+          actual="$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | cut -d' ' -f1)"
+          test "$actual" = 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c'
+      - name: Rebuild signed FT180 only if prior APK was purged
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -s verified/FT180_XA60_OWNER_SIGNED.apk; then
+            echo 'Reusing previously verified signed binary'
+            exit 0
+          fi
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release.apk
+          mkdir -p verified
+          cp app/build/outputs/apk/release/app-release.apk verified/FT180_XA60_OWNER_SIGNED.apk
+      - name: Verify permanent signer, version, ZIP and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=verified/FT180_XA60_OWNER_SIGNED.apk
+          test ! -L "$apk"
+          test -s "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" >/dev/null
+          unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          BT="$SDK/build-tools/36.0.0"
+          "$BT/aapt" dump badging "$apk" | tee verified/apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='180'" verified/apk-badging.txt
+          if grep -q '^application-debuggable' verified/apk-badging.txt; then exit 1; fi
+          "$BT/apksigner" verify --verbose --print-certs "$apk" | tee verified/apksigner.txt
+          grep -iq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' verified/apksigner.txt
+          (cd verified && sha256sum FT180_XA60_OWNER_SIGNED.apk > SHA256SUMS)
+          printf 'SOURCE_SHA=d3c2e59e976b6814cf22c399788107adafc24e99\nWORKFLOW_SHA=%s\nVERSION_CODE=180\nAPP_ID=app.ft.xa60\nSIGNED_WITH=EXISTING_OWNER_CERT\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" > verified/PROVENANCE.txt
+      - name: Deliver to verified remote ROOT, paced and read back exact SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          # Remote openivi-drive: already points at CI_BUILDS folder ID
+          # 1CovgiksxOMTEKUtbDUeHxua3HhwulOXz; do not nest CI_BUILDS twice.
+          local=verified/FT180_XA60_OWNER_SIGNED.apk
+          target=openivi-drive:FT180_XA60_OWNER_SIGNED_760e5f31.apk
+          opts=(--tpslimit 0.5 --tpslimit-burst 1 --drive-pacer-min-sleep 2s --drive-pacer-burst 1 --retries 12 --retries-sleep 30s --low-level-retries 20)
+          rclone copyto "$local" "$target" "${opts[@]}"
+          expected="$(sha256sum "$local" | cut -d' ' -f1)"
+          received="$(rclone cat "$target" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+          test "$expected" = "$received"
+          for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
+            dst="openivi-drive:FT180_760e5f31_$name"
+            rclone copyto "verified/$name" "$dst" "${opts[@]}"
+            actual="$(rclone cat "$dst" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+            test "$actual" = "$(sha256sum "verified/$name" | cut -d' ' -f1)"
+          done
+          echo "FT180_SIGNED_APK_TARGET=$target"
+          echo "FT180_SIGNED_APK_SHA256=$expected"
+          echo 'FT180_DRIVE_READBACK_SHA256=PASS'
+      - name: Remove local outputs only after Drive independent hash readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build verified; do
+            test ! -L "$p"
+            if test -d "$p"; then rm -rf -- "$p"; fi
+          done
+          echo 'FT180_LOCAL_BUILD_PURGE_AFTER_DRIVE=PASS'
+      - name: Clean only restored signing materials even on failure
+        if: always()
+        shell: bash
+        run: |
+          rm -f ft-xa60-signing.properties .ft-xa60/ft-xa60-owner.p12 .ft-xa60/password.txt
