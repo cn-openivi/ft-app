@@ -483,4 +483,24 @@
     <string name="gps_source_car">GPS ـی ئۆتۆمبێل</string>
     <string name="gps_source_phone">GPS ـی مۆبایل</string>
     <string name="gps_source_about">یەک سەرچاوەی GPS هەڵبژێرە. لە کاتی نەمانی سیگناڵدا بەرنامەکە خۆکارانە سەرچاوە ناگۆڕێت. خێرایی چەرخ و ژیرۆسکۆپی ئۆتۆمبێل دەتوانن پێشبینی شوێن یارمەتی بدەن ئەگەر پشتڕاست کرابن. هەڵبژاردن بۆ Android Auto دوای پەیوەستبوونەوە جێبەجێ دەبێت.</string>
+    <!-- FT181: new settings use reviewed English fallback until human translations are available. -->
+    <string name="adv_network_details_show">Network channels (%1$s)</string>
+    <string name="adv_network_details_hide">Hide network channels (%1$s)</string>
+    <string name="adv_network_source_note">Configured transport channels, not proof of live socket connectivity.</string>
+    <string name="adv_carlife_channel_map">CarLife TCP: command %1$d, video %2$d, media %3$d, TTS %4$d, voice %5$d, touch %6$d.</string>
+    <string name="adv_carlife_edit_ports">Edit CarLife TCP ports (advanced)</string>
+    <string name="adv_carlife_hide_edit">Hide CarLife port editor</string>
+    <string name="adv_iccoa_channel_map">ICCOA source configuration: control 57219, audio 57229, sensor 57239, other lanes 57249/57259, RTSP 7236, UIBC 4321. The receiver negotiates the RTP destination port.</string>
+    <string name="guidance_iccoa_title">Navigation audio over ICCOA</string>
+    <string name="guidance_iccoa_body">ICCOA streams capturable audio through a shared projection audio channel. The separate CarLife TTS channel and its mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
+    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 240 dpi.</string>
+    <string name="picture_iccoa_direct_codec">Direct mode forwards the original Android Auto H.264 video without video re-encoding. The source controls bitrate and frame rate. If incompatible, FT restores its normal 8 Mbps video encoder. Test while parked.</string>
+    <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
+    <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>
+    <string name="picture_iccoa_video_mode_direct">Direct H.264 (trial)</string>
+    <string name="picture_iccoa_video_mode_info">Direct mode is tested only for full-screen Android Auto with compatible H.264. FT returns to normal video if the stream is incompatible or interrupted. Switching back to Normal takes effect immediately. Direct mode starts on the next ICCOA connection.</string>
+    <string name="picture_iccoa_about">ICCOA: the head unit negotiates resolution and frame rate. CarLife video stream settings do not apply here.</string>
+    <string name="picture_iccoa_live">ICCOA video stream: %1$d × %2$d, %3$d fps.</string>
+    <string name="picture_iccoa_disconnected">ICCOA video is not streaming yet.</string>
+    <string name="picture_iccoa_codec">H.264, target bitrate 8 Mbps, up to 1920 × 1080 at 30 fps in the current FT implementation. Encoder power saving is shared by both protocols.</string>
 </resources>
