@@ -2,10 +2,10 @@
 <resources>
     <string name="car_protocol">Connection transport</string>
     <string name="car_protocol_about">Choose the connection system shown on the car screen. Changing it restarts the connection if FT is on.</string>
-    <string name="iccoa_title">ICCOA Carlink (experimental)</string>
+    <string name="iccoa_title">ICCOA Carlink</string>
     <string name="iccoa_home_setup">Open ICCOA Carlink on the car, then choose your car below.</string>
     <string name="iccoa_settings_about">Wireless connection via Bluetooth and Wi-Fi. Search for your car and enter its code on the Home tab.</string>
-    <string name="iccoa_experimental">Experimental wireless projection</string>
+    <string name="iccoa_experimental">Wireless projection via ICCOA</string>
     <string name="iccoa_experimental_body">Open ICCOA Carlink on the car, then connect to its device below. Keep Bluetooth, Wi-Fi and Location on. Android may ask you to join the car Wi-Fi.</string>
     <string name="iccoa_ready">Ready to connect</string>
     <string name="iccoa_scanning">Looking for the car — up to 60 seconds</string>
