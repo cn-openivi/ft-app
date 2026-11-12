@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 180
-        versionName = "3.9.66-xa60-ft180-staging-bt-link"
+        versionCode = 181
+        versionName = "3.9.67-xa60-ft181-picture-dpi-240"
     }
 
     signingConfigs {

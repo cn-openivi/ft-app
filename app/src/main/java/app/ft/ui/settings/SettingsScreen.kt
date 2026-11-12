@@ -80,6 +80,7 @@ import app.ft.ui.car.CarStyles
 import app.ft.aa.AaInstaller
 import app.ft.core.CarAudioBus
 import app.ft.core.CarProtocol
+import app.ft.core.Prefs
 import app.ft.ui.components.CarProtocolSetting
 import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
@@ -511,7 +512,9 @@ private fun PictureSettings() {
     val car by CarLifeService.state.collectAsStateWithLifecycle()
     VideoStatus(car.video.takeIf { car.session is CarLifeSession.State.Projecting },
         saved?.takeIf { it.settingsKey == p.videoSettingsKey })
-    val defaults = size == VideoPlans.SIZE_CAR && fps == 0 && rate == VideoPlans.DEFAULT_BITRATE && p.videoMinFps == 0 && floor == DEFAULT_FLOOR && !savePower
+    val defaults = size == VideoPlans.SIZE_CAR && fps == 0 && rate == VideoPlans.DEFAULT_BITRATE &&
+        p.videoMinFps == 0 && floor == DEFAULT_FLOOR && !savePower &&
+        p.carDensity == Prefs.DEFAULT_CAR_DENSITY_DPI
     Text(
         stringResource(if (defaults) R.string.picture_defaults_body else R.string.picture_changed_body),
         style = MaterialTheme.typography.bodyMedium,
@@ -558,14 +561,14 @@ private fun PictureSettings() {
             p.videoMinFps = 0
             p.videoBitrate = VideoPlans.DEFAULT_BITRATE
             p.videoQpFloor = DEFAULT_FLOOR
-            p.carDensity = 160
+            p.carDensity = Prefs.DEFAULT_CAR_DENSITY_DPI
             p.encoderSavePower = false
             rev++
         },
-        enabled = !defaults || p.carDensity != 160 || saved != null,
+        enabled = !defaults || saved != null,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Text(stringResource(if (defaults && p.carDensity == 160 && saved == null) R.string.picture_at_defaults else R.string.picture_reset))
+        Text(stringResource(if (defaults && saved == null) R.string.picture_at_defaults else R.string.picture_reset))
     }
 }
 

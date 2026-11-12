@@ -7,6 +7,11 @@ import app.ft.projection.VideoPlans
 import app.ft.projection.VideoProfile
 
 class Prefs(context: Context) {
+    companion object {
+        /** Default only; explicitly saved per-user picture DPI is never migrated. */
+        const val DEFAULT_CAR_DENSITY_DPI = 240
+    }
+
     private val sp: SharedPreferences = context.getSharedPreferences("ft", Context.MODE_PRIVATE)
 
     private fun int(key: String, def: Int) = sp.getInt(key, def)
@@ -82,7 +87,9 @@ class Prefs(context: Context) {
     var videoMinFps: Int get() = int("videoMinFps", 0); set(v) = setVideo("videoMinFps", v)
     var videoBitrate: Int get() = int("pictureBitrate", VideoPlans.DEFAULT_BITRATE); set(v) = setVideo("pictureBitrate", v)
     var videoQpFloor: Int get() = int("videoQpFloor", 22); set(v) = setVideo("videoQpFloor", v)
-    var carDensity: Int get() = int("carDensity", 160); set(v) = set("carDensity", v)
+    var carDensity: Int
+        get() = int("carDensity", DEFAULT_CAR_DENSITY_DPI)
+        set(v) = set("carDensity", v)
     var encoderSavePower: Boolean get() = bool("encoderSavePower", false); set(v) {
         synchronized(videoProfileLock) {
             if (v != encoderSavePower) sp.edit().putBoolean("encoderSavePower", v)
