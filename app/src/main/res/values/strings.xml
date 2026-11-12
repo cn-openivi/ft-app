@@ -119,6 +119,10 @@
     <string name="quiet_title">Share sound without asking</string>
     <string name="quiet_on_body">FT passes other apps\' sound to the car by itself, with no question on the phone. To turn this off, run:</string>
     <string name="quiet_off_body">Android asks on the phone before FT can pass other apps\' sound to the car. Run this once from a computer with USB debugging on, and it stops asking:</string>
+    <string name="picture_iccoa_about">ICCOA: the head unit negotiates resolution and frame rate. CarLife video stream settings do not apply here.</string>
+    <string name="picture_iccoa_live">ICCOA video stream: %1$d × %2$d, %3$d fps.</string>
+    <string name="picture_iccoa_disconnected">ICCOA video is not streaming yet.</string>
+    <string name="picture_iccoa_codec">H.264, target bitrate 8 Mbps, up to 1920 × 1080 at 30 fps in the current FT implementation. Encoder power saving is shared by both protocols.</string>
     <string name="picture_defaults_body">By default, FT uses the car screen size, 3 Mbps and automatic frame rate. Working stream settings are remembered for the next connection.</string>
     <string name="picture_stream_now">Sending to the car now</string>
     <string name="picture_stream_saved">Saved for the next connection</string>
@@ -132,7 +136,7 @@
     <string name="picture_changed_body">Changes take effect the next time the car connects.</string>
     <string name="picture_size_label">Size sent to the car</string>
     <string name="picture_size_car">Car\'s own</string>
-    <string name="picture_size_baidu">Like Baidu</string>
+    <string name="picture_size_baidu">CarLife compatibility mode</string>
     <string name="picture_size_custom">Custom</string>
     <string name="picture_width">Width</string>
     <string name="picture_height">Height</string>
