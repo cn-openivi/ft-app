@@ -3,6 +3,14 @@ package app.ft.ui.settings
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.widget.Toast
+import android.content.Intent
+import android.provider.Settings
+import android.os.Build
+import android.content.pm.PackageManager
+import android.Manifest
+import app.ft.supercast.adb.WirelessAdbEngine
+import app.ft.supercast.adb.WirelessPairingService
+import app.ft.FTTouchService
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,10 +68,14 @@ fun SuperCastSettings() {
     val scope = rememberCoroutineScope()
     val root = rememberRootGranted()
     val ready by SuperCast.ready.collectAsState()
+    val reason by SuperCast.startReason.collectAsState()
+    val pairing by WirelessPairingService.status.collectAsState()
     var onCar by remember { mutableStateOf(prefs.supercastOn) }
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var open by remember { mutableIntStateOf(-1) }
+    var expert by remember { mutableStateOf(false) }
+    val paired = WirelessAdbEngine.isPaired(context)
 
     fun setUp() {
         failed = false
@@ -72,6 +84,20 @@ fun SuperCastSettings() {
             val ok = withContext(Dispatchers.IO) { SuperCast.start(context.applicationContext) }
             busy = false
             failed = !ok
+        }
+    }
+
+    fun startPairing() {
+        // The click authorizes a one-shot Accessibility read (only when FT's
+        // already-enabled service is available). RemoteInput remains fallback.
+        val autoRead = FTTouchService.enabled
+        if (!WirelessPairingService.begin(context, autoRead)) return
+        val developer = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+        try {
+            context.startActivity(developer)
+        } catch (_: Exception) {
+            WirelessPairingService.stopPairing(context)
+            failed = true
         }
     }
 
@@ -85,72 +111,125 @@ fun SuperCastSettings() {
     ) { index ->
         onCar = index == 1
         prefs.supercastOn = onCar
-        if (onCar) setUp() else scope.launch { withContext(Dispatchers.IO) { SuperCast.stopAll() } }
+        if (onCar && (root || paired)) setUp()
+        if (!onCar) scope.launch {
+            WirelessPairingService.stopPairing(context)
+            withContext(Dispatchers.IO) { SuperCast.stopAll() }
+        }
     }
 
     if (!onCar) {
         BoolSetting(stringResource(R.string.apps_car_size), prefs.carSizedApps) { prefs.carSizedApps = it }
-        Text(
-            stringResource(R.string.apps_car_size_about),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(stringResource(R.string.apps_car_size_about),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         return
     }
 
     Status(ready, busy)
-    if (!ready && !busy) {
-        FilledTonalButton(onClick = { setUp() }) { Text(stringResource(R.string.apps_setup_now)) }
+    if (!ready) {
+        if (failed) Text(stringResource(R.string.apps_failed),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        val specific = when (reason) {
+            SuperCast.StartReason.NEED_PAIRING -> R.string.wireless_pair_no_auth
+            SuperCast.StartReason.DEBUGGING_OFF -> R.string.wireless_pair_debugging_off
+            SuperCast.StartReason.TLS_REJECTED -> R.string.wireless_pair_tls_mismatch
+            SuperCast.StartReason.HELPER_UNREACHABLE -> R.string.wireless_pair_helper_failed
+            else -> null
+        }
+        if (specific != null) Text(stringResource(specific),
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        if (pairing.phase != WirelessPairingService.Phase.IDLE) {
+            val p = when (pairing.phase) {
+                WirelessPairingService.Phase.SEARCHING -> R.string.wireless_pair_search
+                WirelessPairingService.Phase.CODE_READY -> R.string.wireless_pair_enter_code
+                WirelessPairingService.Phase.PAIRING -> R.string.wireless_pair_in_progress
+                WirelessPairingService.Phase.CONNECTING -> R.string.wireless_pair_connecting
+                WirelessPairingService.Phase.READY -> R.string.wireless_pair_success
+                WirelessPairingService.Phase.FAILED -> R.string.wireless_pair_failed
+                WirelessPairingService.Phase.IDLE -> R.string.wireless_pair_search
+            }
+            Text(stringResource(p), style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        if (root || paired) {
+            FilledTonalButton(enabled = !busy, onClick = { setUp() }) {
+                Text(stringResource(R.string.apps_setup_now))
+            }
+        }
+        FilledTonalButton(enabled = !busy && pairing.phase !in listOf(
+            WirelessPairingService.Phase.SEARCHING,
+            WirelessPairingService.Phase.CODE_READY,
+            WirelessPairingService.Phase.PAIRING,
+            WirelessPairingService.Phase.CONNECTING
+        ), onClick = { startPairing() }) {
+            Text(stringResource(R.string.wireless_pair_button))
+        }
+        Text(stringResource(R.string.wireless_pair_auto_hint),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                }
+            }) { Text(stringResource(R.string.wireless_pair_notifications)) }
+        }
+        if (pairing.phase in listOf(
+                WirelessPairingService.Phase.SEARCHING, WirelessPairingService.Phase.CODE_READY,
+                WirelessPairingService.Phase.PAIRING, WirelessPairingService.Phase.CONNECTING)) {
+            TextButton(onClick = { WirelessPairingService.stopPairing(context) }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
     }
-    if (failed && !ready) {
-        Text(stringResource(R.string.apps_failed), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-    }
-    BoolSetting(stringResource(R.string.supercast_screen_off), prefs.supercastScreenOff, stringResource(R.string.supercast_screen_off_about)) { prefs.supercastScreenOff = it }
-    var chosen by remember { mutableStateOf(prefs.supercastApps.split(',').filter { it.isNotBlank() }.toSet()) }
-    var picking by remember { mutableStateOf(false) }
-    OptionRow(
-        stringResource(R.string.supercast_which_apps),
-        if (chosen.isEmpty()) stringResource(R.string.supercast_all_apps) else stringResource(R.string.supercast_some_apps, chosen.size),
-        detail = stringResource(R.string.supercast_which_about)
-    ) { picking = true }
-    if (picking) {
-        AppChecklist(chosen, onDismiss = { picking = false }) { now ->
+
+    // These controls do nothing until a helper has actually registered over Binder.
+    if (ready) {
+        BoolSetting(stringResource(R.string.supercast_screen_off), prefs.supercastScreenOff,
+            stringResource(R.string.supercast_screen_off_about)) { prefs.supercastScreenOff = it }
+        var chosen by remember { mutableStateOf(prefs.supercastApps.split(',').filter { it.isNotBlank() }.toSet()) }
+        var picking by remember { mutableStateOf(false) }
+        OptionRow(
+            stringResource(R.string.supercast_which_apps),
+            if (chosen.isEmpty()) stringResource(R.string.supercast_all_apps)
+                else stringResource(R.string.supercast_some_apps, chosen.size),
+            detail = stringResource(R.string.supercast_which_about)
+        ) { picking = true }
+        if (picking) AppChecklist(chosen, onDismiss = { picking = false }) { now ->
             chosen = now
             prefs.supercastApps = now.joinToString(",")
         }
     }
 
-    Text(stringResource(R.string.supercast_ways), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
-    Way(
-        index = 0,
-        open = open,
-        onOpen = { open = if (open == 0) -1 else 0 },
-        title = stringResource(R.string.supercast_way_root),
-        body = stringResource(R.string.supercast_way_root_body),
-        best = root
-    )
-    Way(
-        index = 1,
-        open = open,
-        onOpen = { open = if (open == 1) -1 else 1 },
-        title = stringResource(R.string.supercast_way_wireless),
-        body = stringResource(R.string.supercast_way_wireless_body),
-        best = !root
-    )
-    Way(
-        index = 2,
-        open = open,
-        onOpen = { open = if (open == 2) -1 else 2 },
-        title = stringResource(R.string.supercast_way_computer),
-        body = stringResource(R.string.supercast_way_computer_body)
-    ) {
-        val command = remember { Helper.computerCommand(SuperCast.token) }
-        Text(command, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-        TextButton(onClick = {
-            context.getSystemService(ClipboardManager::class.java)
-                ?.setPrimaryClip(ClipData.newPlainText("FT", command))
-            Toast.makeText(context, context.getString(R.string.supercast_copy_command), Toast.LENGTH_SHORT).show()
-        }) { Text(stringResource(R.string.supercast_copy_command)) }
+    TextButton(onClick = { expert = !expert }) {
+        Text(stringResource(if (expert) R.string.wireless_pair_hide_expert
+            else R.string.wireless_pair_show_expert))
+    }
+    if (expert) {
+        BoolSetting(stringResource(R.string.wireless_pair_legacy_tcp), prefs.supercastLegacyAdb,
+            stringResource(R.string.wireless_pair_legacy_about)) { prefs.supercastLegacyAdb = it }
+        Text(stringResource(R.string.supercast_ways),
+            style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+        Way(index = 0, open = open, onOpen = { open = if (open == 0) -1 else 0 },
+            title = stringResource(R.string.supercast_way_root),
+            body = stringResource(R.string.supercast_way_root_body), best = root)
+        Way(index = 1, open = open, onOpen = { open = if (open == 1) -1 else 1 },
+            title = stringResource(R.string.supercast_way_wireless),
+            body = stringResource(R.string.supercast_way_wireless_body), best = !root)
+        Way(index = 2, open = open, onOpen = { open = if (open == 2) -1 else 2 },
+            title = stringResource(R.string.supercast_way_computer),
+            body = stringResource(R.string.supercast_way_computer_body)) {
+            val command = remember { Helper.computerCommand(SuperCast.token) }
+            Text(command, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            TextButton(onClick = {
+                context.getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("FT", command))
+                Toast.makeText(context, context.getString(R.string.supercast_copy_command),
+                    Toast.LENGTH_SHORT).show()
+            }) { Text(stringResource(R.string.supercast_copy_command)) }
+        }
     }
 }
 

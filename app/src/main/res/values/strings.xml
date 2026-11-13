@@ -529,4 +529,11 @@
     <string name="wireless_pair_progress">Wireless pairing: %1$s</string>
     <string name="wireless_pair_error">Reason: %1$s</string>
     <string name="wireless_pair_no_auth">Wireless debugging not connected yet; open Pair with code in Android Settings</string>
+    <string name="wireless_pair_debugging_off">Wireless debugging is off or its connection port is not being advertised. Open Android Wireless debugging.</string>
+    <string name="wireless_pair_tls_mismatch">The saved ADB identity could not authenticate this TLS endpoint. Pair again; do not use a plain-text fallback.</string>
+    <string name="wireless_pair_helper_failed">Paired, but the phone helper did not connect to FT. Review the detailed log before retrying.</string>
+    <string name="wireless_pair_hide_expert">Hide advanced ways</string>
+    <string name="wireless_pair_show_expert">Advanced setup</string>
+    <string name="wireless_pair_legacy_tcp">Allow old ADB TCP 5555</string>
+    <string name="wireless_pair_legacy_about">Expert-only, insecure older transport. Disabled by default; does not work with normal Android 11+ wireless debugging.</string>
 </resources>
