@@ -130,9 +130,13 @@ internal object CarTouchCalibration {
 
     fun reset(context: Context, width: Int, height: Int) {
         cancel()
-        val key = "${width}x${height}"
-        context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE).edit()
-            .remove("${key}_quad4").remove("${key}_gain").remove("${key}_offset").apply()
+        val baseKey = "${width}x${height}"
+        val key = IccoaCalibrationScope.key(baseKey) ?: return
+        val editor = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE).edit()
+            .remove("${key}_quad4").remove("${key}_gain").remove("${key}_offset")
+        if (IccoaCalibrationScope.mayUseLegacy()) editor
+            .remove("${baseKey}_quad4").remove("${baseKey}_gain").remove("${baseKey}_offset")
+        editor.apply()
         DiagLog.i("ICCOA", "FT touch calibration reset for $key")
     }
 
@@ -164,7 +168,12 @@ internal object CarTouchCalibration {
             points.clear()
             _state.value = c.copy(step = 1)
         } else {
-            val key = "${c.width}x${c.height}"
+            val key = IccoaCalibrationScope.key("${c.width}x${c.height}")
+            if (key == null) {
+                DiagLog.w("ICCOA", "Touch calibration requires a verified receiver")
+                cancel()
+                return true
+            }
             context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE).edit()
                 .putString("${key}_quad4", model.serialize()).apply()
             DiagLog.i("ICCOA", "FT four-point X/Y touch calibration saved for $key")
@@ -175,13 +184,18 @@ internal object CarTouchCalibration {
 
     fun correct(context: Context, x: Int, y: Int, width: Int, height: Int): Pair<Int, Int> {
         val prefs = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE)
-        val key = "${width}x${height}"
+        val baseKey = "${width}x${height}"
+        val key = IccoaCalibrationScope.key(baseKey) ?: return x to y
         val saved = prefs.getString("${key}_quad4", null)
+            ?: if (IccoaCalibrationScope.mayUseLegacy()) prefs.getString("${baseKey}_quad4", null)
+                else null
         if (saved != null) {
             TouchQuad.deserialize(saved, width, height)?.let { return it.map(x, y, width, height) }
         }
-        val gain = prefs.getFloat("${key}_gain", 1f).toDouble()
-        val offset = prefs.getFloat("${key}_offset", 0f).toDouble()
+        val gain = prefs.getFloat("${key}_gain",
+            if (IccoaCalibrationScope.mayUseLegacy()) prefs.getFloat("${baseKey}_gain", 1f) else 1f).toDouble()
+        val offset = prefs.getFloat("${key}_offset",
+            if (IccoaCalibrationScope.mayUseLegacy()) prefs.getFloat("${baseKey}_offset", 0f) else 0f).toDouble()
         if (!gain.isFinite() || gain !in 0.60..1.80 || !offset.isFinite() ||
             abs(offset) > width * 0.35) return x to y
         return TouchScale(gain, offset).map(x, width) to y
