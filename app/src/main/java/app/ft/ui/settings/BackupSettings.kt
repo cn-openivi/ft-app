@@ -63,8 +63,14 @@ fun BackupSettings() {
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         val ok = runCatching {
-            context.contentResolver.openOutputStream(uri)?.use { it.write(Backup.everything(prefs).toByteArray()) }
-            true
+            val bytes = Backup.everything(prefs).toByteArray(Charsets.UTF_8)
+            requireNotNull(context.contentResolver.openOutputStream(uri, "wt")) {
+                "Could not open selected backup destination"
+            }.use { stream ->
+                stream.write(bytes)
+                stream.flush()
+            }
+            bytes.isNotEmpty()
         }.getOrDefault(false)
         Toast.makeText(context, context.getString(if (ok) R.string.backup_saved else R.string.backup_failed), Toast.LENGTH_LONG).show()
     }

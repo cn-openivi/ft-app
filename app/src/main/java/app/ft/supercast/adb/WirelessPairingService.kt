@@ -95,6 +95,7 @@ class WirelessPairingService : Service() {
     private lateinit var manager: NotificationManager
     private var scanner: WirelessAdbDiscovery? = null
     @Volatile private var pairingBusy = false
+    private var deadlineJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -115,6 +116,16 @@ class WirelessPairingService : Service() {
                 val mdns = WirelessAdbDiscovery(this, WirelessAdbDiscovery.PAIRING)
                 scanner = mdns
                 mdns.start()
+                // Limit the foreground discovery itself, not just code capture.
+                deadlineJob?.cancel()
+                deadlineJob = scope.launch {
+                    delay(120_000L)
+                    if (scanner === mdns) {
+                        _status.value = State(Phase.FAILED, "timed_out")
+                        manager.notify(RESULT_ID, statusNotification(null))
+                        stopSelf()
+                    }
+                }
                 if (intent.getBooleanExtra(EXTRA_AUTO, false)) {
                     WirelessPairingAutoCode.arm(this)
                 }
@@ -162,6 +173,7 @@ class WirelessPairingService : Service() {
                 }
             }
             ACTION_STOP -> {
+                deadlineJob?.cancel()
                 _status.value = State(Phase.IDLE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -229,12 +241,14 @@ class WirelessPairingService : Service() {
     }
 
     private fun finishPairing() {
+        deadlineJob?.cancel()
         val n = statusNotification(null)
         manager.notify(RESULT_ID, n)
         stopSelf()
     }
 
     override fun onDestroy() {
+        deadlineJob?.cancel()
         WirelessPairingAutoCode.cancel()
         scanner?.stop()
         scanner = null

@@ -1,6 +1,7 @@
 package app.ft.supercast
 
 import android.os.Bundle
+import android.os.IBinder
 import android.view.Surface
 import app.ft.FTApp
 import app.ft.core.DiagLog
@@ -38,9 +39,9 @@ object SuperCast {
                 DiagLog.w(TAG, "a helper offered itself with the wrong token, ignoring it")
                 return
             }
-            server = bound
-            _ready.value = bound != null
-            DiagLog.i(TAG, "the SuperCast helper is connected")
+            bindHelper(bound)
+            if (_ready.value) DiagLog.i(TAG, "the SuperCast helper is connected")
+            else DiagLog.w(TAG, "the SuperCast helper did not supply a live Binder")
         }
 
         override fun onEvent(event: Bundle?) {
@@ -58,9 +59,44 @@ object SuperCast {
         return made
     }
 
+    private var deathBinder: IBinder? = null
+    private var deathRecipient: IBinder.DeathRecipient? = null
+
+    @Synchronized
+    private fun bindHelper(bound: IFtServer?) {
+        drop()
+        if (bound == null) return
+        val binder = bound.asBinder()
+        val listener = IBinder.DeathRecipient {
+            synchronized(this) {
+                if (deathBinder === binder) {
+                    DiagLog.w(TAG, "the SuperCast helper process died")
+                    drop()
+                }
+            }
+        }
+        val linked = runCatching { binder.linkToDeath(listener, 0); true }.getOrDefault(false)
+        if (!linked) return
+        if (!binder.isBinderAlive) {
+            runCatching { binder.unlinkToDeath(listener, 0) }
+            return
+        }
+        deathBinder = binder
+        deathRecipient = listener
+        server = bound
+        _ready.value = true
+    }
+
+    @Synchronized
     fun drop() {
+        val binder = deathBinder
+        val recipient = deathRecipient
+        deathBinder = null
+        deathRecipient = null
         server = null
         _ready.value = false
+        if (binder != null && recipient != null)
+            runCatching { binder.unlinkToDeath(recipient, 0) }
     }
 
     fun call(request: Bundle): Bundle? {

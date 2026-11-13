@@ -42,15 +42,18 @@ internal class WirelessAdbDiscovery(
     val endpoint: StateFlow<Endpoint?> = _endpoint
     @Volatile private var started = false
     @Volatile private var registered = false
+    @Volatile private var stopRequested = false
 
     fun start() {
         if (started) return
         started = true
+        stopRequested = false
         try { manager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, this) }
         catch (_: RuntimeException) { started = false; _endpoint.value = null }
     }
 
     fun stop() {
+        stopRequested = true
         started = false
         _endpoint.value = null
         if (registered) {
@@ -59,7 +62,14 @@ internal class WirelessAdbDiscovery(
         }
     }
 
-    override fun onDiscoveryStarted(type: String) { registered = true }
+    override fun onDiscoveryStarted(type: String) {
+        registered = true
+        // NSD may acknowledge discovery after a caller has already timed out.
+        if (stopRequested || !started) {
+            registered = false
+            runCatching { manager.stopServiceDiscovery(this) }
+        }
+    }
     override fun onStartDiscoveryFailed(type: String, errorCode: Int) { stop() }
     override fun onStopDiscoveryFailed(type: String, errorCode: Int) { registered = false }
     override fun onDiscoveryStopped(type: String) { registered = false }

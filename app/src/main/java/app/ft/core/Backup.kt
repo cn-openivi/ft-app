@@ -8,7 +8,15 @@ object Backup {
     const val SCHEME = "ft"
     const val LOOK_HOST = "look"
 
-    private val SKIP = setOf("carBtAddress", "weatherAt", "weatherCelsius", "weatherCode", "lastLatitude", "lastLongitude")
+    // App-private identities, pairing material and bridge credentials are not portable.
+    private val SKIP = setOf(
+        "carBtAddress", "weatherAt", "weatherCelsius", "weatherCode",
+        "lastLatitude", "lastLongitude", "supercastToken", "aaVehicleId", "carWpsPin"
+    )
+    internal fun safeForExport(values: Map<String, *>): Map<String, *> =
+        values.filterKeys { key ->
+            key !in SKIP && !Regex("(?i)(token|secret|password|privatekey|psk)").containsMatchIn(key)
+        }
 
     val LOOK_KEYS = listOf(
         "carBackground", "carAccent", "carTiles", "carClock24", "carShowLink", "carSongInfo",
@@ -17,7 +25,7 @@ object Backup {
         "aaCorner", "aaCompactReturnButton"
     )
 
-    fun everything(prefs: Prefs): String = write(prefs.all.filterKeys { it !in SKIP })
+    fun everything(prefs: Prefs): String = write(safeForExport(prefs.all))
 
     fun look(prefs: Prefs): String = write(prefs.all.filterKeys { it in LOOK_KEYS })
 
@@ -49,7 +57,7 @@ object Backup {
         val before = prefs.all
         var written = 0
         parsed.forEach { (key, value) ->
-            if (key in SKIP) return@forEach
+            if (key !in safeForExport(mapOf(key to value))) return@forEach
             if (only != null && key !in only) return@forEach
             val current = before[key]
             val typed: Any? = when (current) {

@@ -27,6 +27,18 @@ class BackupTest {
     }
 
     @Test
+    fun aPortableBackupNeverIncludesSecretsOrDeviceIdentities() {
+        val safe = Backup.safeForExport(mapOf(
+            "supercastToken" to "secret",
+            "aaVehicleId" to "FT-test",
+            "carWpsPin" to "123456",
+            "somePrivateKey" to "secret",
+            "carBackground" to "ocean"
+        ))
+        assertEquals(mapOf("carBackground" to "ocean"), safe)
+    }
+
+    @Test
     fun aBackupCarriesItsVersion() {
         assertTrue(Backup.write(sample).contains("\"ft\":${Backup.VERSION}"))
     }
