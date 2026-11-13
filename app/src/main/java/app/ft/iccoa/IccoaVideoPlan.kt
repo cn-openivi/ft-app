@@ -17,10 +17,9 @@ internal object IccoaVideoPlan {
         val fps = chosen?.fps ?: config.fps.coerceIn(1, 30)
         // No sink bitrate limit has been proved. The new 720p negotiated option
         // scales the old 8Mbps CBR baseline; do not advertise an invented ceiling.
-        val bitrate = if (chosen == null) 8_000_000
-            else (8_000_000L * streamWidth * streamHeight / (1920L * 1080L))
-                .coerceIn(2_000_000L, 8_000_000L).toInt()
+        val bitrate = chosen?.bitrate ?: 8_000_000
         return VideoPlan(width, height, streamWidth, streamHeight, fps, bitrate,
-            constantBitrate = true, preserveAspect = streamWidth != width || streamHeight != height)
+            constantBitrate = true, preserveAspect = streamWidth != width || streamHeight != height,
+            h264LevelIdc = chosen?.levelIdc ?: 0)
     }
 }
