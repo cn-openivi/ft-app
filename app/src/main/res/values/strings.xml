@@ -515,4 +515,18 @@
     <string name="picture_video_power_mode_static">static</string>
     <string name="picture_video_power_mode_thermal">thermal</string>
     <string name="settings_integer_range">Enter a number from %1$d to %2$d.</string>
+    <string name="wireless_pair_channel">FT wireless pairing</string>
+    <string name="wireless_pair_search">Open Android Wireless debugging and choose Pair device with pairing code. FT will find the changing port.</string>
+    <string name="wireless_pair_enter_code">Enter the six-digit code here, without leaving Android Settings</string>
+    <string name="wireless_pair_code_hint">Six-digit pairing code</string>
+    <string name="wireless_pair_in_progress">Pairing securely…</string>
+    <string name="wireless_pair_connecting">Connecting and verifying phone apps…</string>
+    <string name="wireless_pair_success">Phone apps are ready</string>
+    <string name="wireless_pair_failed">Pairing failed. Open a new code in Settings and retry.</string>
+    <string name="wireless_pair_button">Set up wireless debugging</string>
+    <string name="wireless_pair_auto_hint">FT can read the code once using its already-enabled Accessibility service. Otherwise enter it directly in the notification. No split screen needed.</string>
+    <string name="wireless_pair_notifications">Enable FT notifications to enter the code while Settings stays open</string>
+    <string name="wireless_pair_progress">Wireless pairing: %1$s</string>
+    <string name="wireless_pair_error">Reason: %1$s</string>
+    <string name="wireless_pair_no_auth">Wireless debugging not connected yet; open Pair with code in Android Settings</string>
 </resources>

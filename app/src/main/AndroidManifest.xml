@@ -114,6 +114,11 @@
             android:exported="true" />
 
         <service
+            android:name=".supercast.adb.WirelessPairingService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <service
             android:name=".iccoa.IccoaService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|mediaProjection" />

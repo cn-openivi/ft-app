@@ -513,4 +513,18 @@
     <string name="picture_video_power_mode_static">статика</string>
     <string name="picture_video_power_mode_thermal">нагрев</string>
     <string name="settings_integer_range">Введите число от %1$d до %2$d.</string>
+    <string name="wireless_pair_channel">Сопряжение FT</string>
+    <string name="wireless_pair_search">Откройте беспроводную отладку Android и выберите «Сопряжение с помощью кода». FT сам найдёт изменяющийся порт.</string>
+    <string name="wireless_pair_enter_code">Введите 6 цифр здесь, не выходя из настроек Android</string>
+    <string name="wireless_pair_code_hint">Шестизначный код</string>
+    <string name="wireless_pair_in_progress">Безопасное сопряжение…</string>
+    <string name="wireless_pair_connecting">Подключение и проверка приложений…</string>
+    <string name="wireless_pair_success">Приложения телефона готовы</string>
+    <string name="wireless_pair_failed">Ошибка сопряжения. Откройте новый код в настройках Android и повторите.</string>
+    <string name="wireless_pair_button">Настроить беспроводную отладку</string>
+    <string name="wireless_pair_auto_hint">FT может один раз прочитать код через уже разрешённую службу специальных возможностей. Иначе введите код прямо в уведомлении. Разделение экрана не нужно.</string>
+    <string name="wireless_pair_notifications">Разрешите уведомления FT, чтобы ввести код, не закрывая настройки Android</string>
+    <string name="wireless_pair_progress">Сопряжение: %1$s</string>
+    <string name="wireless_pair_error">Причина: %1$s</string>
+    <string name="wireless_pair_no_auth">Беспроводная отладка ещё не подключена. Откройте сопряжение с помощью кода в настройках Android</string>
 </resources>
