@@ -21,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import app.ft.R
 import app.ft.iccoa.IccoaBluetoothIdentityLinkStore
 import app.ft.iccoa.IccoaBluetoothMacInfo
 import app.ft.iccoa.IccoaService
@@ -43,33 +45,31 @@ fun IccoaBluetoothIdentityLinkSetting() {
     val valid = IccoaBluetoothMacInfo.hashHuObservedPhoneMac(address) != null
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-        Text("ICCOA ↔ Bluetooth: привязка звонков", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.iccoa_bt_link_title), style = MaterialTheme.typography.titleMedium)
         Text(
-            "Некоторые ГУ поддерживают привязку ICCOA к классическому Bluetooth. " +
-                "По умолчанию выключено. Поддержка ГУ и работа HFP не гарантированы.",
+            stringResource(R.string.iccoa_bt_link_about),
             style = MaterialTheme.typography.bodySmall
         )
         if (receiverId == null) Text(
-            "Подключите автомобиль и дождитесь подтверждённой ICCOA-авторизации. " +
-                "Привязка сохраняется отдельно для каждого проверенного ГУ.",
+            stringResource(R.string.iccoa_bt_link_requires_auth),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.error
         )
         Text(
-            if (configured) "Адрес телефона сохранён в виде SHA-256 (исходный MAC не хранится)"
-            else "MAC телефона ещё не задан",
+            if (configured) stringResource(R.string.iccoa_bt_link_configured)
+            else stringResource(R.string.iccoa_bt_link_missing),
             style = MaterialTheme.typography.bodyMedium
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Передавать привязку после авторизации ICCOA", Modifier.weight(1f))
+            Text(stringResource(R.string.iccoa_bt_link_enable), Modifier.weight(1f))
             Switch(
                 checked = enabled,
                 enabled = receiverId != null && configured,
                 onCheckedChange = {
                     result = if (receiverId != null && store.setEnabled(receiverId, it)) {
                         enabled = store.enabled(receiverId)
-                        "Изменение применится при следующем подключении"
-                    } else "Не удалось сохранить настройку"
+                        context.getString(R.string.iccoa_bt_link_next_connect)
+                    } else context.getString(R.string.iccoa_bt_link_save_error)
                 }
             )
         }
@@ -77,7 +77,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
             value = address,
             onValueChange = { address = it; confirmed = false; result = "" },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Bluetooth MAC телефона из списка устройств ГУ") },
+            label = { Text(stringResource(R.string.iccoa_bt_link_mac_label)) },
             placeholder = { Text("AA:BB:CC:DD:EE:FF") },
             singleLine = true,
             isError = address.isNotEmpty() && !valid
@@ -85,7 +85,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = confirmed, onCheckedChange = { confirmed = it })
             Text(
-                "Подтверждаю: адрес именно моего телефона, показанный ГУ; не адрес автомобиля",
+                stringResource(R.string.iccoa_bt_link_confirm),
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -98,19 +98,19 @@ fun IccoaBluetoothIdentityLinkSetting() {
                         confirmed = false
                         configured = store.configured(receiverId)
                         enabled = store.enabled(receiverId)
-                        result = "SHA-256 сохранён. Передачу привязки включите отдельно."
-                    } else result = "Недопустимый адрес или сбой сохранения"
+                        result = context.getString(R.string.iccoa_bt_link_saved)
+                    } else result = context.getString(R.string.iccoa_bt_link_invalid)
                 }
-            ) { Text("Сохранить") }
+            ) { Text(stringResource(R.string.iccoa_bt_link_save)) }
             TextButton(enabled = receiverId != null, onClick = {
                 if (receiverId != null && store.forget(receiverId)) {
                     address = ""
                     configured = false
                     enabled = false
                     confirmed = false
-                    result = "Локальная настройка удалена; запись на ГУ не изменялась"
-                } else result = "Не удалось удалить настройку"
-            }) { Text("Забыть") }
+                    result = context.getString(R.string.iccoa_bt_link_forgotten)
+                } else result = context.getString(R.string.iccoa_bt_link_forget_error)
+            }) { Text(stringResource(R.string.iccoa_bt_link_forget)) }
         }
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodySmall)
     }

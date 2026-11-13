@@ -536,4 +536,20 @@
     <string name="wireless_pair_show_expert">Advanced setup</string>
     <string name="wireless_pair_legacy_tcp">Allow old ADB TCP 5555</string>
     <string name="wireless_pair_legacy_about">Expert-only, insecure older transport. Disabled by default; does not work with normal Android 11+ wireless debugging.</string>
+    <string name="iccoa_bt_link_title">ICCOA ↔ Bluetooth call association</string>
+    <string name="iccoa_bt_link_about">Some head units support associating ICCOA with classic Bluetooth. Disabled by default; headset call profile availability is not guaranteed.</string>
+    <string name="iccoa_bt_link_requires_auth">Connect and complete verified ICCOA authentication first. This setting belongs only to the verified receiver.</string>
+    <string name="iccoa_bt_link_configured">Phone address saved as SHA-256; original MAC was not stored</string>
+    <string name="iccoa_bt_link_missing">Phone MAC is not configured</string>
+    <string name="iccoa_bt_link_enable">Send association after ICCOA authentication</string>
+    <string name="iccoa_bt_link_next_connect">Change takes effect on the next connection</string>
+    <string name="iccoa_bt_link_save_error">Could not save the setting</string>
+    <string name="iccoa_bt_link_mac_label">Phone Bluetooth MAC shown by the head unit</string>
+    <string name="iccoa_bt_link_confirm">I confirm this is my phone MAC as displayed by the head unit, not the vehicle address</string>
+    <string name="iccoa_bt_link_saved">SHA-256 saved. Enable transmitting the association separately.</string>
+    <string name="iccoa_bt_link_invalid">Invalid address or save failed</string>
+    <string name="iccoa_bt_link_forgotten">Local association removed; nothing was changed on the head unit</string>
+    <string name="iccoa_bt_link_forget_error">Could not remove the local setting</string>
+    <string name="iccoa_bt_link_save">Save</string>
+    <string name="iccoa_bt_link_forget">Forget</string>
 </resources>
