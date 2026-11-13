@@ -91,6 +91,8 @@ import app.ft.projection.CarControls
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoPlan
 import app.ft.projection.VideoProfile
+import app.ft.projection.SmartVideoPacer
+import app.ft.projection.VideoPacingStatus
 import app.ft.carlife.CarLifeService
 import app.ft.carlife.CarLifeSession
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -560,6 +562,7 @@ private fun PictureSettings() {
 private fun IccoaPictureSettings() {
     val prefs = FTApp.instance.prefs
     val screen by CarControls.state.collectAsStateWithLifecycle()
+    val iccoa by IccoaService.state.collectAsStateWithLifecycle()
     var selectedMode by remember { mutableIntStateOf(prefs.iccoaVideoMode) }
     PickSetting(
         stringResource(R.string.picture_iccoa_video_mode_title),
@@ -591,6 +594,22 @@ private fun IccoaPictureSettings() {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+    if (iccoa.connected) {
+        Text(
+            stringResource(if (iccoa.effectiveVideoMode == 1)
+                R.string.picture_iccoa_actual_direct else R.string.picture_iccoa_actual_normal),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary
+        )
+        iccoa.videoFallbackReason?.let { reason ->
+            Text(stringResource(R.string.picture_iccoa_direct_fallback, reason),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error)
+        }
+        if (selectedMode == 1 && iccoa.effectiveVideoMode == 0 && iccoa.videoFallbackReason == null)
+            Text(stringResource(R.string.picture_iccoa_direct_pending),
+                style = MaterialTheme.typography.bodySmall)
+    }
     Text(
         stringResource(if (selectedMode == 1) R.string.picture_iccoa_direct_codec
             else R.string.picture_iccoa_codec),
@@ -610,6 +629,7 @@ private fun IccoaPictureSettings() {
         prefs.encoderSavePower,
         stringResource(R.string.picture_save_power_body)
     ) { prefs.encoderSavePower = it }
+    VideoPacingLive(iccoa.effectiveVideoMode == 1)
 }
 
 @Composable
@@ -630,6 +650,7 @@ private fun CarLifePictureSettings() {
         onDispose { p.unregisterListener(listener) }
     }
     val car by CarLifeService.state.collectAsStateWithLifecycle()
+    VideoPacingLive(false)
     VideoStatus(car.video.takeIf { car.session is CarLifeSession.State.Projecting },
         saved?.takeIf { it.settingsKey == p.videoSettingsKey })
     val defaults = size == VideoPlans.SIZE_CAR && fps == 0 && rate == VideoPlans.DEFAULT_BITRATE &&
@@ -690,6 +711,29 @@ private fun CarLifePictureSettings() {
     ) {
         Text(stringResource(if (defaults && saved == null) R.string.picture_at_defaults else R.string.picture_reset))
     }
+}
+
+/** Shows what the active FrameGate really selected; direct H.264 bypasses it. */
+@Composable
+private fun VideoPacingLive(direct: Boolean) {
+    val pacing by VideoPacingStatus.state.collectAsStateWithLifecycle()
+    if (direct) {
+        Text(stringResource(R.string.picture_video_power_bypassed),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        return
+    }
+    val live = pacing ?: return
+    val label = when (live.mode) {
+        SmartVideoPacer.Mode.OFF -> R.string.picture_video_power_mode_off
+        SmartVideoPacer.Mode.ACTIVE -> R.string.picture_video_power_mode_active
+        SmartVideoPacer.Mode.CRUISE -> R.string.picture_video_power_mode_cruise
+        SmartVideoPacer.Mode.STATIC -> R.string.picture_video_power_mode_static
+        SmartVideoPacer.Mode.THERMAL -> R.string.picture_video_power_mode_thermal
+    }
+    Text(stringResource(R.string.picture_video_power_current, live.fps, stringResource(label)),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
