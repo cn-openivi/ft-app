@@ -11,7 +11,8 @@ import java.util.concurrent.TimeUnit
 
 internal data class IccoaVideoConfig(
     val host: String, val width: Int = 2764, val height: Int = 1426,
-    val fps: Int = 30, val rtpPort: Int = 19000
+    val fps: Int = 30, val rtpPort: Int = 19000,
+    val wfdAvc: IccoaWfdAvc.Choice? = null
 )
 
 /** Phone is the WFD source; HU opens RTSP to :7236 and later listens for RTP/TCP. */
@@ -62,6 +63,14 @@ internal class IccoaRtsp(
                     when (kind) {
                         "M3" -> {
                             config = capabilities(config, message.body)
+                            config.wfdAvc?.let { selected ->
+                                if (!IccoaWfdSourceEncoder.supports(selected)) {
+                                    app.ft.core.DiagLog.w("ICCOA",
+                                        "WFD sink AVC mode unsupported by phone encoder; conservative baseline remains")
+                                    config = config.copy(wfdAvc = null)
+                                } else app.ft.core.DiagLog.i("ICCOA",
+                                    "WFD AVC selected ${selected.width}x${selected.height}@${selected.fps}")
+                            }
                             request("SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0", "M4", parameters())
                         }
                         "M4" -> request("SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0", "M5", "wfd_trigger_method: SETUP\r\n")
@@ -119,7 +128,7 @@ internal class IccoaRtsp(
         }
     }
 
-    private fun parameters(): String = "$VIDEO\r\n$AUDIO\r\n" +
+    private fun parameters(): String = "${config.wfdAvc?.let(IccoaWfdAvc::m4) ?: VIDEO}\r\n$AUDIO\r\n" +
         "wfd_client_rtp_ports: RTP/AVP/TCP;unicast ${config.rtpPort} 0 mode=play\r\n" +
         "wfd_presentation_URL: rtsp://${socket.localAddress.hostAddress}/wfd1.0/streamid=0 none\r\n" +
         "wfd_uibc_capability: input_category_list=GENERIC;generic_cap_list=Keyboard, Mouse, SingleTouch;hidc_cap_list=none;port=4321;uibc_encrypted=true\r\n"
@@ -162,7 +171,7 @@ internal class IccoaRtsp(
             }
             Regex("RTP/AVP/TCP;[^\\r\\n]*?\\s(\\d+)\\s+\\d+\\s+mode=play", RegexOption.IGNORE_CASE)
                 .find(text)?.groupValues?.get(1)?.toInt()?.let { require(it in 1..65535); config = config.copy(rtpPort = it) }
-            return config
+            return config.copy(wfdAvc = IccoaWfdAvc.choose(text, config.fps))
         }
 
         internal fun read(input: DataInputStream): Message {
