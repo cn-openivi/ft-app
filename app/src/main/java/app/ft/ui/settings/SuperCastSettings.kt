@@ -8,6 +8,7 @@ import android.provider.Settings
 import android.os.Build
 import android.content.pm.PackageManager
 import android.Manifest
+import android.app.NotificationManager
 import app.ft.supercast.adb.WirelessAdbEngine
 import app.ft.supercast.adb.WirelessPairingService
 import app.ft.FTTouchService
@@ -178,10 +179,15 @@ fun SuperCastSettings() {
         ), onClick = { startPairing() }) {
             Text(stringResource(R.string.wireless_pair_button))
         }
+        Text(stringResource(R.string.wireless_pair_steps),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.wireless_pair_auto_hint),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (Build.VERSION.SDK_INT >= 33 &&
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        val notificationsAvailable =
+            (context.getSystemService(NotificationManager::class.java)?.areNotificationsEnabled() == true) &&
+                (Build.VERSION.SDK_INT < 33 ||
+                    context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+        if (!notificationsAvailable) {
             TextButton(onClick = {
                 runCatching {
                     context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)

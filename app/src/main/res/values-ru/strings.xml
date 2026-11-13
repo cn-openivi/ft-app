@@ -521,7 +521,7 @@
     <string name="wireless_pair_connecting">Подключение и проверка приложений…</string>
     <string name="wireless_pair_success">Приложения телефона готовы</string>
     <string name="wireless_pair_failed">Ошибка сопряжения. Откройте новый код в настройках Android и повторите.</string>
-    <string name="wireless_pair_button">Настроить беспроводную отладку</string>
+    <string name="wireless_pair_button">Открыть настройки разработчика</string>
     <string name="wireless_pair_auto_hint">FT может один раз прочитать код через уже разрешённую службу специальных возможностей. Иначе введите код прямо в уведомлении. Разделение экрана не нужно.</string>
     <string name="wireless_pair_notifications">Разрешите уведомления FT, чтобы ввести код, не закрывая настройки Android</string>
     <string name="wireless_pair_progress">Сопряжение: %1$s</string>
@@ -629,4 +629,5 @@
     <string name="home_optional_permissions_body">Для голосовых функций и уведомлений нужны отдельные разрешения Android. Их можно включить здесь, но для подключения они не обязательны.</string>
     <string name="home_allow_microphone">Разрешить микрофон для голоса</string>
     <string name="home_allow_notifications">Разрешить уведомления</string>
+    <string name="wireless_pair_steps">В настройках Android откройте: Для разработчиков → Беспроводная отладка → Сопряжение с помощью кода. Оставьте окно открытым: временный порт FT найдёт сам. Сразу открыть окно кода на любом телефоне Android не позволяет.</string>
 </resources>

@@ -523,7 +523,7 @@
     <string name="wireless_pair_connecting">Connecting and verifying phone apps…</string>
     <string name="wireless_pair_success">Phone apps are ready</string>
     <string name="wireless_pair_failed">Pairing failed. Open a new code in Settings and retry.</string>
-    <string name="wireless_pair_button">Set up wireless debugging</string>
+    <string name="wireless_pair_button">Open developer settings for pairing</string>
     <string name="wireless_pair_auto_hint">FT can read the code once using its already-enabled Accessibility service. Otherwise enter it directly in the notification. No split screen needed.</string>
     <string name="wireless_pair_notifications">Enable FT notifications to enter the code while Settings stays open</string>
     <string name="wireless_pair_progress">Wireless pairing: %1$s</string>
@@ -631,4 +631,5 @@
     <string name="home_optional_permissions_body">Voice and notifications need separate Android permissions. You can enable them now or keep connecting without them.</string>
     <string name="home_allow_microphone">Allow microphone for voice</string>
     <string name="home_allow_notifications">Allow notifications</string>
+    <string name="wireless_pair_steps">In Android Settings: Developer options → Wireless debugging → Pair device with pairing code. Leave the code window open; FT will find the temporary port. Settings cannot open this pairing popup automatically on every phone.</string>
 </resources>
