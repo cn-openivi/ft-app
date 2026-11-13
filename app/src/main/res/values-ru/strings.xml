@@ -635,7 +635,7 @@
     <string name="mirror_wifi_off_body">Wi-Fi выключен. Включите его для беспроводного подключения.</string>
     <string name="mirror_bluetooth_off_body">Bluetooth выключен. Включите его для поиска автомобиля.</string>
     <string name="mirror_use_calibration_title">Применять калибровку касаний</string>
-    <string name="mirror_use_calibration_about">Обычно не требуется: FT рассчитывает касания по геометрии изображения. Включайте при смещении.</string>
+    <string name="mirror_use_calibration_about">Сохранённая калибровка этого ГУ применяется автоматически. Если калибровки нет, FT использует геометрию изображения. Можно отключить при неправильном смещении.</string>
     <string name="mirror_calibrate_headunit_title">Калибровка экрана головного устройства</string>
     <string name="mirror_dim_phone_title">Максимально затемнять экран телефона</string>
     <string name="mirror_dim_phone_about">Коснитесь экрана телефона — яркость временно восстановится. Через 30 секунд без касаний телефона экран снова затемнится. Требуется разрешение «Изменение системных настроек». После зеркалирования исходные параметры восстановятся.</string>

@@ -637,7 +637,7 @@
     <string name="mirror_wifi_off_body">Wi-Fi is off. Turn it on for wireless connection.</string>
     <string name="mirror_bluetooth_off_body">Bluetooth is off. Turn it on to find the car.</string>
     <string name="mirror_use_calibration_title">Use touch calibration</string>
-    <string name="mirror_use_calibration_about">Normally not needed. FT maps touches by image geometry. Enable only for offset touches.</string>
+    <string name="mirror_use_calibration_about">Saved calibration for this head unit applies automatically. Without a saved profile, FT uses image geometry. Disable if touches become misaligned.</string>
     <string name="mirror_calibrate_headunit_title">Calibrate head unit screen</string>
     <string name="mirror_dim_phone_title">Dim phone screen to minimum while mirroring</string>
     <string name="mirror_dim_phone_about">Touch the phone to restore brightness temporarily. It dims again after 30 seconds without phone touches. Requires Modify system settings; the original brightness is restored when mirroring ends.</string>
