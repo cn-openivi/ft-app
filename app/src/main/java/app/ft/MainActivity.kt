@@ -104,20 +104,6 @@ enum class Screen(@StringRes val label: Int, val icon: ImageVector) {
 class MainActivity : ComponentActivity() {
     private val app get() = application as FTApp
 
-    private val mirrorConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        if (r.resultCode == Activity.RESULT_OK && r.data != null) {
-            app.mirrorResultCode = r.resultCode
-            app.mirrorData = r.data
-            app.mirrorGranted.value = true
-            DiagLog.i("App", "screen mirror permitted")
-            CarControls.startAudio(this)
-        } else {
-            DiagLog.w("App", "screen mirror declined")
-            CarControls.shareDeclined(this)
-        }
-    }
-
-
     private val pickAaApk = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) DiagLog.w("AaSetup", "no file chosen") else AaInstaller.install(this, uri)
     }
@@ -212,13 +198,6 @@ class MainActivity : ComponentActivity() {
         runCatching { unregisterReceiver(installResult) }
         super.onDestroy()
     }
-
-    private fun requestMirror() {
-        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val request = if (Build.VERSION.SDK_INT >= 34) mpm.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()) else mpm.createScreenCaptureIntent()
-        mirrorConsent.launch(request)
-    }
-
 
 }
 

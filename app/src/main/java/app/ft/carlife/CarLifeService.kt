@@ -2183,9 +2183,9 @@ class CarLifeService : Service() {
         DiagLog.i(tag, "asking on the phone for screen sharing, the car is waiting")
         runCatching {
             startActivity(
-                Intent(this, MainActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                    .putExtra("mirror", true)
+                Intent(this, ShareActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    .putExtra(ShareActivity.EXTRA_INTERACTIVE, true)
             )
         }.onFailure { DiagLog.w(tag, "could not open FT to ask for screen sharing: ${it.message}") }
     }

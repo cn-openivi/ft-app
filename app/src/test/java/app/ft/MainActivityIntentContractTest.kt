@@ -21,4 +21,23 @@ class MainActivityIntentContractTest {
         assertFalse(handler.contains("getIntExtra("))
         assertFalse(handler.contains("getStringExtra("))
     }
+    @Test fun carLifeConsentUsesNonExportedInteractiveShareActivity() {
+        val cwd = File(System.getProperty("user.dir"))
+        fun src(path: String) = listOf(File(cwd, path), File(cwd, "../$path"))
+            .firstOrNull { it.isFile }?.readText() ?: error("Missing $path")
+        val car = src("app/src/main/java/app/ft/carlife/CarLifeService.kt")
+        val start = car.substringAfter("private fun askForScreenShare()")
+            .substringBefore("fun volume(up:")
+        assertTrue(start.contains("Intent(this, ShareActivity::class.java)"))
+        assertTrue(start.contains("putExtra(ShareActivity.EXTRA_INTERACTIVE, true)"))
+        assertFalse(start.contains("Intent(this, MainActivity::class.java)"))
+        val share = src("app/src/main/java/app/ft/ShareActivity.kt")
+        assertTrue(share.contains("CarControls.shareDeclined(this, quiet = !interactive)"))
+        val manifest = src("app/src/main/AndroidManifest.xml")
+        val entry = manifest.substringAfter("android:name=\".ShareActivity\"").substringBefore("/>")
+        assertTrue(entry.contains("android:exported=\"false\""))
+        val main = src("app/src/main/java/app/ft/MainActivity.kt")
+        assertFalse(main.contains("private fun requestMirror()"))
+    }
+
 }
