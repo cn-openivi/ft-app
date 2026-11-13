@@ -39,10 +39,23 @@ internal class IccoaDirectVideo(
         override fun run() {
             if (closed || !active) return
             val now = SystemClock.elapsedRealtime()
-            if ((firstKeyAtMs == 0L && now - activatedAtMs >= START_TIMEOUT_MS) ||
-                (frameAtMs > 0L && now - frameAtMs >= STALL_TIMEOUT_MS)) {
-                fallback("No valid AA H.264 frames arrived")
-            } else main.postDelayed(this, WATCH_MS)
+            when {
+                source?.let { !sourceValid(it) } == true ->
+                    fallback("Android Auto video session ended")
+                firstKeyAtMs == 0L && now - activatedAtMs >= START_TIMEOUT_MS ->
+                    fallback("Initial AA H.264 IDR did not arrive")
+                else -> {
+                    // A static AA screen may legally produce no new access units.
+                    // Probe a fresh picture without declaring that silence is a crash.
+                    // RTSP/RTP transport failure has its own independent close path.
+                    if (frameAtMs > 0L && now - frameAtMs >= IDLE_PROBE_MS &&
+                        now - lastKeyRequestMs >= IDLE_PROBE_MS) {
+                        requestKeyframe()
+                        DiagLog.i("ICCOA", "DIRECT_VIDEO idle AA picture; requested fresh IDR")
+                    }
+                    main.postDelayed(this, WATCH_MS)
+                }
+            }
         }
     }
 
@@ -89,7 +102,7 @@ internal class IccoaDirectVideo(
         val key = IccoaDirectAvc.isIdr(frame)
         if (active) {
             // Bounded enqueue never blocks AA AV_MEDIA_ACK on an RTP write.
-            val pts = synchronized(clock) { clock.next() }
+            val pts = synchronized(clock) { clock.next(timestamp) }
             output.frame(frame, key, pts)
             frameAtMs = SystemClock.elapsedRealtime()
             if (key) firstKeyAtMs = frameAtMs
@@ -195,7 +208,7 @@ internal class IccoaDirectVideo(
     companion object {
         private const val WATCH_MS = 1_000L
         private const val START_TIMEOUT_MS = 5_000L
-        private const val STALL_TIMEOUT_MS = 8_000L
+        private const val IDLE_PROBE_MS = 30_000L
         private const val KEY_REQUEST_COOLDOWN_MS = 2_500L
     }
 }
