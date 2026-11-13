@@ -1,12 +1,12 @@
 name: FT184 source-only compile and unit tests (owner approved 2026-11-14)
 
-# OWNER resumed FT184 source-only compilation and JVM tests on 2026-11-13.
+# OWNER approved FT184 candidate source-only compilation and JVM tests on 2026-11-14.
 # Exact canonical decision: FT184-OWNER-PREPARE-AND-SIGNED-CANDIDATE-20261114.v1.
 # No APK/signing/release in this bounded source-only workflow.
 on:
   push:
     branches:
-      - openivi/ft184-aa-floating-return-20261113
+      - openivi/ft184-candidate-20261114
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
-          test "$GITHUB_REF_NAME" = "openivi/ft184-aa-floating-return-20261113"
+          test "$GITHUB_REF_NAME" = "openivi/ft184-candidate-20261114"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 184' app/build.gradle.kts
