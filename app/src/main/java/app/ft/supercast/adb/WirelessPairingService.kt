@@ -116,16 +116,8 @@ class WirelessPairingService : Service() {
                 val mdns = WirelessAdbDiscovery(this, WirelessAdbDiscovery.PAIRING)
                 scanner = mdns
                 mdns.start()
-                // Limit the foreground discovery itself, not just code capture.
-                deadlineJob?.cancel()
-                deadlineJob = scope.launch {
-                    delay(120_000L)
-                    if (scanner === mdns) {
-                        _status.value = State(Phase.FAILED, "timed_out")
-                        manager.notify(RESULT_ID, statusNotification(null))
-                        stopSelf()
-                    }
-                }
+                // Timeout applies to code discovery only, never to active TLS pairing.
+                armDiscoveryDeadline(mdns)
                 if (intent.getBooleanExtra(EXTRA_AUTO, false)) {
                     WirelessPairingAutoCode.arm(this)
                 }
@@ -151,6 +143,8 @@ class WirelessPairingService : Service() {
                     return START_NOT_STICKY
                 }
                 pairingBusy = true
+                deadlineJob?.cancel()
+                deadlineJob = null
                 WirelessPairingAutoCode.cancel()
                 _status.value = State(Phase.PAIRING)
                 manager.notify(NOTIFICATION_ID, statusNotification(null))
@@ -161,6 +155,7 @@ class WirelessPairingService : Service() {
                         pairingBusy = false
                         _status.value = State(Phase.FAILED, "pairing_failed")
                         manager.notify(NOTIFICATION_ID, statusNotification(activePairingPort))
+                        scanner?.let { armDiscoveryDeadline(it) }
                         return@launch
                     }
                     _status.value = State(Phase.CONNECTING)
@@ -238,6 +233,19 @@ class WirelessPairingService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         ).build())
         return builder.build()
+    }
+
+    private fun armDiscoveryDeadline(mdns: WirelessAdbDiscovery) {
+        deadlineJob?.cancel()
+        deadlineJob = scope.launch {
+            delay(120_000L)
+            if (scanner === mdns &&
+                PairingDeadlinePolicy.shouldExpire(_status.value.phase, pairingBusy)) {
+                _status.value = State(Phase.FAILED, "timed_out")
+                manager.notify(RESULT_ID, statusNotification(null))
+                stopSelf()
+            }
+        }
     }
 
     private fun finishPairing() {
