@@ -139,6 +139,7 @@ class IccoaSession(
     private val onClosed: (IccoaCloseEvent) -> Unit,
     private val onControlReady: () -> Unit = {},
     private val trustedCarName: String = "",
+    private val legacyTrustedCarName: String = "",
     private val tryRememberedPin: Boolean = false,
     private val forceCurrentPin: Boolean = false,
     /** Fires once per session only after AuthConfirm AND authenticated CONTROL. */
@@ -411,8 +412,13 @@ class IccoaSession(
                 // proceeds directly to CLIENT_INFO. XA60 stalls on the extra CCCD write;
                 // do not introduce an ATT operation absent from that exchange.
                 DiagLog.i("ICCOA", "GATT ICCOA channel ready; checking remembered-car credentials")
-                val pinned = if (tryRememberedPin && !forceCurrentPin && trustedCarName.isNotBlank())
-                    trustedCarKey.load(attempt.profile.id, trustedCarName) else null
+                val pinned = if (tryRememberedPin && !forceCurrentPin && trustedCarName.isNotBlank()) {
+                    // New receiver slot first; a legacy PRIMARY may be used only
+                    // for an already remembered candidate and must prove its EC key.
+                    trustedCarKey.load(attempt.profile.id, trustedCarName)
+                        ?: legacyTrustedCarName.takeIf { it.isNotBlank() }
+                            ?.let { trustedCarKey.load(attempt.profile.id, it) }
+                } else null
                 if (pinned != null) {
                     attempt.pinReady = true
                     DiagLog.i("ICCOA", "Quick Auth: verified car key found, no old PIN will be sent")
@@ -752,6 +758,17 @@ class IccoaSession(
     private fun confirmTrustedCarAfterControl(attempt: Attempt) {
         if (!active(attempt)) return
         if (attempt.quickMode) {
+            // Migration is safe ONLY after signed response + authenticated CONTROL.
+            // Keep the original PRIMARY sealed entry intact for rollback.
+            if (trustedCarName.isNotBlank() && legacyTrustedCarName.isNotBlank() &&
+                trustedCarName != legacyTrustedCarName
+            ) {
+                val pinned = attempt.pinnedCarIdentity
+                if (pinned != null && pinned.size == 64) {
+                    val migrated = trustedCarKey.saveIfAbsent(attempt.profile.id, trustedCarName, pinned)
+                    DiagLog.i("ICCOA", "Per-receiver verified QUICK alias saved=$migrated")
+                }
+            }
             DiagLog.i("ICCOA", "QUICK_AUTH_PINLESS_CONFIRMED: signed response + CONTROL")
             return
         }
