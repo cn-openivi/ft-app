@@ -45,7 +45,8 @@ data class IccoaState(
     val connected: Boolean = false,
     /** Actual video path, never inferred from the user-selected preference. */
     val effectiveVideoMode: Int = 0,
-    val videoFallbackReason: String? = null
+    val videoFallbackReason: String? = null,
+    val verifiedReceiverId: String? = null
 )
 
 /** Independent ICCOA connection, control and WFD lifecycle. */
@@ -532,6 +533,13 @@ class IccoaService : Service() {
                 // The OEM crypto response, AuthConfirm and authenticated CONTROL must all be established.
                 // Never send the Classic BT identity on BLE bootstrap or unverified sessions.
                 if (session === connection && lastBluetoothLinkSession != token) {
+                    val receiverId = connection.verifiedReceiverId
+                    if (receiverId == null) {
+                        DiagLog.w("ICCOA", "No verified OEM receiver fingerprint at CONTROL; cannot apply per-car settings")
+                        return@current
+                    }
+                    connectionVideoMode = FTApp.instance.prefs.iccoaVideoModeFor(receiverId)
+                    _state.update { it.copy(verifiedReceiverId = receiverId) }
                     lastBluetoothLinkSession = token
                     val payload = bluetoothIdentityLink.addPayload()
                     if (payload != null) {
@@ -707,7 +715,8 @@ class IccoaService : Service() {
         directVideo?.close()
         directVideo = null
         connectionVideoMode = 0
-        _state.update { it.copy(effectiveVideoMode = 0, videoFallbackReason = null) }
+        _state.update { it.copy(effectiveVideoMode = 0, videoFallbackReason = null,
+            verifiedReceiverId = null) }
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(audioStateRetry)
         main.removeCallbacks(requestConfig)
