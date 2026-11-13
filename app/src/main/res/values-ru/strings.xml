@@ -501,4 +501,15 @@
     <string name="gps_source_car">GPS автомобиля</string>
     <string name="gps_source_phone">GPS телефона</string>
     <string name="gps_source_about">Выберите один источник. При потере сигнала FT не переключится автоматически на другой. Проверенные скорость колёс и гироскоп автомобиля могут использоваться для DR в обоих режимах. В Android Auto изменение применяется после переподключения.</string>
+    <string name="picture_iccoa_actual_normal">Фактическое видео: обычный режим</string>
+    <string name="picture_iccoa_actual_direct">Фактическое видео: H.264 passthrough</string>
+    <string name="picture_iccoa_direct_pending">Прямой режим выбран; ожидаем совместимый видеопоток Android Auto</string>
+    <string name="picture_iccoa_direct_fallback">Возврат в обычный режим: %1$s</string>
+    <string name="picture_video_power_current">Фактический ограничитель: %1$d кадров/с (%2$s)</string>
+    <string name="picture_video_power_bypassed">Умное ограничение FPS не применяется при прямом H.264 passthrough</string>
+    <string name="picture_video_power_mode_off">выключен</string>
+    <string name="picture_video_power_mode_active">активный</string>
+    <string name="picture_video_power_mode_cruise">поездка</string>
+    <string name="picture_video_power_mode_static">статика</string>
+    <string name="picture_video_power_mode_thermal">нагрев</string>
 </resources>
