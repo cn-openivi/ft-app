@@ -61,13 +61,20 @@ internal object MirrorTouchCalibration {
         _state.value = MirrorCalibrationState()
     }
 
-    private fun key(bounds: MirrorTouchBounds, carWidth: Int, carHeight: Int): String =
+    private fun legacyKey(bounds: MirrorTouchBounds, carWidth: Int, carHeight: Int): String =
         "${carWidth}x${carHeight}_mirror_${if (bounds.portrait) "portrait" else "landscape"}_quad4"
+
+    private fun key(bounds: MirrorTouchBounds, carWidth: Int, carHeight: Int): String? =
+        IccoaCalibrationScope.key(legacyKey(bounds, carWidth, carHeight))
 
     fun reset(context: Context, bounds: MirrorTouchBounds, carWidth: Int, carHeight: Int) {
         cancel()
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().remove(key(bounds, carWidth, carHeight)).apply()
+        val scoped = key(bounds, carWidth, carHeight) ?: return
+        val editor = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove(scoped)
+        if (IccoaCalibrationScope.mayUseLegacy())
+            editor.remove(legacyKey(bounds, carWidth, carHeight))
+        editor.apply()
         DiagLog.i("ICCOA", "Mirror ${if (bounds.portrait) "portrait" else "landscape"} calibration reset")
     }
 
@@ -105,8 +112,14 @@ internal object MirrorTouchCalibration {
             _state.value = st.copy(step = 1)
             DiagLog.w("ICCOA", "Mirror 4-point touch geometry rejected, restart calibration")
         } else {
+            val scoped = key(bounds, carWidth, carHeight)
+            if (scoped == null) {
+                DiagLog.w("ICCOA", "Mirror calibration requires verified receiver")
+                cancel()
+                return true
+            }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                .putString(key(bounds, carWidth, carHeight), quad.serialize()).apply()
+                .putString(scoped, quad.serialize()).apply()
             DiagLog.i("ICCOA", "Mirror four-point calibration saved orientation=${if (bounds.portrait) "portrait" else "landscape"}")
             cancel()
         }
@@ -116,8 +129,12 @@ internal object MirrorTouchCalibration {
     fun map(context: Context, bounds: MirrorTouchBounds, x: Int, y: Int,
             carWidth: Int, carHeight: Int): Pair<Int, Int> {
         val normalized = bounds.normalized(x, y)
-        val saved = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(key(bounds, carWidth, carHeight), null) ?: return normalized
+        val scoped = key(bounds, carWidth, carHeight) ?: return normalized
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val saved = prefs.getString(scoped, null)
+            ?: if (IccoaCalibrationScope.mayUseLegacy())
+                prefs.getString(legacyKey(bounds, carWidth, carHeight), null) else null
+            ?: return normalized
         return TouchQuad.deserialize(saved, UNIT, UNIT)?.map(normalized.first, normalized.second, UNIT, UNIT)
             ?: normalized
     }
