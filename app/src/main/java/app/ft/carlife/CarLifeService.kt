@@ -31,6 +31,7 @@ import app.ft.aa.AaInstaller
 import app.ft.aa.AaTouchViewport
 import app.ft.aa.AaTouchGestureViewport
 import app.ft.aa.AaHeadUnitService
+import AaSteeringMediaKeys
 import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
 import app.ft.core.CarBluetoothReconnect
@@ -1634,7 +1635,7 @@ class CarLifeService : Service() {
     private fun onHardKey(key: Int) {
         // CarLife OEM hard-key identifiers differ from standard Android keycodes.
         val mapped = if (key == 231 || key == 219) 84
-            else app.ft.aa.AaSteeringMediaKeys.normalize(key, app.prefs.swapTrackKeys)
+            else AaSteeringMediaKeys.normalize(key, app.prefs.swapTrackKeys)
         val extra = when (mapped) {
             87 -> app.prefs.wheelLongNext
             88 -> app.prefs.wheelLongPrev
@@ -1902,7 +1903,7 @@ class CarLifeService : Service() {
         val aa = AaHeadUnitService.current
         // Playback ownership is not the same as visual foreground. Android Auto
         // may keep playing after the driver returns to the FT or car screen.
-        if (app.ft.aa.AaSteeringMediaKeys.routeToAa(
+        if (AaSteeringMediaKeys.routeToAa(
                 code = mapped,
                 aaVisible = st.aaOverlay,
                 aaConnected = aa != null,

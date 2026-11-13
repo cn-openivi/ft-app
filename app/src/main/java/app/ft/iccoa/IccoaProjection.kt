@@ -17,6 +17,7 @@ import app.ft.FTApp
 import app.ft.FTTouchService
 import app.ft.MainActivity
 import app.ft.aa.AaHeadUnitService
+import AaSteeringMediaKeys
 import app.ft.aa.AaSession
 import app.ft.aa.AaTouchViewport
 import app.ft.aa.AaViewport
@@ -422,7 +423,7 @@ class IccoaProjection(
         val aa = AaHeadUnitService.current
         // ICCOA UIBC already supplies Android keycodes; do not apply CarLife's
         // OEM 15/16 mapping to arbitrary ICCOA keyboard input.
-        if (app.ft.aa.AaSteeringMediaKeys.routeToAa(
+        if (AaSteeringMediaKeys.routeToAa(
                 code = code,
                 aaVisible = state.value.aaOverlay,
                 aaConnected = aa != null,
