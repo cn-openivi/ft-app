@@ -1,6 +1,11 @@
 package app.ft.iccoa
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import app.ft.core.ProtoWriter
 import java.security.MessageDigest
 import java.util.Locale
@@ -28,20 +33,39 @@ internal object IccoaBluetoothMacInfo {
         return digest.joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 0xff) }
     }
 
+    /**
+     * Only an authenticated receiver can select an association.
+     * Unknown receivers cannot inherit the Toyota OEM extension merely by connecting.
+     * A persisted receiver-scoped HU-confirmed hash wins over legacy and local candidates.
+     */
+    fun chooseAutomaticHash(
+        receiverVerified: Boolean,
+        verifiedOemPrimary: Boolean,
+        receiverHash: String?,
+        legacyHash: String?,
+        phoneClassicAddress: String?
+    ): String? {
+        if (!receiverVerified) return null
+        if (receiverHash != null && hashPattern.matches(receiverHash)) return receiverHash
+        if (!verifiedOemPrimary) return null
+        if (legacyHash != null && hashPattern.matches(legacyHash)) return legacyHash
+        return phoneClassicAddress?.let(::hashHuObservedPhoneMac)
+    }
+
     /** OP_ADD=0 is proto3 default: omit field1, encode only tag(2,length)=12 40. */
     fun addHash(hash: String): ByteArray? =
         if (hashPattern.matches(hash)) ProtoWriter().string(2, hash).toByteArray() else null
 }
 
 /**
- * Separate, disabled-by-default owner consent. Stores ONLY the validated hash
- * (not the original phone MAC) outside FT's ordinary exported Prefs snapshot.
- *
- * Save is not an OEM verification: user must obtain the EXACT Classic phone
- * address as rendered by Toyota HU. Never guess Android 17's local MAC.
+ * FT183: association is automatic when a verified OEM receiver has a trustworthy
+ * phone Classic BT identity. No application-level opt-in or repeated prompts.
+ * Android often masks the local adapter address: fail closed instead of using the
+ * vehicle, BLE, P2P or a synthetic address. Raw MAC is never persisted.
  */
 internal class IccoaBluetoothIdentityLinkStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences(
         "iccoa-classic-bt-identity-link", Context.MODE_PRIVATE
     )
 
@@ -104,21 +128,46 @@ internal class IccoaBluetoothIdentityLinkStore(context: Context) {
     }
 
     /**
-     * Nothing is sent without signed receiver ID. Legacy consent is migrated
-     * once ONLY for the independently verified original PRIMARY public key.
-     * Migration disables the unscoped sender so a later Forget stays forgotten.
+     * Android's public BluetoothAdapter address is usually masked on modern
+     * consumer phones. The exact case is preserved; do not normalize the
+     * address before hashing, since Toyota compares the original text bytes.
+     */
+    @SuppressLint("MissingPermission", "HardwareIds")
+    private fun localPhoneClassicAddressOrNull(): String? = runCatching {
+        if (Build.VERSION.SDK_INT >= 31 &&
+            appContext.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) !=
+                PackageManager.PERMISSION_GRANTED) return null
+        val adapter = appContext.getSystemService(BluetoothManager::class.java)?.adapter
+            ?: return null
+        val raw = adapter.address ?: return null
+        if (IccoaBluetoothMacInfo.hashHuObservedPhoneMac(raw) != null) raw else null
+    }.getOrNull()
+
+    /**
+     * Only verified cryptographic receiver identity can index a stored hash.
+     * For first-time discovery, only the independently proven Toyota PRIMARY
+     * receiver may use the OEM extension without a saved receiver-scoped hash.
+     * No OEM ACK/HFP guarantee follows from queuing this CONTROL message.
      */
     fun addPayload(receiverId: String?, verifiedLegacyPrimary: Boolean): ByteArray? {
         val p = receiverPrefix(receiverId) ?: return null
-        if (!prefs.contains(p + "phone_bt_sha256") && verifiedLegacyPrimary && enabled()) {
-            val legacyHash = prefs.getString("phone_bt_sha256", "") ?: ""
-            if (IccoaBluetoothMacInfo.addHash(legacyHash) != null) {
-                if (!prefs.edit().putString(p + "phone_bt_sha256", legacyHash)
-                        .putBoolean(p + "enabled", true)
-                        .putBoolean("enabled", false).commit()) return null
-            }
+        val existing = prefs.getString(p + "phone_bt_sha256", null)
+        val legacy = if (verifiedLegacyPrimary)
+            prefs.getString("phone_bt_sha256", null) else null
+        val discovered = if (existing == null && legacy == null && verifiedLegacyPrimary)
+            localPhoneClassicAddressOrNull() else null
+        val hash = IccoaBluetoothMacInfo.chooseAutomaticHash(
+            receiverVerified = true,
+            verifiedOemPrimary = verifiedLegacyPrimary,
+            receiverHash = existing,
+            legacyHash = legacy,
+            phoneClassicAddress = discovered
+        ) ?: return null
+        if (existing != hash) {
+            if (!prefs.edit().putString(p + "phone_bt_sha256", hash)
+                    .putBoolean(p + "enabled", true)
+                    .putBoolean("enabled", false).commit()) return null
         }
-        if (!prefs.getBoolean(p + "enabled", false)) return null
-        return IccoaBluetoothMacInfo.addHash(prefs.getString(p + "phone_bt_sha256", "") ?: "")
+        return IccoaBluetoothMacInfo.addHash(hash)
     }
 }
