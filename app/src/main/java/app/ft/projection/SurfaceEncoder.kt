@@ -26,7 +26,8 @@ class SurfaceEncoder(
     private val savePower: Boolean = false,
     private val constantBitrate: Boolean = false,
     private val onFailure: ((Throwable) -> Unit)? = null,
-    private val startCandidateIndex: Int = 0
+    private val startCandidateIndex: Int = 0,
+    private val h264LevelIdc: Int = 0
 ) {
     private val tag = "Encoder"
     private val fps = fps.coerceIn(1, 60)
@@ -63,8 +64,9 @@ class SurfaceEncoder(
         // Start from portable AVC Surface input. Never force a guessed AVC level
         // or an absurd operating rate before the first encoded frame.
         // Bounded attempts. Each fallback keeps the exact RTSP-agreed stream geometry.
+        val modes = if (h264LevelIdc > 0) listOf("negotiated") else listOf("minimal", "baseline")
         val candidates = encoders().flatMap { codecName ->
-            listOf("minimal", "baseline").map { label -> codecName to label }
+            modes.map { label -> codecName to label }
         }.take(MAX_CANDIDATES)
         candidateCount = candidates.size
         for ((index, candidate) in candidates.withIndex()) {
@@ -126,7 +128,21 @@ class SurfaceEncoder(
     }
 
     private fun minimal(baseline: Boolean = false): MediaFormat = base().apply {
-        if (baseline) setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+        val negotiatedLevel = when (h264LevelIdc) {
+            31 -> MediaCodecInfo.CodecProfileLevel.AVCLevel31
+            32 -> MediaCodecInfo.CodecProfileLevel.AVCLevel32
+            40 -> MediaCodecInfo.CodecProfileLevel.AVCLevel4
+            41 -> MediaCodecInfo.CodecProfileLevel.AVCLevel41
+            42 -> MediaCodecInfo.CodecProfileLevel.AVCLevel42
+            50 -> MediaCodecInfo.CodecProfileLevel.AVCLevel5
+            51 -> MediaCodecInfo.CodecProfileLevel.AVCLevel51
+            else -> null
+        }
+        if (negotiatedLevel != null) {
+            setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+            setInteger(MediaFormat.KEY_LEVEL, negotiatedLevel)
+        } else if (baseline) setInteger(MediaFormat.KEY_PROFILE,
+            MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
     }
 
     private fun callback() = object : MediaCodec.Callback() {
