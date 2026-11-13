@@ -241,7 +241,7 @@ class AaSession(
                     locationCharacterization = locationCharacterizationAtDiscovery,
                     vehicleId = prefs.aaVehicleId,
                     vehicleMake = if (prefs.carProtocol == CarProtocol.ICCOA) "FAW Toyota" else "Universal",
-                    vehicleModel = if (prefs.carProtocol == CarProtocol.ICCOA) "RAV4" else prefs.carName,
+                    vehicleModel = prefs.carName.ifBlank { "Vehicle" },
                     vehicleYear = if (prefs.carProtocol == CarProtocol.ICCOA) "2026" else "2024"
                 )
                 // Audit actual serialized descriptor, rather than the setting
