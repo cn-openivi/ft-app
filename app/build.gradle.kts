@@ -93,5 +93,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("com.google.zxing:core:3.5.3")
+    // Android 11+ SPAKE2/TLS ADB; exact artifact resolution remains a later build gate.
+    implementation("io.github.rhythmcache:adb-kt:1.0.0")
     implementation(project(":server"))
 }
