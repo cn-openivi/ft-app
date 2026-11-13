@@ -265,6 +265,16 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                 }
             }
         }
+        // Do not silently promise panel protection when Android has not granted it.
+        if (screenState.mirroring && app.prefs.mirrorDimPhone && !Settings.System.canWrite(context)) item {
+            Section(stringResource(R.string.mirror_dim_phone_title)) {
+                Text(stringResource(R.string.mirror_dim_phone_about))
+                FilledTonalButton(onClick = {
+                    Fixes.open(context, Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                        android.net.Uri.parse("package:${context.packageName}")))
+                }) { Text(stringResource(R.string.action_allow)) }
+            }
+        }
         // Auto-connect may be enabled while Android has revoked a permission.
         if (autoConnect && connectionMissing.isNotEmpty()) item {
             Section(stringResource(R.string.home_connection_permissions_title)) {
