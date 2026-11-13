@@ -36,6 +36,7 @@ fun IccoaBluetoothIdentityLinkSetting() {
     var configured by remember(receiverId) { mutableStateOf(
         receiverId?.let { store.configured(it) } == true) }
     var address by remember { mutableStateOf("") }
+    var showManualFallback by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf("") }
     val valid = IccoaBluetoothMacInfo.hashHuObservedPhoneMac(address) != null
 
@@ -55,33 +56,43 @@ fun IccoaBluetoothIdentityLinkSetting() {
             else stringResource(R.string.iccoa_bt_link_missing),
             style = MaterialTheme.typography.bodyMedium
         )
-        OutlinedTextField(
-            value = address,
-            onValueChange = { address = it; result = "" },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.iccoa_bt_link_mac_label)) },
-            placeholder = { Text("AA:BB:CC:DD:EE:FF") },
-            singleLine = true,
-            isError = address.isNotEmpty() && !valid
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(
-                enabled = receiverId != null && valid,
-                onClick = {
-                    if (receiverId != null && store.saveHuObservedPhoneMac(receiverId, address)) {
+        // Automatic receiver-scoped ICCOA identity mapping already runs in IccoaService.
+        // Ordinary HFP pairing is managed by Android and never requires the user
+        // to type a MAC address. The system may still ask once for pairing approval.
+        BluetoothCallsSetting(projectionConnected = session.connected)
+        TextButton(onClick = { showManualFallback = !showManualFallback }) {
+            Text(stringResource(if (showManualFallback)
+                R.string.iccoa_bt_link_hide_manual else R.string.iccoa_bt_link_show_manual))
+        }
+        if (showManualFallback) {
+            OutlinedTextField(
+                value = address,
+                onValueChange = { address = it; result = "" },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text(stringResource(R.string.iccoa_bt_link_mac_label)) },
+                placeholder = { Text("AA:BB:CC:DD:EE:FF") },
+                singleLine = true,
+                isError = address.isNotEmpty() && !valid
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(
+                    enabled = receiverId != null && valid,
+                    onClick = {
+                        if (receiverId != null && store.saveHuObservedPhoneMac(receiverId, address)) {
+                            address = ""
+                            configured = store.configured(receiverId)
+                            result = context.getString(R.string.iccoa_bt_link_saved)
+                        } else result = context.getString(R.string.iccoa_bt_link_invalid)
+                    }
+                ) { Text(stringResource(R.string.iccoa_bt_link_save)) }
+                TextButton(enabled = receiverId != null, onClick = {
+                    if (receiverId != null && store.forget(receiverId)) {
                         address = ""
-                        configured = store.configured(receiverId)
-                        result = context.getString(R.string.iccoa_bt_link_saved)
-                    } else result = context.getString(R.string.iccoa_bt_link_invalid)
-                }
-            ) { Text(stringResource(R.string.iccoa_bt_link_save)) }
-            TextButton(enabled = receiverId != null, onClick = {
-                if (receiverId != null && store.forget(receiverId)) {
-                    address = ""
-                    configured = false
-                    result = context.getString(R.string.iccoa_bt_link_forgotten)
-                } else result = context.getString(R.string.iccoa_bt_link_forget_error)
-            }) { Text(stringResource(R.string.iccoa_bt_link_forget)) }
+                        configured = false
+                        result = context.getString(R.string.iccoa_bt_link_forgotten)
+                    } else result = context.getString(R.string.iccoa_bt_link_forget_error)
+                }) { Text(stringResource(R.string.iccoa_bt_link_forget)) }
+            }
         }
         if (result.isNotBlank()) Text(result, style = MaterialTheme.typography.bodySmall)
     }

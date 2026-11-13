@@ -538,13 +538,15 @@
     <string name="wireless_pair_legacy_tcp">Allow old ADB TCP 5555</string>
     <string name="wireless_pair_legacy_about">Expert-only, insecure older transport. Disabled by default; does not work with normal Android 11+ wireless debugging.</string>
     <string name="iccoa_bt_link_title">ICCOA ↔ Bluetooth identity diagnostics</string>
-    <string name="iccoa_bt_link_about">Association is automatic after verified ICCOA authentication when the phone Classic Bluetooth MAC is known. Android may hide that address; exact head-unit-observed PHONE MAC can be entered here only as a fallback. Call audio is not guaranteed.</string>
+    <string name="iccoa_bt_link_about">ICCOA association is attempted automatically after verified connection. Calls may need one-time Android Bluetooth pairing with the car. Normally you do not need to enter a MAC address.</string>
     <string name="iccoa_bt_link_requires_auth">Connect and complete verified ICCOA authentication first. This setting belongs only to the verified receiver.</string>
     <string name="iccoa_bt_link_configured">Phone address saved as SHA-256; original MAC was not stored</string>
-    <string name="iccoa_bt_link_missing">No saved phone Classic Bluetooth identity for this car; Android may hide the local MAC</string>
+    <string name="iccoa_bt_link_missing">Phone MAC not available: Android may hide it. Use normal Bluetooth pairing for calls.</string>
     <string name="iccoa_bt_link_enable">Association is automatic when a trustworthy phone MAC is available</string>
     <string name="iccoa_bt_link_next_connect">Change takes effect on the next connection</string>
     <string name="iccoa_bt_link_save_error">Could not save the setting</string>
+    <string name="iccoa_bt_link_show_manual">Manual MAC: advanced diagnostics only</string>
+    <string name="iccoa_bt_link_hide_manual">Hide manual settings</string>
     <string name="iccoa_bt_link_mac_label">Fallback: phone Classic Bluetooth MAC shown by head unit</string>
     <string name="iccoa_bt_link_confirm">Use only the PHONE Classic Bluetooth MAC shown by the head unit, not the car address</string>
     <string name="iccoa_bt_link_saved">Phone identity saved as SHA-256. The association will be attempted automatically on the next authenticated connection.</string>
