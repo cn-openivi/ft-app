@@ -15,8 +15,8 @@ internal object IccoaPortNegotiation {
 
     fun responseFor(request: ByteArray): ByteArray? {
         // Decode complete protobuf wire fields, not one byte-for-byte serialization.
-        // Forward-compatible unknown fields are safe, while a duplicate SENSOR,
-        // missing bytes or a reserved port-selection field is not.
+        // Forward-compatible unknown fields are safe; duplicate SENSOR,
+        // malformed/truncated payloads and unsupported enum values are not.
         if (request.isEmpty() || request.size > 512) return null
         var offset = 0
         var hasSensor = false
@@ -41,9 +41,6 @@ internal object IccoaPortNegotiation {
                 hasSensor = true
                 continue
             }
-            // ucar.proto defines only field 1 for request type; do not
-            // interpret a second port selector as a harmless extension.
-            if (field == 2L) return null
             when (wire) {
                 0 -> if (varint() == null) return null
                 1 -> if (request.size - offset < 8) return null else offset += 8
