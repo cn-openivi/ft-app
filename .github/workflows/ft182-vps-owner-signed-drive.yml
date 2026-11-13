@@ -1,4 +1,4 @@
-name: FT182 XA60 owner-signed field-test VPS-to-Drive build
+name: FT182 XA60 owner-signed field-test VPS-to-Drive-and-GitHub build
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ft182-vps-owner-signed-drive
@@ -34,7 +34,12 @@ jobs:
           test "$GITHUB_REF_NAME" = 'openivi/ft182-supercast-ux-source-20261113'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor b7727791af7b07bb3ef50baa05fcb7c53ee01a56 "$GITHUB_SHA"
-          test "$(git diff --name-only b7727791af7b07bb3ef50baa05fcb7c53ee01a56 "$GITHUB_SHA")" = '.github/workflows/ft182-vps-owner-signed-drive.yml'
+          # Allow exactly the reviewed packaging fix and this delivery workflow.
+          mapfile -t delta < <(git diff --name-only b7727791af7b07bb3ef50baa05fcb7c53ee01a56 "$GITHUB_SHA")
+          test "${#delta[@]}" -eq 2
+          test "${delta[0]}" = '.github/workflows/ft182-vps-owner-signed-drive.yml'
+          test "${delta[1]}" = 'app/build.gradle.kts'
+          grep -Fq 'resources.pickFirsts += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md")' app/build.gradle.kts
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 182' app/build.gradle.kts
           grep -Fq 'versionName = "3.9.68-xa60-ft182-source-preview"' app/build.gradle.kts
@@ -107,7 +112,7 @@ jobs:
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           BT="$SDK/build-tools/36.0.0"
           "$BT/aapt" dump badging "$apk" | tee apk-badging.txt
-          grep -Fq "package: name='app.ft.xa60' versionCode='181'" apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='182'" apk-badging.txt
           if grep -q '^application-debuggable' apk-badging.txt; then
             echo 'Refusing debuggable APK' >&2
             exit 1
@@ -118,7 +123,7 @@ jobs:
           cp "$apk" verified/FT182_XA60_OWNER_SIGNED.apk
           cp apk-badging.txt apksigner.txt verified/
           (cd verified && sha256sum FT182_XA60_OWNER_SIGNED.apk > SHA256SUMS)
-          printf 'SOURCE_SHA=b7727791af7b07bb3ef50baa05fcb7c53ee01a56\nCI_SHA=%s\nVERSION_CODE=181\nAPP_ID=app.ft.xa60\nSIGNATURE=OWNER_SIGNED\nCERT_SHA256=%s\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" "$FT_XA60_PINNED_SIGNER_SHA256" > verified/PROVENANCE.txt
+          printf 'SOURCE_SHA=b7727791af7b07bb3ef50baa05fcb7c53ee01a56\nCI_SHA=%s\nVERSION_CODE=182\nAPP_ID=app.ft.xa60\nSIGNATURE=OWNER_SIGNED\nCERT_SHA256=%s\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" "$FT_XA60_PINNED_SIGNER_SHA256" > verified/PROVENANCE.txt
       - name: Deliver signed FT182 APK to existing Google Drive rclone remote and verify bytes
         shell: bash
         run: |
@@ -126,7 +131,7 @@ jobs:
           command -v rclone
           rclone listremotes | grep -Fxq 'openivi-drive:'
           local="verified/FT182_XA60_OWNER_SIGNED.apk"
-          target="openivi-drive:FT182_XA60_OWNER_SIGNED_b7727791.apk"
+          target="openivi-drive:FT182_XA60_OWNER_SIGNED_${GITHUB_SHA:0:8}.apk"
           # Remote openivi-drive: is already rooted at verified CI_BUILDS folder.
           opts=(--tpslimit 0.5 --tpslimit-burst 1 --drive-pacer-min-sleep 2s --drive-pacer-burst 1 --retries 12 --retries-sleep 30s --low-level-retries 20)
           rclone copyto "$local" "$target" "${opts[@]}"
@@ -135,12 +140,88 @@ jobs:
           test "$expected" = "$received"
           test "$(rclone size "$target" --json "${opts[@]}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["bytes"])')" = "$(stat -c%s "$local")"
           for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
-            rclone copyto "verified/$name" "openivi-drive:FT182_b7727791_$name" "${opts[@]}"
-            test "$(sha256sum "verified/$name" | cut -d' ' -f1)" = "$(rclone cat "openivi-drive:FT182_b7727791_$name" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+            rclone copyto "verified/$name" "openivi-drive:FT182_${GITHUB_SHA:0:8}_$name" "${opts[@]}"
+            test "$(sha256sum "verified/$name" | cut -d' ' -f1)" = "$(rclone cat "openivi-drive:FT182_${GITHUB_SHA:0:8}_$name" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
           done
           echo "FT182_DRIVE_SIGNED_APK_PATH=$target"
           echo "FT182_SIGNED_APK_SHA256=$expected"
           echo 'FT182_DRIVE_READBACK_SHA256=PASS'
+      - name: Publish signed FT182 GitHub prerelease and independently verify downloaded APK
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s verified/FT182_XA60_OWNER_SIGNED.apk
+          test -n "$GH_TOKEN"
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, sys, urllib.error, urllib.parse, urllib.request
+          repo = os.environ["GITHUB_REPOSITORY"]
+          sha = os.environ["GITHUB_SHA"]
+          token = os.environ["GH_TOKEN"]
+          apk = pathlib.Path("verified/FT182_XA60_OWNER_SIGNED.apk")
+          raw = apk.read_bytes()
+          digest = hashlib.sha256(raw).hexdigest()
+          tag = "xa60-ft182-" + sha[:8]
+          api = "https://api.github.com/repos/" + repo
+          headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+                     "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "OpenIVI-FT182-CI"}
+          def request(method, url, data=None, ctype="application/json"):
+              body = None if data is None else (data if isinstance(data, bytes) else json.dumps(data).encode())
+              h = dict(headers)
+              if body is not None:
+                  h["Content-Type"] = ctype
+              req = urllib.request.Request(url, data=body, headers=h, method=method)
+              with urllib.request.urlopen(req, timeout=180) as resp:
+                  return json.load(resp)
+          try:
+              release = request("GET", api + "/releases/tags/" + tag)
+          except urllib.error.HTTPError as e:
+              if e.code != 404:
+                  raise
+              release = request("POST", api + "/releases", {
+                  "tag_name": tag, "target_commitish": sha,
+                  "name": "FT182 XA60 owner-signed field test (" + sha[:8] + ")",
+                  "body": ("Owner-signed field-test APK, app.ft.xa60 versionCode 182. "
+                           "CI source " + sha + ". APK SHA-256 " + digest + ". "
+                           "Owner cert SHA-256 " + os.environ["FT_XA60_PINNED_SIGNER_SHA256"] +
+                           ". Android Auto car GPS and physical HU field behavior NOT VERIFIED. "
+                           "CI run " + os.environ["GITHUB_RUN_ID"] + "."),
+                  "draft": True, "prerelease": True
+              })
+          assert release["tag_name"] == tag, "GitHub release identity mismatch"
+          asset_name = apk.name
+          assets = release.get("assets", [])
+          existing = next((a for a in assets if a["name"] == asset_name), None)
+          if existing is None:
+              url = release["upload_url"].split("{", 1)[0] + "?name=" + urllib.parse.quote(asset_name)
+              existing = request("POST", url, raw, "application/vnd.android.package-archive")
+          assert existing["size"] == len(raw), "GitHub asset size differs"
+          assert existing.get("digest") == "sha256:" + digest, "GitHub asset SHA-256 differs"
+          # Publish the verified binary only as a prerelease, not a stable release.
+          if release["draft"]:
+              release = request("PATCH", api + "/releases/" + str(release["id"]), {"draft": False, "prerelease": True})
+          release = request("GET", api + "/releases/tags/" + tag)
+          assert not release["draft"] and release["prerelease"], "Release publication mismatch"
+          asset = next(a for a in release["assets"] if a["name"] == asset_name)
+          assert asset["size"] == len(raw) and asset.get("digest") == "sha256:" + digest
+          download = urllib.request.Request(asset["browser_download_url"],
+                                            headers={"User-Agent": "OpenIVI-FT182-readback"})
+          hasher = hashlib.sha256()
+          downloaded_bytes = 0
+          with urllib.request.urlopen(download, timeout=180) as resp:
+              while True:
+                  chunk = resp.read(1024 * 1024)
+                  if not chunk:
+                      break
+                  hasher.update(chunk)
+                  downloaded_bytes += len(chunk)
+          assert downloaded_bytes == len(raw) and hasher.hexdigest() == digest, "GitHub downloaded APK differs"
+          print("FT182_GITHUB_PRERELEASE=" + release["html_url"])
+          print("FT182_GITHUB_ASSET=" + asset["browser_download_url"])
+          print("FT182_GITHUB_ASSET_SHA256=" + digest)
+          print("FT182_GITHUB_FULL_DOWNLOAD_SHA256=PASS")
+          PY
       - name: Remove only local FT182 build outputs after full Drive hash readback
         shell: bash
         run: |
