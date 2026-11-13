@@ -641,7 +641,7 @@
     <string name="mirror_use_calibration_about">Normally not needed. FT maps touches by image geometry. Enable only for offset touches.</string>
     <string name="mirror_calibrate_headunit_title">Calibrate head unit screen</string>
     <string name="mirror_dim_phone_title">Dim phone screen to minimum while mirroring</string>
-    <string name="mirror_dim_phone_about">Requires Modify system settings. Restores the original brightness after mirroring.</string>
+    <string name="mirror_dim_phone_about">Touch the phone to restore brightness temporarily. It dims again after 30 seconds without phone touches. Requires Modify system settings; the original brightness is restored when mirroring ends.</string>
     <string name="mirror_landscape_title">Lock mirrored apps to landscape</string>
     <string name="mirror_landscape_about">Optional. Phone launcher remains portrait. Requires Modify system settings and FT accessibility service.</string>
 </resources>

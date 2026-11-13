@@ -34,6 +34,8 @@ public final class Commands {
     }
 
     public void shutdown() {
+        Touches.monitor(false);
+        Touches.setPhysicalListener(null, null, null);
         try {
             displays.closeAll();
         } catch (Throwable ignored) {
@@ -59,6 +61,12 @@ public final class Commands {
         } catch (Throwable t) {
             Log.w("could not watch FT: " + t);
         }
+        // Shell has access only on supported phones; Accessibility is the fallback.
+        // No coordinates or raw event bytes leave the phone.
+        Touches.setPhysicalListener(
+            () -> bridge.event("phone-touch", null),
+            () -> bridge.event("phone-touch-monitor-ready", null),
+            () -> bridge.event("phone-touch-monitor-unavailable", null));
     }
 
     private Bundle handle(Bundle request, Surface surface) {
@@ -173,6 +181,11 @@ public final class Commands {
             case "screen": {
                 boolean on = request.getBoolean("on", true);
                 answer.putBoolean("ok", on ? Power.screen(true) : Power.manage(request.getBoolean("auto", true)));
+                return answer;
+            }
+            case "phone-touch-monitor": {
+                Touches.monitor(request.getBoolean("on", false));
+                answer.putBoolean("ok", true);
                 return answer;
             }
             case "power": {

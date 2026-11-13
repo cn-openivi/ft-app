@@ -25,6 +25,8 @@ object SuperCast {
         }
     @Volatile private var server: IFtServer? = null
     @Volatile var helperUid: Int = -1
+    /** True only while shell helper confirmed an open physical touchscreen event stream. */
+    @Volatile var physicalTouchMonitorActive = false
 
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready
@@ -40,12 +42,19 @@ object SuperCast {
                 return
             }
             bindHelper(bound)
+            if (_ready.value && app.ft.core.MirrorPanelSaver.isActive)
+                later { monitorPhoneTouches(true) }
             if (_ready.value) DiagLog.i(TAG, "the SuperCast helper is connected")
             else DiagLog.w(TAG, "the SuperCast helper did not supply a live Binder")
         }
 
         override fun onEvent(event: Bundle?) {
-            DiagLog.i(TAG, "helper event: ${event?.getString("event")}")
+            when (event?.getString("event")) {
+                "phone-touch" -> app.ft.core.MirrorPanelSaver.onPhysicalTouch(FTApp.instance)
+                "phone-touch-monitor-ready" -> physicalTouchMonitorActive = true
+                "phone-touch-monitor-unavailable" -> physicalTouchMonitorActive = false
+                else -> DiagLog.i(TAG, "helper event: ${event?.getString("event")}")
+            }
         }
 
         override fun onAudio(pcm: ByteArray?, sampleRate: Int, channels: Int) = Unit
@@ -89,6 +98,7 @@ object SuperCast {
 
     @Synchronized
     fun drop() {
+        physicalTouchMonitorActive = false
         val binder = deathBinder
         val recipient = deathRecipient
         deathBinder = null
@@ -200,6 +210,12 @@ object SuperCast {
 
     fun powerPressed() {
         ask("power")
+    }
+
+    /** Authenticated helper monitoring, enabled only while FT is dimming a mirrored phone. */
+    fun monitorPhoneTouches(on: Boolean) {
+        if (!on) physicalTouchMonitorActive = false
+        if (server != null) ask("phone-touch-monitor") { putBoolean("on", on) }
     }
 
     fun keepAwake(on: Boolean, wake: Boolean = false) {

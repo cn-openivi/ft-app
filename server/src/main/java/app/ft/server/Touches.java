@@ -15,6 +15,38 @@ public final class Touches {
     private static final AtomicLongArray injectedTimes = new AtomicLongArray(256);
     private static final AtomicInteger injectedNext = new AtomicInteger();
     private static volatile int watching;
+    private static volatile boolean notifyEnabled;
+    private static volatile Runnable touchActivity;
+    private static volatile Runnable monitorReady;
+    private static volatile Runnable monitorUnavailable;
+    private static final java.util.concurrent.atomic.AtomicLong lastSignalled = new java.util.concurrent.atomic.AtomicLong(-1);
+
+    public static synchronized void setPhysicalListener(Runnable touch, Runnable ready, Runnable unavailable) {
+        touchActivity = touch;
+        monitorReady = ready;
+        monitorUnavailable = unavailable;
+        if (ready != null && notifyEnabled && watching > 0) ready.run();
+    }
+
+    public static synchronized void monitor(boolean on) {
+        notifyEnabled = on;
+        if (on) {
+            if (watching > 0 && monitorReady != null) monitorReady.run();
+            start();
+        } else {
+            if (monitorUnavailable != null) monitorUnavailable.run();
+        }
+    }
+
+    private static void signalTouch(long at) {
+        Runnable action = touchActivity;
+        if (!notifyEnabled || action == null) return;
+        long old = lastSignalled.get();
+        if (old >= 0 && at - old < 250L) return;
+        if (lastSignalled.compareAndSet(old, at)) {
+            try { action.run(); } catch (Throwable error) { Log.w("touch signal could not reach FT: " + error); }
+        }
+    }
     private static boolean started;
     private static long askedAt;
     private static long usedAt = -1;
@@ -119,20 +151,30 @@ public final class Touches {
     private static void watch(String path) {
         byte[] buffer = new byte[4096];
         try (FileInputStream in = new FileInputStream(path)) {
+            Runnable ready;
             synchronized (Touches.class) {
                 watching++;
+                ready = monitorReady;
             }
-            Log.i("watching " + path + " for the phone being used");
+            if (ready != null && notifyEnabled) {
+                try { ready.run(); } catch (Throwable error) { Log.w("monitor ready report failed: " + error); }
+            }
+            Log.i("watching " + path + " for physical phone touch");
             while (in.read(buffer) > 0) {
-                last = SystemClock.uptimeMillis();
+                long at = SystemClock.uptimeMillis();
+                last = at;
+                signalTouch(at);
             }
         } catch (Throwable t) {
             Log.i("cannot watch " + path + " (" + t.getMessage() + "), asking the system when the phone was last used instead");
         } finally {
+            Runnable unavailable = null;
             synchronized (Touches.class) {
-                if (watching > 0) {
-                    watching--;
-                }
+                if (watching > 0) watching--;
+                if (watching == 0 && notifyEnabled) unavailable = monitorUnavailable;
+            }
+            if (unavailable != null) {
+                try { unavailable.run(); } catch (Throwable error) { Log.w("monitor ended report failed: " + error); }
             }
         }
     }

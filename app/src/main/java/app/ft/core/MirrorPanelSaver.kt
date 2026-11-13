@@ -1,6 +1,9 @@
 package app.ft.core
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 
 /**
@@ -15,6 +18,67 @@ object MirrorPanelSaver {
     private const val OLD_LEVEL = "level"
     private const val DIM_LEVEL = 1
     private val owners = linkedSetOf<String>()
+    private val touchWindow = MirrorTouchDimWindow()
+    private val handler = Handler(Looper.getMainLooper())
+    private var pendingDim: Runnable? = null
+    private var temporarilyBright = false
+    @get:Synchronized val isActive: Boolean get() = owners.isNotEmpty()
+
+    private fun cancelDimTimer() {
+        pendingDim?.let { handler.removeCallbacks(it) }
+        pendingDim = null
+    }
+
+    private fun scheduleDim(context: Context) {
+        cancelDimTimer()
+        val delay = touchWindow.remainingMs(SystemClock.uptimeMillis()) ?: return
+        val callback = Runnable { dimAfterIdle(context.applicationContext) }
+        pendingDim = callback
+        handler.postDelayed(callback, delay)
+    }
+
+    @Synchronized private fun dimAfterIdle(context: Context) {
+        pendingDim = null
+        if (owners.isEmpty()) return
+        val now = SystemClock.uptimeMillis()
+        if (!touchWindow.isDue(now)) {
+            scheduleDim(context)
+            return
+        }
+        if (temporarilyBright && Settings.System.canWrite(context)) {
+            val ok = runCatching {
+                Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, DIM_LEVEL)
+            }.getOrDefault(false)
+            if (ok) {
+                temporarilyBright = false
+                touchWindow.darkened()
+                DiagLog.i("MirrorPanel", "phone screen re-dimmed after 30s without physical touch")
+            } else DiagLog.w("MirrorPanel", "Android did not accept the timed brightness reduction")
+        }
+    }
+
+    /** Physical phone touch from shell input monitoring, or Accessibility fallback. No coordinates. */
+    @Synchronized fun onPhysicalTouch(context: Context) {
+        val c = context.applicationContext
+        if (owners.isEmpty() || !Settings.System.canWrite(c)) return
+        val prefs = c.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(ACTIVE, false)) return
+        touchWindow.touched(SystemClock.uptimeMillis())
+        if (!temporarilyBright) {
+            val original = prefs.getInt(OLD_LEVEL, 128).coerceIn(1, 255)
+            val ok = runCatching {
+                // Leave auto-brightness disabled until mirroring ends; only the level changes.
+                Settings.System.putInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS, original)
+            }.getOrDefault(false)
+            if (!ok) {
+                DiagLog.w("MirrorPanel", "Android refused temporary normal brightness")
+                return
+            }
+            temporarilyBright = true
+            DiagLog.i("MirrorPanel", "physical phone touch temporarily restored brightness")
+        }
+        scheduleDim(c)
+    }
 
     /** Stale snapshots survive process death and are repaired on the next FT startup. */
     @Synchronized fun recover(context: Context) {
@@ -57,15 +121,32 @@ object MirrorPanelSaver {
             DiagLog.i("MirrorPanel", "phone display brightness temporarily minimized during mirror")
         }
         owners.add(source)
+        if (owners.size == 1) {
+            cancelDimTimer()
+            touchWindow.start()
+            temporarilyBright = false
+            app.ft.supercast.SuperCast.later { app.ft.supercast.SuperCast.monitorPhoneTouches(true) }
+        }
         return true
     }
 
     @Synchronized fun end(context: Context, source: String) {
         owners.remove(source)
-        if (owners.isEmpty()) restore(context.applicationContext)
+        if (owners.isEmpty()) {
+            cancelDimTimer()
+            touchWindow.stop()
+            temporarilyBright = false
+            app.ft.supercast.SuperCast.later { app.ft.supercast.SuperCast.monitorPhoneTouches(false) }
+            restore(context.applicationContext)
+        }
     }
 
     private fun restore(context: Context) {
+        if (owners.isEmpty()) {
+            cancelDimTimer()
+            touchWindow.stop()
+            temporarilyBright = false
+        }
         val prefs = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         if (!prefs.getBoolean(ACTIVE, false)) return
         if (!Settings.System.canWrite(context)) {

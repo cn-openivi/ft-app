@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
 import android.os.SystemClock
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import app.ft.supercast.adb.WirelessPairingAutoCode
 import app.ft.core.DiagLog
@@ -24,6 +25,7 @@ class FTTouchService : AccessibilityService() {
     private var downAt = 0L
     private var lastX = 0f
     private var lastY = 0f
+    @Volatile private var lastInjectedAt = Long.MIN_VALUE
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -50,6 +52,15 @@ class FTTouchService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event != null &&
+            (event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_START ||
+             event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_END) &&
+            (Build.VERSION.SDK_INT < 33 || event.displayId == Display.DEFAULT_DISPLAY) &&
+            !app.ft.supercast.SuperCast.physicalTouchMonitorActive &&
+            (lastInjectedAt == Long.MIN_VALUE || SystemClock.uptimeMillis() - lastInjectedAt > 1_000L)) {
+            // Fallback only. It neither consumes touches nor reads screen content.
+            app.ft.core.MirrorPanelSaver.onPhysicalTouch(this)
+        }
         app.ft.core.MirrorOrientationLock.foreground(
             this, event?.eventType ?: 0, event?.packageName?.toString()
         )
@@ -97,6 +108,7 @@ class FTTouchService : AccessibilityService() {
     fun cancelStroke() { stroke = null }
 
     private fun dispatch(s: GestureDescription.StrokeDescription) {
+        lastInjectedAt = SystemClock.uptimeMillis()
         val ok = runCatching {
             val b = GestureDescription.Builder().addStroke(s)
             if (target > 0 && Build.VERSION.SDK_INT >= 30) b.setDisplayId(target)
@@ -118,6 +130,7 @@ class FTTouchService : AccessibilityService() {
 
     /** A single, completed Accessibility gesture for a mirrored stationary touch. */
     fun tap(x: Float, y: Float, durationMs: Long = 50L) {
+        lastInjectedAt = SystemClock.uptimeMillis()
         val duration = durationMs.coerceIn(60L, 1_200L)
         val path = Path().apply { moveTo(x, y); lineTo(x, y) }
         val result = runCatching {
