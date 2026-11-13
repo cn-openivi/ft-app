@@ -120,7 +120,7 @@ class CarDisplay(private val context: Context) {
         streamWidth = plan.streamWidth
         streamHeight = plan.streamHeight
         frameIntervalMs = (1000L / fps.coerceIn(1, 120)).coerceAtLeast(8L)
-        var enc = SurfaceEncoder(streamWidth, streamHeight, fps, plan.bitrate, plan.qpFloor, onConfig, onFrame, gated = true, onTimedFrame = onTimedFrame, savePower = savePower, constantBitrate = plan.constantBitrate, onFailure = codecFailure, startCandidateIndex = codecAttempt)
+        var enc = SurfaceEncoder(streamWidth, streamHeight, fps, plan.bitrate, plan.qpFloor, onConfig, onFrame, gated = true, onTimedFrame = onTimedFrame, savePower = savePower, constantBitrate = plan.constantBitrate, onFailure = codecFailure, startCandidateIndex = codecAttempt, h264LevelIdc = plan.h264LevelIdc)
         encoder = enc
         enc.start()
         val g = FrameGate(width, height, streamWidth, streamHeight, enc.surface ?: throw IllegalStateException("no encoder surface"),
@@ -140,7 +140,7 @@ class CarDisplay(private val context: Context) {
             width = streamWidth
             height = streamHeight
             DiagLog.w(tag, "drawing straight at ${streamWidth}x$streamHeight, the car stretches it to fill its screen")
-            enc = SurfaceEncoder(streamWidth, streamHeight, fps, plan.bitrate, plan.qpFloor, onConfig, onFrame, onTimedFrame = onTimedFrame, savePower = savePower, constantBitrate = plan.constantBitrate, onFailure = codecFailure, startCandidateIndex = codecAttempt)
+            enc = SurfaceEncoder(streamWidth, streamHeight, fps, plan.bitrate, plan.qpFloor, onConfig, onFrame, onTimedFrame = onTimedFrame, savePower = savePower, constantBitrate = plan.constantBitrate, onFailure = codecFailure, startCandidateIndex = codecAttempt, h264LevelIdc = plan.h264LevelIdc)
             encoder = enc
             enc.start()
             enc.surface ?: throw IllegalStateException("no encoder surface")
