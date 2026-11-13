@@ -297,13 +297,13 @@ internal object AvcNalScan {
                     data[i + 3] == 1.toByte() -> i + 4
                 else -> continue
             }
-            if (start + 3 < data.size && data[start].toInt() and 31 == 7)
+            if (start + 3 < data.size && (data[start].toInt() and 31) == 7)
                 return (data[start + 1].toInt() and 255) to
                     (data[start + 3].toInt() and 255)
         }
-        if (data.size > 3 && data[0].toInt() and 31 == 7)
+        if (data.size > 3 && (data[0].toInt() and 31) == 7)
             return (data[1].toInt() and 255) to (data[3].toInt() and 255)
-        if (data.size > 7 && data[4].toInt() and 31 == 7)
+        if (data.size > 7 && (data[4].toInt() and 31) == 7)
             return (data[5].toInt() and 255) to (data[7].toInt() and 255)
         return null
     }
