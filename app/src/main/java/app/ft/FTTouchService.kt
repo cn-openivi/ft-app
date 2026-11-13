@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.os.Build
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
+import app.ft.supercast.adb.WirelessPairingAutoCode
 import app.ft.core.DiagLog
 
 class FTTouchService : AccessibilityService() {
@@ -47,7 +48,10 @@ class FTTouchService : AccessibilityService() {
         _connected.value = false
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (app.ft.supercast.adb.WirelessPairingService.currentPort() == null) return
+        WirelessPairingAutoCode.onEvent(event, rootInActiveWindow, this)
+    }
     override fun onInterrupt() = Unit
 
     fun inject(action: Int, x: Float, y: Float, displayId: Int = 0) {

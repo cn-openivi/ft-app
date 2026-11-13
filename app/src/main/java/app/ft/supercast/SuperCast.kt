@@ -7,6 +7,9 @@ import app.ft.core.DiagLog
 import app.ft.core.Root
 import app.ft.server.IFtClient
 import app.ft.server.IFtServer
+import app.ft.supercast.adb.WirelessAdbDiscovery
+import app.ft.supercast.adb.WirelessAdbEngine
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.security.SecureRandom
@@ -24,6 +27,10 @@ object SuperCast {
 
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready
+
+    enum class StartReason { NONE, NEED_PAIRING, DEBUGGING_OFF, TLS_REJECTED, HELPER_UNREACHABLE, LEGACY_DISABLED }
+    private val _startReason = MutableStateFlow(StartReason.NONE)
+    val startReason: StateFlow<StartReason> = _startReason
 
     val client: IFtClient = object : IFtClient.Stub() {
         override fun onServer(bound: IFtServer?, sent: String?) {
@@ -169,37 +176,54 @@ object SuperCast {
     }
 
     fun start(context: android.content.Context): Boolean {
-        if (_ready.value) return true
+        if (_ready.value && ping()) {
+            _startReason.value = StartReason.NONE
+            return true
+        }
+        if (_ready.value) drop()
         val fresh = freshToken()
         if (Root.ensure()) {
-            if (Helper.startWithRoot(context, fresh) { _ready.value }) {
+            if (Helper.startWithRoot(context, fresh) { _ready.value && ping() }) {
                 FTApp.instance.prefs.supercastWay = WAY_ROOT
-                DiagLog.i(TAG, "apps on the car are ready, set up with root")
+                _startReason.value = StartReason.NONE
+                DiagLog.i(TAG, "apps on the car are ready over root")
                 return true
             }
-            DiagLog.w(TAG, "root is there but the helper did not come back to FT")
         }
-        return when (Helper.startWithAdb(context, fresh)) {
-            Helper.Adb.STARTED -> {
-                val up = waitForHandshake()
-                if (up) {
-                    FTApp.instance.prefs.supercastWay = WAY_BRIDGE
-                    DiagLog.i(TAG, "apps on the car are ready, set up through the phone's debug bridge")
-                } else {
-                    DiagLog.w(TAG, "the helper started over the debug bridge but did not come back to FT")
+
+        // Rediscover the current Android 11+ TLS port on EVERY startup.
+        if (WirelessAdbEngine.isPaired(context)) {
+            val found = runBlocking {
+                WirelessAdbDiscovery.findConnect(context.applicationContext, timeoutMs = 5_000)
+            }
+            if (found == null) {
+                _startReason.value = StartReason.DEBUGGING_OFF
+            } else {
+                val dispatched = runCatching {
+                    runBlocking { WirelessAdbEngine.startHelper(context.applicationContext, found, fresh) }
+                }.onFailure {
+                    DiagLog.w(TAG, "verified TLS debug bridge failed: " + it.javaClass.simpleName)
+                }.getOrDefault(false)
+                if (dispatched && waitForHandshake() && ping()) {
+                    FTApp.instance.prefs.supercastWay = WAY_TLS
+                    _startReason.value = StartReason.NONE
+                    return true
                 }
-                up
+                _startReason.value = if (dispatched) StartReason.HELPER_UNREACHABLE else StartReason.TLS_REJECTED
             }
-            Helper.Adb.NOT_ALLOWED -> {
-                DiagLog.w(TAG, "the phone has not allowed FT on its debug bridge yet")
-                false
-            }
-            Helper.Adb.NO_BRIDGE -> {
-                DiagLog.w(TAG, "the phone's debug bridge is not switched on, so FT cannot set this up on its own")
-                false
-            }
-            Helper.Adb.FAILED -> false
+        } else {
+            _startReason.value = StartReason.NEED_PAIRING
         }
+
+        // Plain TCP :5555 is an EXPLICIT expert fallback.
+        if (!FTApp.instance.prefs.supercastLegacyAdb) return false
+        val legacy = Helper.startWithAdb(context, fresh)
+        if (legacy == Helper.Adb.STARTED && waitForHandshake() && ping()) {
+            FTApp.instance.prefs.supercastWay = WAY_BRIDGE
+            _startReason.value = StartReason.NONE
+            return true
+        }
+        return false
     }
 
     private fun waitForHandshake(): Boolean {
@@ -210,14 +234,10 @@ object SuperCast {
         return _ready.value
     }
 
-    fun startOverBridge(context: android.content.Context): Boolean {
-        val fresh = freshToken()
-        val result = Helper.startWithAdb(context, fresh)
-        DiagLog.i(TAG, "bridge start result: $result")
-        return result == Helper.Adb.STARTED
-    }
+    fun startOverBridge(context: android.content.Context): Boolean = start(context)
 
     const val WAY_NONE = 0
     const val WAY_ROOT = 1
     const val WAY_BRIDGE = 2
+    const val WAY_TLS = 3
 }

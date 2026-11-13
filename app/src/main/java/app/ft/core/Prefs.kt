@@ -247,6 +247,7 @@ class Prefs(context: Context) {
     var supercastScreenOff: Boolean get() = bool("supercastScreenOff", true); set(v) = set("supercastScreenOff", v)
     var supercastApps: String get() = str("supercastApps", ""); set(v) = set("supercastApps", v)
     var supercastWay: Int get() = int("supercastWay", 0); set(v) = set("supercastWay", v)
+    var supercastLegacyAdb: Boolean get() = bool("supercastLegacyAdb", false); set(v) = set("supercastLegacyAdb", v)
     var supercastDockHidden: Boolean get() = bool("supercastDockHidden", false); set(v) = set("supercastDockHidden", v)
     var supercastSplit: Float get() = flt("supercastSplit", 0.5f); set(v) = set("supercastSplit", v)
 }
