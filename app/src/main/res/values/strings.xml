@@ -119,7 +119,7 @@
     <string name="quiet_title">Share sound without asking</string>
     <string name="quiet_on_body">FT passes other apps\' sound to the car by itself, with no question on the phone. To turn this off, run:</string>
     <string name="quiet_off_body">Android asks on the phone before FT can pass other apps\' sound to the car. Run this once from a computer with USB debugging on, and it stops asking:</string>
-    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 240 dpi.</string>
+    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 160 dpi.</string>
     <string name="picture_iccoa_direct_codec">Direct mode forwards the original Android Auto H.264 video without video re-encoding. The source controls bitrate and frame rate. If incompatible, FT restores its normal 8 Mbps video encoder. Test while parked.</string>
     <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
     <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>

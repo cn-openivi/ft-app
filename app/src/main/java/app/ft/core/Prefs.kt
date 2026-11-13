@@ -11,7 +11,7 @@ class Prefs(context: Context) {
     private val appContext = context.applicationContext
     companion object {
         /** Default only; explicitly saved per-user picture DPI is never migrated. */
-        const val DEFAULT_CAR_DENSITY_DPI = 240
+        const val DEFAULT_CAR_DENSITY_DPI = 160
     }
 
     private val sp: SharedPreferences = context.getSharedPreferences("ft", Context.MODE_PRIVATE)
