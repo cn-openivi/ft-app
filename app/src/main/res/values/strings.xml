@@ -503,4 +503,15 @@
     <string name="gps_source_car">Car GPS</string>
     <string name="gps_source_phone">Phone GPS</string>
     <string name="gps_source_about">Choose one GPS source. FT never automatically switches to the other when the signal is lost. Vehicle wheel and gyroscope data may continue to support dead reckoning in either mode when verified. Android Auto applies the GPS source on the next connection.</string>
+    <string name="picture_iccoa_actual_normal">Actual video: Normal</string>
+    <string name="picture_iccoa_actual_direct">Actual video: H.264 passthrough</string>
+    <string name="picture_iccoa_direct_pending">Direct mode selected; waiting for a compatible AA video stream</string>
+    <string name="picture_iccoa_direct_fallback">Direct video fallback: %1$s</string>
+    <string name="picture_video_power_current">Output pacing: %1$d fps (%2$s)</string>
+    <string name="picture_video_power_bypassed">Smart FPS pacing is inactive during H.264 passthrough</string>
+    <string name="picture_video_power_mode_off">off</string>
+    <string name="picture_video_power_mode_active">active</string>
+    <string name="picture_video_power_mode_cruise">cruise</string>
+    <string name="picture_video_power_mode_static">static</string>
+    <string name="picture_video_power_mode_thermal">thermal</string>
 </resources>
