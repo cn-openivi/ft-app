@@ -22,7 +22,7 @@ class IccoaPortNegotiationTest {
         assertNull(IccoaPortNegotiation.responseFor(byteArrayOf(0x08, 0x81.toByte())))
     }
     @Test fun forwardCompatibleRequestWithCompleteUnknownFieldsIsAccepted() {
-        val request = ProtoWriter().enum(1, 1).int64(3, 123)
+        val request = ProtoWriter().enum(1, 1).int64(2, 123).int64(3, 123)
             .bytes(4, byteArrayOf(0x10, 0x20)).fixed32(5, 0x12345678)
             .fixed64(6, 42).toByteArray()
         assertEquals(57239, ProtoReader(IccoaPortNegotiation.responseFor(request)!!).int(2))
