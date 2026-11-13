@@ -90,7 +90,7 @@ fun SuperCastSettings() {
     fun startPairing() {
         // The click authorizes a one-shot Accessibility read (only when FT's
         // already-enabled service is available). RemoteInput remains fallback.
-        val autoRead = FTTouchService.enabled
+        val autoRead = app.ft.supercast.adb.WirelessPairingAutoCode.canUse(context)
         if (!WirelessPairingService.begin(context, autoRead)) return
         val developer = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
         try {

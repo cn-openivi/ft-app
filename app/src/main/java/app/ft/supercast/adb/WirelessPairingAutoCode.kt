@@ -12,6 +12,13 @@ import app.ft.FTTouchService
 internal object WirelessPairingAutoCode {
     private val capture = WirelessPairingWindowCapture { SystemClock.elapsedRealtime() }
 
+    fun canUse(context: Context): Boolean {
+        if (!FTTouchService.enabled) return false
+        val developerSettings = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+        return context.packageManager.resolveActivity(developerSettings, 0)?.activityInfo?.packageName
+            ?.isNotBlank() == true
+    }
+
     fun arm(context: Context): Boolean {
         if (!FTTouchService.enabled) return false
         val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)

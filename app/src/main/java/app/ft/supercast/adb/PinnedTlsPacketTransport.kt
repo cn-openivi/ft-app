@@ -93,8 +93,7 @@ class PinnedTlsPacketTransport private constructor(
                                     // The certificate was captured only after a SPAKE2-authenticated
                                     // pairing. Fail closed if the TLS peer changes. No trust-all path.
                                     val presented = serverCertificate.serverCertificate.getCertificateAt(0).encoded
-                                    val actualSha = java.security.MessageDigest.getInstance("SHA-256").digest(presented)
-                                    if (!java.security.MessageDigest.isEqual(actualSha, expectedPeerSha256)) {
+                                    if (!PeerCertificatePin.matches(presented, expectedPeerSha256)) {
                                         throw java.security.cert.CertificateException("ADB TLS peer differs from paired identity")
                                     }
                                 }
