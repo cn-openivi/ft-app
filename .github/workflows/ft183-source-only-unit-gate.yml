@@ -1,26 +1,9 @@
 name: FT183 source-only compile and unit tests (owner authorized 2026-11-13)
 
+# OWNER HOLD 2026-11-13: NO automatic or manual FT183 compilation until owner lifts hold.
+# To resume, the owner must explicitly authorize removing the job-level skip and re-enabling a trigger.
 on:
-  push:
-    branches:
-      - openivi/ft183-aa-floating-return-20261113
-    paths:
-      - '.github/workflows/ft183-source-only-unit-gate.yml'
-      - 'app/src/main/java/app/ft/ui/car/**'
-      - 'app/src/main/java/app/ft/core/**'
-      - 'app/src/main/java/app/ft/FTTouchService.kt'
-      - 'app/src/main/java/app/ft/supercast/**'
-      - 'app/src/test/java/app/ft/core/**'
-      - 'server/src/main/java/app/ft/server/**'
-      - 'app/src/main/java/app/ft/carlife/**'
-      - 'app/src/main/java/app/ft/iccoa/**'
-      - 'app/src/main/java/app/ft/ui/home/**'
-      - 'app/src/main/java/app/ft/ui/settings/**'
-      - 'app/src/main/res/**'
-      - 'app/build.gradle.kts'
-      - 'app/src/main/java/app/ft/core/Prefs.kt'
-      - 'app/src/main/java/app/ft/core/Backup.kt'
-      - 'app/src/test/java/app/ft/ui/car/**'
+  workflow_dispatch:
 
 permissions:
   contents: read
