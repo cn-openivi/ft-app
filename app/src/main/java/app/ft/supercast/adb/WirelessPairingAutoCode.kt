@@ -20,7 +20,7 @@ internal object WirelessPairingAutoCode {
     }
 
     fun arm(context: Context): Boolean {
-        if (!FTTouchService.enabled) return false
+        if (!canUse(context)) return false
         val intent = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
         val pkg = context.packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName
             ?: return false // Unknown OEM Settings package: never broaden capture.
