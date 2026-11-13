@@ -3,7 +3,7 @@ name: FT182 XA60 owner-signed field-test VPS-to-Drive build
 on:
   push:
     branches:
-      - openivi/ft182-default-picture-dpi-240-20261112
+      - openivi/ft182-supercast-ux-source-20261113
     paths:
       - '.github/workflows/ft182-vps-owner-signed-drive.yml'
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           test "$(id -u)" -ne 0
           test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
-          test "$GITHUB_REF_NAME" = 'openivi/ft182-default-picture-dpi-240-20261112'
+          test "$GITHUB_REF_NAME" = 'openivi/ft182-supercast-ux-source-20261113'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor b7727791af7b07bb3ef50baa05fcb7c53ee01a56 "$GITHUB_SHA"
           test "$(git diff --name-only b7727791af7b07bb3ef50baa05fcb7c53ee01a56 "$GITHUB_SHA")" = '.github/workflows/ft182-vps-owner-signed-drive.yml'
