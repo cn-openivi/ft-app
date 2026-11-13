@@ -21,6 +21,13 @@ internal object IccoaWfdAvc {
             require(width in 320..1920 && height in 240..1080 && fps in 1..30)
             require(profile == 1 && level in 1..127 && ceaMode in 0..31)
         }
+
+        val levelIdc: Int get() = when (level) {
+            1 -> 31; 2 -> 32; 4 -> 40; 8 -> 41; 16 -> 42; 32 -> 50; 64 -> 51
+            else -> error("Invalid negotiated AVC level mask")
+        }
+        val bitrate: Int get() = (8_000_000L * width * height / (1920L * 1080L))
+            .coerceIn(2_000_000L, 8_000_000L).toInt()
     }
 
     fun choose(m3: String, requestedFps: Int): Choice? {
@@ -75,12 +82,38 @@ internal object IccoaWfdSourceEncoder {
                 codec.supportedTypes.none { it.equals(MediaFormat.MIMETYPE_VIDEO_AVC, true) }
             ) return@any false
             val caps = codec.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
+            val level = when (choice.levelIdc) {
+                31 -> MediaCodecInfo.CodecProfileLevel.AVCLevel31
+                32 -> MediaCodecInfo.CodecProfileLevel.AVCLevel32
+                40 -> MediaCodecInfo.CodecProfileLevel.AVCLevel4
+                41 -> MediaCodecInfo.CodecProfileLevel.AVCLevel41
+                42 -> MediaCodecInfo.CodecProfileLevel.AVCLevel42
+                50 -> MediaCodecInfo.CodecProfileLevel.AVCLevel5
+                51 -> MediaCodecInfo.CodecProfileLevel.AVCLevel51
+                else -> return@any false
+            }
+            val required = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,
+                choice.width, choice.height).apply {
+                setInteger(MediaFormat.KEY_BIT_RATE, choice.bitrate)
+                setInteger(MediaFormat.KEY_FRAME_RATE, choice.fps)
+                setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+                setInteger(MediaFormat.KEY_BITRATE_MODE,
+                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                setInteger(MediaFormat.KEY_PROFILE,
+                    MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
+                setInteger(MediaFormat.KEY_LEVEL, level)
+            }
             caps.colorFormats.contains(MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) &&
                 caps.profileLevels.any {
-                    it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline
+                    it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline && it.level >= level
                 } &&
+                caps.encoderCapabilities.isBitrateModeSupported(
+                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) &&
+                caps.videoCapabilities.bitrateRange.contains(choice.bitrate) &&
                 caps.videoCapabilities.areSizeAndRateSupported(
-                    choice.width, choice.height, choice.fps.toDouble())
+                    choice.width, choice.height, choice.fps.toDouble()) &&
+                caps.isFormatSupported(required)
         }
     }.getOrDefault(false)
 }
