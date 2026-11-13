@@ -95,7 +95,7 @@ class CarDisplay(private val context: Context) {
                     if (epoch != sessionEpoch) return@synchronized
                     val failed = encoder
                     val next = (failed?.selectedCandidateIndex ?: -1) + 1
-                    if (error is MediaCodec.CodecException && failed != null &&
+                    if ((error is MediaCodec.CodecException || error is AvcOutputMismatchException) && failed != null &&
                         next in 1 until failed.candidateCount
                     ) {
                         DiagLog.w(tag, "H264 ASYNC_RETRY candidate=${next + 1}/${failed.candidateCount} format=${plan.streamWidth}x${plan.streamHeight}@${plan.fps}")
