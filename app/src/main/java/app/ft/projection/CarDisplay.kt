@@ -125,7 +125,12 @@ class CarDisplay(private val context: Context) {
         enc.start()
         val g = FrameGate(width, height, streamWidth, streamHeight, enc.surface ?: throw IllegalStateException("no encoder surface"),
             preserveAspect = plan.preserveAspect, onFailure = codecFailure, smartSavePower = savePower,
-            onEffectiveRate = { actualFps, _ -> encoder?.setOperatingRate(actualFps) })
+            onEffectiveRate = { actualFps, mode ->
+                if (sessionEpoch == epoch) {
+                    encoder?.setOperatingRate(actualFps)
+                    VideoPacingStatus.publish(actualFps, SmartVideoPacer.Mode.valueOf(mode))
+                }
+            })
         val surface = if (g.start(fps)) {
             gate = g
             g.input ?: throw IllegalStateException("no frame gate surface")
@@ -360,6 +365,7 @@ class CarDisplay(private val context: Context) {
             runCatching { vd?.release() }
         }
         _active.value = false
+        VideoPacingStatus.clear()
         runCatching { gate?.stop() }
         gate = null
         runCatching { encoder?.stop() }
