@@ -152,10 +152,7 @@ fun AaStart(serverOn: Boolean?, ownCopy: Boolean, framed: Boolean = true) {
             if (refused) Note(stringResource(R.string.aa_switch_failed))
             if (noMenu) Note(stringResource(R.string.aa_no_developer))
         }
-        if (!on) {
-            Note(stringResource(R.string.aa_server_quick_steps))
-            ButtonPair(stringResource(R.string.aa_show_me_how), { help = true }, stringResource(R.string.aa_open_aa), { AaInstaller.openSettings(context) })
-        }
+        if (!on) ButtonPair(stringResource(R.string.aa_show_me_how), { help = true }, stringResource(R.string.aa_open_aa), { AaInstaller.openSettings(context) })
     }
     if (help) ServerHelpSheet(serverOn) { help = false }
 }

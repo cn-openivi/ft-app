@@ -34,15 +34,14 @@
     <string name="aa_own_copy_body">Android Auto установлен через FT и поэтому запускается сам при подключении автомобиля. Обновляйте его через Play Store: старые версии Google отключает.</string>
     <string name="aa_server_option">Сервер головного устройства Android Auto</string>
     <string name="aa_server_option_body">FT запускает Android Auto в автомобиле через этот сервер. Его легко включить в настройках Android Auto, но после перезагрузки телефона или обновления Android Auto он снова выключается.</string>
-    <string name="aa_server_quick_steps">Нет сервера в меню ⋮? Внизу настроек Android Auto раскройте «Версия и сведения о разрешениях», нажмите на сведения о версии 10 раз и подтвердите. Затем ⋮ → «Запустить сервер головного устройства».</string>
     <string name="aa_show_me_how">Показать, как</string>
     <string name="aa_open_aa">Открыть Android Auto</string>
     <string name="aa_open_store">Открыть Play Store</string>
     <string name="aa_help_title">Включите сервер головного устройства</string>
     <string name="aa_help_1">Откройте настройки Android Auto</string>
     <string name="aa_help_1_body">FT сразу откроет нужный экран. Затем вернитесь сюда для следующего шага.</string>
-    <string name="aa_help_2">В самом низу раскройте «Версия и сведения о разрешениях»</string>
-    <string name="aa_help_2_body">Нажмите на открывшиеся сведения о версии 10 раз и подтвердите режим разработчика. Это не системные «Для разработчиков» Android.</string>
+    <string name="aa_help_2">Внизу настроек Android Auto найдите «Версия»</string>
+    <string name="aa_help_2_body">Если сведения скрыты, нажмите «Версия», чтобы раскрыть их. Затем 10 раз нажмите «Версия и сведения о разрешениях» и подтвердите. Это режим разработчика Android Auto, а не телефона.</string>
     <string name="aa_help_3">Нажмите на три точки в правом верхнем углу</string>
     <string name="aa_help_4">Нажмите «Start head unit server»</string>
     <string name="aa_help_4_body">FT подключится к нему сам. После перезагрузки телефона или обновления Android Auto повторите шаги 1, 3 и 4.</string>

@@ -34,7 +34,6 @@
     <string name="aa_own_copy_body">ثبّت FT تطبيق Android Auto بنفسه، لذلك يعمل تلقائيًا عند اتصال السيارة. احرص على تحديثه من متجر Play، لأن Google يوقف عمل النسخ القديمة.</string>
     <string name="aa_server_option">خادم head unit في Android Auto</string>
     <string name="aa_server_option_body">يشغّل FT تطبيق Android Auto على السيارة عبر هذا الخادم. تفعيله سريع من إعدادات Android Auto، لكن Android Auto يوقفه مجددًا كلما أُعيد تشغيل الهاتف أو تحدّث Android Auto.</string>
-    <string name="aa_server_quick_steps">No server option in the ⋮ menu? At the bottom of Android Auto settings, expand Version and permission info. Tap the version details 10 times and confirm developer mode. Open ⋮ again and select Start head unit server.</string>
     <string name="aa_show_me_how">أرني الطريقة</string>
     <string name="aa_open_aa">فتح Android Auto</string>
     <string name="aa_open_store">فتح متجر Play</string>
