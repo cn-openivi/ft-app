@@ -13,6 +13,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import app.ft.MainActivity
 import app.ft.R
 import app.ft.supercast.SuperCast
@@ -24,6 +25,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 /**
  * One-time, foreground, user-initiated Android 11+ wireless ADB pairing.
@@ -50,6 +52,7 @@ class WirelessPairingService : Service() {
         private val _status = MutableStateFlow(State(Phase.IDLE))
         val status: StateFlow<State> = _status
         @Volatile private var activePairingPort: Int? = null
+        @Volatile private var lastPairingRequestAt: Long = 0
 
         fun currentPort(): Int? = activePairingPort
 
@@ -58,10 +61,11 @@ class WirelessPairingService : Service() {
                 _status.value = State(Phase.FAILED, "unsupported")
                 return false
             }
-            if (Build.VERSION.SDK_INT >= 33 &&
-                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
-                !autoRead
-            ) {
+            val notificationsEnabled =
+                (context.getSystemService(NotificationManager::class.java)?.areNotificationsEnabled() == true) &&
+                (Build.VERSION.SDK_INT < 33 ||
+                    context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED)
+            if (!notificationsEnabled && !autoRead) {
                 _status.value = State(Phase.FAILED, "notifications_disabled")
                 return false
             }
@@ -84,6 +88,7 @@ class WirelessPairingService : Service() {
         }
 
         fun stopPairing(context: Context) {
+            _status.value = State(Phase.IDLE)
             runCatching { context.startService(Intent(context, WirelessPairingService::class.java).setAction(ACTION_STOP)) }
         }
     }
@@ -107,6 +112,7 @@ class WirelessPairingService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 if (scanner != null) return START_NOT_STICKY
+                lastPairingRequestAt = SystemClock.elapsedRealtime()
                 if (!startForegroundSafely()) return START_NOT_STICKY
                 _status.value = State(Phase.SEARCHING)
                 val mdns = WirelessAdbDiscovery(this, WirelessAdbDiscovery.PAIRING)
@@ -158,7 +164,11 @@ class WirelessPairingService : Service() {
                     finishPairing()
                 }
             }
-            ACTION_STOP -> { stopSelf(); return START_NOT_STICKY }
+            ACTION_STOP -> {
+                _status.value = State(Phase.IDLE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
         }
         return START_NOT_STICKY
     }
@@ -196,7 +206,7 @@ class WirelessPairingService : Service() {
             .setContentTitle(title)
             .setContentText(message)
             .setContentIntent(content)
-            .setOnlyAlertOnce(true)
+            .setOnlyAlertOnce(port == null)
             .setOngoing(phase != Phase.READY && phase != Phase.FAILED)
 
         if (port != null && phase != Phase.PAIRING && phase != Phase.CONNECTING) {
@@ -232,6 +242,9 @@ class WirelessPairingService : Service() {
         scanner?.stop()
         scanner = null
         activePairingPort = null
+        if (_status.value.phase !in listOf(Phase.READY, Phase.FAILED)) {
+            _status.value = State(Phase.IDLE)
+        }
         scope.cancel()
         super.onDestroy()
     }

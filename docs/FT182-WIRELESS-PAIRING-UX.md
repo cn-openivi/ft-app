@@ -1,6 +1,6 @@
 # FT182 — беспроводная отладка без разделённого экрана
 
-**Статус:** дизайн и source-only helper; НЕ собран, НЕ протестирован на телефоне, полноценного pairing/TLS backend пока НЕТ.
+**Статус:** TLS/SPAKE2, mDNS, RemoteInput, одноразовое чтение Accessibility и SuperCast уже интегрированы в исходники FT182. НЕ собран, НЕ выполнены Gradle/CI/Android runtime/HU проверки. Полноценная работа на реальном телефоне пока НЕ подтверждена.
 **FT181 исходник:** a99ed721053c2b976d14cadbd98388fc6bbb4a0f.
 **FT182 ветка:** openivi/ft182-supercast-ux-source-20261113.
 **Владелец:** для обычного пользователя никакого разделённого экрана и ручных портов; запрос 2026-11-13.
@@ -23,15 +23,25 @@
 - thejaustin/ShizukuPlus: manager/src/main/java/af/shizuku/manager/adb/AdbPairingAccessibilityService.kt — opt-in автоизвлечение кода из системных окон.
 - GlassHaven/Haven issue #575: https://github.com/GlassHaven/Haven/issues/575 — в тестах Android 16 уведомление работает при смене временных портов; overlay хуже, потому что системные окна могут скрывать overlay.
 - Android ADB: https://developer.android.com/tools/adb — pairing только после разрешения пользователя; не трактовать mDNS как авторизацию.
-- Кандидат на TLS/SPAKE2 engine: rhythmcache/adb-kt Apache-2.0. До включения обязательны проверка артефакта/совместимости, security review peer authentication и тесты точного протокола; не добавлять как непроверенную зависимость.
+- TLS/SPAKE2 engine: исходники rhythmcache/adb-kt v1.0.6 + spake2-kt v1.0.2 закреплены в FT (Apache-2.0); upstream trust-all TLS НЕ переносился. Собственный PinnedTlsPacketTransport сверяет отпечаток сертификата с успешно сопряжённым. Компиляция и runtime handshake ещё не подтверждены.
 
 ## Подтверждённые FT181 дефекты и изменения FT182
 - P0 IPC: helper Bridge.java имел `app.ft.supercast`, зарегистрированный Provider и Manifest — `app.ft.xa60.supercast`. Исправлено на стороне helper, добавлен source contract test. Физическая проверка ожидается.
 - P0 ADB: старый `127.0.0.1:5555` и legacy auth без TLS — сохраняется как неоптимизированный отдельный fallback до завершения engine, НЕ считать Android11+ pairing готовым.
 - P1 числовые настройки: сохранение по каждому символу заменено на подтверждение, добавлены диапазоны и отмена ввода.
 - P1 тексты RU/EN: снята ложная гарантия первоначального компьютера и «один раз» без перезагрузки.
-- Подготовлен отдельный one-shot `WirelessPairingWindowCapture` и unit-test. НЕ подключён к Accessibility/ADB engine до выполнения security gates.
+- One-shot `WirelessPairingWindowCapture` подключён к FTTouchService, при наличии ранее разрешённого Accessibility. При отсутствии доступа код принимается через RemoteInput-уведомление. Встроенные unit-тесты пока НЕ запускались.
 - FT182 versionCode=182, applicationId и signing не меняются.
 
 ## Запреты текущего этапа
 НЕ запускать Gradle/CI/компиляцию/APK/подпись/релиз/автомобиль; FTMP master, W2–W5 и их NEXT_EDGE не менять. Все изменения SOURCE_ONLY/NOT_TESTED до будущей отдельной проверки.
+
+## FT182 текущее исходное исполнение (13 ноября 2026)
+
+- `WirelessAdbDiscovery`: поиск новых временных mDNS pairing и connect портов, только IP локального телефона; stale port сбрасывается при потере сервиса
+- `WirelessPairingService`: foreground с уведомлением и RemoteInput для шестизначного кода; при отмене сбрасывается IDLE, подробный код ошибки без записи PIN в лог
+- `WirelessPairingAutoCode`: по явному нажатию пользователя один раз читает код из доступного системного Settings окна через уже разрешённый Accessibility, таймаут 90 секунд; ограничение OEM и permission допустимо
+- `WirelessAdbEngine`: SPAKE2 pairing, стабильный app-private ключ, pinned peer fingerprint, TLS connect по свежему mDNS порту, id -u=2000 и shell-v2 launch
+- `SuperCast.start`: только verified Binder + ping определяет READY; старый порт 5555 допускается только в экспертных настройках и выключен по умолчанию
+- `HomeScreen`: 3 разрешения показаны один раз сразу после статуса, RU/EN тексты; `SettingsScreen`: ввод порта/DPI/размеров подтверждается явно
+- **Критерии приёмки:** `DOCUMENTED_SCHEMA` подтверждён источником; `SOURCE_COMPARISON` проведён; тесты добавлены, но `NOT_RUN`; `BUILD_NOT_AUTHORIZED`, `HU_NOT_TESTED`, нельзя утверждать PASS

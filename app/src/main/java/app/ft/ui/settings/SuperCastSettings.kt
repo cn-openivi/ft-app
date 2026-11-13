@@ -150,6 +150,19 @@ fun SuperCastSettings() {
             }
             Text(stringResource(p), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (pairing.phase == WirelessPairingService.Phase.FAILED) {
+                val detail = when (pairing.reason) {
+                    "notifications_disabled" -> R.string.wireless_pair_notifications
+                    "foreground_denied", "background_restricted" -> R.string.wireless_pair_background_error
+                    "expired_code" -> R.string.wireless_pair_expired_error
+                    "pairing_failed" -> R.string.wireless_pair_wrong_code_error
+                    "helper_failed" -> R.string.wireless_pair_helper_failed
+                    "unsupported" -> R.string.wireless_pair_unsupported
+                    else -> R.string.wireless_pair_failed
+                }
+                Text(stringResource(detail),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
         }
 
         if (root || paired) {
