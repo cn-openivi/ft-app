@@ -17,7 +17,7 @@ import app.ft.FTApp
 import app.ft.FTTouchService
 import app.ft.MainActivity
 import app.ft.aa.AaHeadUnitService
-import AaSteeringMediaKeys
+import app.ft.aa.AaSteeringMediaKeys
 import app.ft.aa.AaSession
 import app.ft.aa.AaTouchViewport
 import app.ft.aa.AaViewport

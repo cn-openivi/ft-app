@@ -31,7 +31,7 @@ import app.ft.aa.AaInstaller
 import app.ft.aa.AaTouchViewport
 import app.ft.aa.AaTouchGestureViewport
 import app.ft.aa.AaHeadUnitService
-import AaSteeringMediaKeys
+import app.ft.aa.AaSteeringMediaKeys
 import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
 import app.ft.core.CarBluetoothReconnect
