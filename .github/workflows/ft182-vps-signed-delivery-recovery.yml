@@ -64,34 +64,34 @@ jobs:
           sources=[work/"verified/FT182_XA60_OWNER_SIGNED.apk",work/"app/build/outputs/apk/release/app-release.apk"]
           src=next((p for p in sources if p.is_file() and not p.is_symlink() and p.stat().st_size>1000000),None)
           if src is None:
-    print("SIGNED_APK_NOT_RETAINED_AFTER_PARALLEL_WORKFLOW: bounded rebuild from same approved FT182 source",flush=True)
-    import base64
-    bundle_raw=os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON","")
-    if not bundle_raw:sys.exit("OWNER_SIGNING_SECRET_NOT_AVAILABLE")
-    b=json.loads(bundle_raw)
-    assert b["format"]=="openivi-ft-xa60-pkcs12-v1" and b["alias"]=="openivi_ft_xa60"
-    key=base64.b64decode(b["keystore_b64"],validate=True)
-    assert hashlib.sha256(key).hexdigest()==b["keystore_sha256"]
-    p=work/".ft-xa60"
-    p.mkdir(exist_ok=True,mode=0o700)
-    ks=p/"ft-xa60-owner.p12"
-    ks.write_bytes(key)
-    ks.chmod(0o600)
-    passwd=b["store_password"]
-    props=work/"ft-xa60-signing.properties"
-    props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+passwd+"\nkeyAlias=openivi_ft_xa60\nkeyPassword="+passwd+"\n")
-    props.chmod(0o600)
-    try:
-        subprocess.run(["./gradlew","--no-daemon","--max-workers=1","-Dorg.gradle.parallel=false",
-            "-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8",
-            "-Dkotlin.compiler.execution.strategy=in-process",
-            ":app:testReleaseUnitTest",":app:lintVitalRelease",":app:assembleRelease"],
-            cwd=work,check=True,timeout=1500)
-    finally:
-        props.unlink(missing_ok=True)
-        ks.unlink(missing_ok=True)
-    src=work/"app/build/outputs/apk/release/app-release.apk"
-    assert src.is_file() and src.stat().st_size>1000000,"REBUILD_APK_MISSING"
+              print("SIGNED_APK_NOT_RETAINED_AFTER_PARALLEL_WORKFLOW: bounded rebuild from same approved FT182 source",flush=True)
+              import base64
+              bundle_raw=os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON","")
+              if not bundle_raw:sys.exit("OWNER_SIGNING_SECRET_NOT_AVAILABLE")
+              b=json.loads(bundle_raw)
+              assert b["format"]=="openivi-ft-xa60-pkcs12-v1" and b["alias"]=="openivi_ft_xa60"
+              key=base64.b64decode(b["keystore_b64"],validate=True)
+              assert hashlib.sha256(key).hexdigest()==b["keystore_sha256"]
+              p=work/".ft-xa60"
+              p.mkdir(exist_ok=True,mode=0o700)
+              ks=p/"ft-xa60-owner.p12"
+              ks.write_bytes(key)
+              ks.chmod(0o600)
+              passwd=b["store_password"]
+              props=work/"ft-xa60-signing.properties"
+              props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+passwd+"\nkeyAlias=openivi_ft_xa60\nkeyPassword="+passwd+"\n")
+              props.chmod(0o600)
+              try:
+                  subprocess.run(["./gradlew","--no-daemon","--max-workers=1","-Dorg.gradle.parallel=false",
+                      "-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8",
+                      "-Dkotlin.compiler.execution.strategy=in-process",
+                      ":app:testReleaseUnitTest",":app:lintVitalRelease",":app:assembleRelease"],
+                      cwd=work,check=True,timeout=1500)
+              finally:
+                  props.unlink(missing_ok=True)
+                  ks.unlink(missing_ok=True)
+              src=work/"app/build/outputs/apk/release/app-release.apk"
+              assert src.is_file() and src.stat().st_size>1000000,"REBUILD_APK_MISSING"
           temp=pathlib.Path(os.environ["RUNNER_TEMP"])/"ft182-delivery-recovery"
           temp.mkdir(mode=0o700,parents=True,exist_ok=True)
           name="FT182_XA60_OWNER_SIGNED_6b837efc.apk"
