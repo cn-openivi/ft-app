@@ -1,0 +1,127 @@
+name: FT182 signed APK delivery recovery on existing VPS (no rebuild)
+on:
+  push:
+    branches:
+      - openivi/ft182-supercast-ux-source-20261113
+    paths:
+      - .github/workflows/ft182-vps-signed-delivery-recovery.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ft182-vps-owner-signed-drive
+  cancel-in-progress: true
+jobs:
+  deliver-signed:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_PIN: 6b837efcab4e212754f13aeb5f60d1dd533fd7e8
+      CERT_PIN: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+    steps:
+      - name: Checkout preserving previously signed FT182
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          clean: false
+      - name: Verify approved FT182 source and bounded runner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft182-supercast-ux-source-20261113'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$SOURCE_PIN" "$GITHUB_SHA"
+          test "$(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA")" = '.github/workflows/ft182-vps-signed-delivery-recovery.yml'
+          grep -Fq 'versionCode = 182' app/build.gradle.kts
+          case "$(realpath -e "$GITHUB_WORKSPACE")" in
+            /srv/openivi-ci/_work/ft-app/ft-app|/var/lib/openivi-agent/actions-runner/_work/ft-app/ft-app) ;;
+            *) echo UNAPPROVED_RUNNER_WORKSPACE >&2; exit 1 ;;
+          esac
+      - name: Verify retained signed FT182, upload via VPS Drive remote and publish GitHub prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,shutil,subprocess,sys,urllib.request,urllib.error,urllib.parse
+          repo=os.environ["GITHUB_REPOSITORY"]
+          pin=os.environ["SOURCE_PIN"]
+          cert=os.environ["CERT_PIN"]
+          work=pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          sources=[work/"verified/FT182_XA60_OWNER_SIGNED.apk",work/"app/build/outputs/apk/release/app-release.apk"]
+          src=next((p for p in sources if p.is_file() and not p.is_symlink() and p.stat().st_size>1000000),None)
+          if src is None: sys.exit("NO_RETAINED_APK: no recompile authorized in delivery recovery")
+          temp=pathlib.Path(os.environ["RUNNER_TEMP"])/"ft182-delivery-recovery"
+          temp.mkdir(mode=0o700,parents=True,exist_ok=True)
+          name="FT182_XA60_OWNER_SIGNED_6b837efc.apk"
+          apk=temp/name
+          shutil.copyfile(src,apk)
+          bt=pathlib.Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or "/srv/openivi-ci/.android/sdk")/"build-tools/36.0.0"
+          def output(a,timeout=120):
+              return subprocess.check_output(list(map(str,a)),stderr=subprocess.STDOUT,timeout=timeout).decode("utf-8","replace")
+          output(["unzip","-t",apk])
+          badging=output([bt/"aapt","dump","badging",apk])
+          assert "package: name='app.ft.xa60' versionCode='182'" in badging
+          assert "application-debuggable" not in badging
+          signer=output([bt/"apksigner","verify","--verbose","--print-certs",apk])
+          assert cert.lower() in signer.lower()
+          sha=hashlib.sha256(apk.read_bytes()).hexdigest()
+          (temp/"SHA256SUMS").write_text(sha+"  "+name+"\n")
+          (temp/"PROVENANCE.txt").write_text("SOURCE="+pin+"\nVERSION_CODE=182\nAPK_SHA256="+sha+"\nCERT_SHA256="+cert+"\nFIELD_NOT_TESTED=TRUE\n")
+          (temp/"apk-badging.txt").write_text(badging)
+          (temp/"apksigner.txt").write_text(signer)
+          print("SIGNED_APK_RETAINED_AND_VERIFIED=PASS",flush=True)
+          print("APK_SHA256="+sha,flush=True)
+          drive_ok=False
+          drive_err=""
+          opts=["--retries","2","--low-level-retries","2","--retries-sleep","3s","--contimeout","12s","--timeout","50s","--tpslimit","0.5","--tpslimit-burst","1","--drive-pacer-min-sleep","2s","--drive-pacer-burst","1"]
+          def rc(a,timeout):
+              return subprocess.run(["rclone"]+a+opts,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=timeout,check=True)
+          try:
+              assert "openivi-drive:" in output(["rclone","listremotes"],timeout=20).splitlines()
+              for f in [apk,temp/"SHA256SUMS",temp/"PROVENANCE.txt",temp/"apk-badging.txt",temp/"apksigner.txt"]:
+                  dest="openivi-drive:"+(name if f==apk else "FT182_6b837efc_"+f.name)
+                  rc(["copyto",str(f),dest],200 if f==apk else 90)
+                  got=hashlib.sha256(rc(["cat",dest],200 if f==apk else 90).stdout).hexdigest()
+                  assert got==hashlib.sha256(f.read_bytes()).hexdigest(),"DRIVE_HASH_MISMATCH_"+f.name
+                  print("DRIVE_BYTES_VERIFIED="+f.name,flush=True)
+              drive_ok=True
+          except Exception as e:
+              drive_err=str(e)[:1200]
+              print("DRIVE_ERROR="+drive_err,flush=True)
+          headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"OpenIVI-FT182-Recovery"}
+          api="https://api.github.com/repos/"+repo
+          tag="xa60-ft182-6b837efc"
+          def gh(method,url,data=None,ctype="application/json"):
+              raw=None if data is None else (data if isinstance(data,bytes) else json.dumps(data).encode())
+              h=dict(headers)
+              if raw is not None:h["Content-Type"]=ctype
+              with urllib.request.urlopen(urllib.request.Request(url,data=raw,headers=h,method=method),timeout=180) as r:return json.load(r)
+          try:
+              release=gh("GET",api+"/releases/tags/"+tag)
+          except urllib.error.HTTPError as e:
+              if e.code!=404:raise
+              release=gh("POST",api+"/releases",{"tag_name":tag,"target_commitish":pin,
+                  "name":"FT182 XA60 — подписанная тестовая сборка",
+                  "body":"FT182, versionCode 182, подписано ключом владельца. Исправлена упаковка BouncyCastle, добавлена перемещаемая кнопка возврата. Улучшены разрешения и подключение. GPS Android Auto и экран ГУ ещё требуют полевых испытаний. APK SHA-256: "+sha+". Cert SHA-256: "+cert+". Source commit: "+pin+".",
+                  "draft":True,"prerelease":True})
+          assert release["tag_name"]==tag and release["target_commitish"]==pin
+          assets=[a for a in release.get("assets",[]) if a["name"]==name]
+          if assets:asset=assets[0]
+          else:
+              asset=gh("POST",release["upload_url"].split("{",1)[0]+"?name="+urllib.parse.quote(name),apk.read_bytes(),"application/vnd.android.package-archive")
+          assert asset["state"]=="uploaded" and asset["size"]==apk.stat().st_size
+          assert asset.get("digest")=="sha256:"+sha
+          if release["draft"]:release=gh("PATCH",api+"/releases/"+str(release["id"]),{"draft":False,"prerelease":True})
+          release=gh("GET",api+"/releases/tags/"+tag)
+          assert release["prerelease"] and not release["draft"]
+          assert any(a["name"]==name and a.get("digest")=="sha256:"+sha for a in release["assets"])
+          print("FT182_RELEASE="+release["html_url"],flush=True)
+          print("FT182_APK_URL="+asset["browser_download_url"],flush=True)
+          print("GITHUB_ASSET_SHA256_READBACK=PASS",flush=True)
+          if not drive_ok:sys.exit("GITHUB_PUBLISHED_DRIVE_REQUIRES_REPAIR: "+drive_err)
+          print("FT182_DRIVE_AND_GITHUB_SHA256=PASS",flush=True)
+          PY
