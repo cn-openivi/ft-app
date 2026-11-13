@@ -27,10 +27,12 @@ permissions:
 
 concurrency:
   group: ft183-source-only-unit-gate
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   source-only-verify:
+    # Owner HOLD 2026-11-13: no FT183 compilation, APK or tests until explicit resume.
+    if: ${{ false }}
     runs-on: [self-hosted, linux]
     timeout-minutes: 60
     steps:
