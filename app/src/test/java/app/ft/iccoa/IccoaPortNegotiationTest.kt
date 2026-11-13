@@ -38,6 +38,6 @@ class IccoaPortNegotiationTest {
         assertNull(IccoaPortNegotiation.responseFor(ProtoWriter().enum(1, 2).toByteArray()))
         assertNull(IccoaPortNegotiation.responseFor(ProtoWriter().enum(1, 3).toByteArray()))
         assertNull(IccoaPortNegotiation.responseFor(ByteArray(0)))
-        assertNull(IccoaPortNegotiation.responseFor(ProtoWriter().enum(1, 1).bool(2, true).toByteArray()))
+        assertNull(IccoaPortNegotiation.responseFor(ProtoWriter().enum(1, 0).bool(2, true).toByteArray()))
     }
 }
