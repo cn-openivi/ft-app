@@ -552,4 +552,16 @@
     <string name="iccoa_bt_link_forget_error">Could not remove the local setting</string>
     <string name="iccoa_bt_link_save">Save</string>
     <string name="iccoa_bt_link_forget">Forget</string>
+    <string name="home_touch_calibration_title">Calibrate vehicle touchscreen</string>
+    <string name="home_touch_calibration_step">Touch the center of the green circle on the vehicle screen. Point %1$d of 4.</string>
+    <string name="home_touch_calibration_body">Four targets on the vehicle screen calibrate horizontal and vertical touches.</string>
+    <string name="home_touch_restart">Start again</string>
+    <string name="home_touch_start">Calibrate X/Y on head unit</string>
+    <string name="home_touch_reset">Reset calibration</string>
+    <string name="home_yandex_guidance_title">Yandex Navigator voice guidance</string>
+    <string name="home_yandex_guidance_about">Android allows FT to capture media audio, but not isolated NAVIGATION_GUIDANCE hints. Video can be mirrored; navigation prompts must be routed to the car Bluetooth through phone settings.</string>
+    <string name="home_yandex_guidance_hint">If the phone supports separate app audio, route navigation prompts to car Bluetooth. Names and availability vary by phone. Verify audible directions.</string>
+    <string name="home_sound_settings">Open sound settings</string>
+    <string name="home_iccoa_show_target_devices">Only CarLink / ICCOA devices</string>
+    <string name="home_iccoa_show_all_devices">Show all Bluetooth devices</string>
 </resources>

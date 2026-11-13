@@ -550,4 +550,16 @@
     <string name="iccoa_bt_link_forget_error">Не удалось удалить настройку</string>
     <string name="iccoa_bt_link_save">Сохранить</string>
     <string name="iccoa_bt_link_forget">Забыть</string>
+    <string name="home_touch_calibration_title">Калибровка экрана автомобиля</string>
+    <string name="home_touch_calibration_step">На экране автомобиля нажмите точно в центр зелёного круга. Точка %1$d из 4.</string>
+    <string name="home_touch_calibration_body">Четыре точки на экране автомобиля откалибруют горизонтальные и вертикальные касания.</string>
+    <string name="home_touch_restart">Начать заново</string>
+    <string name="home_touch_start">Калибровать X/Y на ГУ</string>
+    <string name="home_touch_reset">Сбросить калибровку</string>
+    <string name="home_yandex_guidance_title">Голос Яндекс Навигатора</string>
+    <string name="home_yandex_guidance_about">Android разрешает FT захватывать мультимедиа, но не отдельные подсказки NAVIGATION_GUIDANCE. Видео зеркалируется, звук подсказок нужно направить на Bluetooth автомобиля через настройки телефона.</string>
+    <string name="home_yandex_guidance_hint">Если телефон поддерживает раздельный вывод звука приложений, направьте подсказки на Bluetooth автомобиля. Название и доступность настройки зависят от телефона. Проверьте голос подсказки.</string>
+    <string name="home_sound_settings">Открыть настройки звука</string>
+    <string name="home_iccoa_show_target_devices">Только CarLink / ICCOA</string>
+    <string name="home_iccoa_show_all_devices">Показать все Bluetooth-устройства</string>
 </resources>

@@ -205,19 +205,33 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                 else CarConnection.switchOn(context)
             }
         }
+        // One prominent first-run permission card, independent of phone UI style.
+        if (!touchOn || !overlayOn || !backgroundOn) item {
+            Section(stringResource(R.string.home_finish_setup)) {
+                Text(stringResource(R.string.home_finish_setup_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(4.dp))
+                Check(stringResource(R.string.check_touch), touchOn, onOpenAccessibility)
+                Check(stringResource(R.string.check_overlay), overlayOn, onOpenOverlay)
+                Check(stringResource(R.string.check_background), backgroundOn) {
+                    Fixes.open(context, Fixes.background(context))
+                }
+            }
+        }
 
         if (iccoa && projecting && !screenState.aaOverlay && !screenState.mirroring) item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Калибровка экрана автомобиля", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.home_touch_calibration_title), style = MaterialTheme.typography.titleMedium)
                     Text(if (touchCalibration.step > 0)
-                        "На экране автомобиля нажмите точно в центр зелёного круга. Точка ${touchCalibration.step} из 4."
-                        else "Запуск с телефона: четыре точки откалибруют горизонтальные и вертикальные касания.")
+                        stringResource(R.string.home_touch_calibration_step, touchCalibration.step)
+                        else stringResource(R.string.home_touch_calibration_body))
                     FilledTonalButton(onClick = { IccoaService.calibrateTouch() }) {
-                        Text(if (touchCalibration.step > 0) "Начать заново" else "Калибровать X/Y на ГУ")
+                        Text(stringResource(if (touchCalibration.step > 0) R.string.home_touch_restart else R.string.home_touch_start))
                     }
                     TextButton(onClick = { IccoaService.resetTouchCalibration() }) {
-                        Text("Сбросить калибровку")
+                        Text(stringResource(R.string.home_touch_reset))
                     }
                 }
             }
@@ -227,17 +241,12 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             screenState.mirrorPackage.contains("yandex", ignoreCase = true)) item {
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Голос Яндекс Навигатора", style = MaterialTheme.typography.titleMedium)
-                    Text("Android разрешает FT захватывать мультимедиа, но не отдельные " +
-                        "подсказки NAVIGATION_GUIDANCE. Видео зеркалируется, звук подсказок " +
-                        "нужно направить на Bluetooth автомобиля через настройки телефона.")
-                    Text("Если телефон поддерживает раздельный вывод звука приложений, " +
-                        "направьте подсказки навигатора на Bluetooth автомобиля. " +
-                        "Название и доступность настройки зависят от производителя телефона. " +
-                        "Проверьте голос подсказки.")
+                    Text(stringResource(R.string.home_yandex_guidance_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.home_yandex_guidance_about))
+                    Text(stringResource(R.string.home_yandex_guidance_hint))
                     TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Settings.ACTION_SOUND_SETTINGS)) }
-                    }) { Text("Открыть настройки звука") }
+                    }) { Text(stringResource(R.string.home_sound_settings)) }
                 }
             }
         }
@@ -334,22 +343,10 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
         if (iccoa) {
             item {
                 androidx.compose.material3.TextButton(onClick = { iccoaShowAll = !iccoaShowAll }) {
-                    Text(if (iccoaShowAll) "Только CarLink / ICCOA" else "Показать все Bluetooth-устройства")
+                    Text(stringResource(if (iccoaShowAll) R.string.home_iccoa_show_target_devices else R.string.home_iccoa_show_all_devices))
                 }
             }
             iccoaDevices(iccoaState, showAll = iccoaShowAll)
-        }
-
-        if (!modern && (!touchOn || !overlayOn || !backgroundOn)) {
-            item {
-                Section(stringResource(R.string.home_finish_setup)) {
-                    Text(stringResource(R.string.home_finish_setup_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    Check(stringResource(R.string.check_touch), touchOn, onOpenAccessibility)
-                    Check(stringResource(R.string.check_overlay), overlayOn, onOpenOverlay)
-                    Check(stringResource(R.string.check_background), backgroundOn) { Fixes.open(context, Fixes.background(context)) }
-                }
-            }
         }
 
         item {
@@ -389,17 +386,7 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             }
         }
 
-        if (modern && (!touchOn || !overlayOn || !backgroundOn)) {
-            item {
-                Section(stringResource(R.string.home_finish_setup)) {
-                    Text(stringResource(R.string.home_finish_setup_body), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(Modifier.height(4.dp))
-                    Check(stringResource(R.string.check_touch), touchOn, onOpenAccessibility)
-                    Check(stringResource(R.string.check_overlay), overlayOn, onOpenOverlay)
-                    Check(stringResource(R.string.check_background), backgroundOn) { Fixes.open(context, Fixes.background(context)) }
-                }
-            }
-        }
+
     }
 }
 
