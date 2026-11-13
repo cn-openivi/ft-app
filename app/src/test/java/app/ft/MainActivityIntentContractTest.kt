@@ -33,6 +33,10 @@ class MainActivityIntentContractTest {
         assertFalse(start.contains("Intent(this, MainActivity::class.java)"))
         val share = src("app/src/main/java/app/ft/ShareActivity.kt")
         assertTrue(share.contains("CarControls.shareDeclined(this, quiet = !interactive)"))
+        // Android 10+ may reject background Activity launch; tapping the
+        // foreground notification must offer an explicit safe consent path.
+        assertTrue(car.contains("PendingIntent.getActivity(this, 182"))
+        assertTrue(car.contains("Lang.str(R.string.car_allow_share)"))
         val manifest = src("app/src/main/AndroidManifest.xml")
         val entry = manifest.substringAfter("android:name=\".ShareActivity\"").substringBefore("/>")
         assertTrue(entry.contains("android:exported=\"false\""))

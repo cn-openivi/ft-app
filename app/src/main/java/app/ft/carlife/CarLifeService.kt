@@ -197,6 +197,7 @@ class CarLifeService : Service() {
                 DiagLog.i("CarLife", "sound stays on the phone for this drive")
             }
             _state.update { it.copy(waitingForShare = false, shareForSound = false) }
+            svc.updateNotification(svc.waitingNote())
         }
 
         fun btSend(hex: String) = instance?.sendBluetooth(hex)
@@ -2181,6 +2182,9 @@ class CarLifeService : Service() {
 
     private fun askForScreenShare() {
         DiagLog.i(tag, "asking on the phone for screen sharing, the car is waiting")
+        // Android may refuse background Activity launches. The foreground
+        // notification offers a user-initiated, non-exported PendingIntent.
+        updateNotification { Lang.str(R.string.car_allow_share) }
         runCatching {
             startActivity(
                 Intent(this, ShareActivity::class.java)
@@ -2632,14 +2636,27 @@ class CarLifeService : Service() {
     }
 
     private fun notification(text: String): Notification {
-        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        return Notification.Builder(this, CHANNEL)
+        val pi = PendingIntent.getActivity(this, 0,
+            Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        val builder = Notification.Builder(this, CHANNEL)
             .setContentTitle("FT")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_stat_name)
             .setContentIntent(pi)
             .setOngoing(true)
-            .build()
+        if (_state.value.waitingForShare) {
+            val explicitConsent = PendingIntent.getActivity(this, 182,
+                Intent(this, ShareActivity::class.java)
+                    .putExtra(ShareActivity.EXTRA_INTERACTIVE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            builder.addAction(Notification.Action.Builder(
+                R.drawable.ic_stat_name,
+                Lang.str(R.string.car_allow_share),
+                explicitConsent
+            ).build())
+        }
+        return builder.build()
     }
 
     private fun updateNotification(text: () -> String) {
