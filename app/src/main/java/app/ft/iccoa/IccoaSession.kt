@@ -20,6 +20,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import app.ft.core.DiagLog
+import app.ft.core.Lang
+import app.ft.R
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
@@ -274,7 +276,7 @@ class IccoaSession(
         val attempt = current ?: return
         post(attempt) {
             if (!pin.matches(Regex("[0-9]{6}"))) {
-                status(attempt, app.ft.core.Lang.str(app.ft.R.string.iccoa_pin_prompt))
+                status(attempt, Lang.str(R.string.iccoa_pin_prompt))
                 onPinRequired()
                 return@post
             }
@@ -475,7 +477,7 @@ class IccoaSession(
         } catch (e: Exception) { fail(attempt, "Ошибка служб Bluetooth (${e.javaClass.simpleName})") }
     }
 
-    private fun requestPin(attempt: Attempt, message: String = app.ft.core.Lang.str(app.ft.R.string.iccoa_pin_prompt)) {
+    private fun requestPin(attempt: Attempt, message: String = Lang.str(R.string.iccoa_pin_prompt)) {
         attempt.pin = null
         attempt.reusingPin = false
         attempt.quickMode = false

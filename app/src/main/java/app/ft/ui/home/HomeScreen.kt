@@ -14,6 +14,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import app.ft.media.MediaLibrary
+import app.ft.core.DiagLog
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -129,7 +130,7 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             if (iccoaActions != null) iccoaActions.start(false)
             else CarConnection.switchOn(context)
         } else {
-            app.ft.core.DiagLog.w("Setup", "connection permissions not granted")
+            DiagLog.w("Setup", "connection permissions not granted")
         }
     }
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
