@@ -545,7 +545,8 @@ class IccoaService : Service() {
                     IccoaCalibrationScope.activate(receiverId, connection.verifiedLegacyPrimary)
                     _state.update { it.copy(verifiedReceiverId = receiverId) }
                     lastBluetoothLinkSession = token
-                    val payload = bluetoothIdentityLink.addPayload()
+                    val payload = bluetoothIdentityLink.addPayload(receiverId,
+                        connection.verifiedLegacyPrimary)
                     if (payload != null) {
                         // True means queued for this authenticated CONTROL lane, NOT an OEM mapping ACK.
                         val queued = connection.sendControl(IccoaBluetoothMacInfo.CONTROL_METHOD, payload)
