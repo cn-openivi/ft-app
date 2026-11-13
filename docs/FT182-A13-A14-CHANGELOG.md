@@ -9,3 +9,5 @@ A13 JVM test: LauncherComponentsTest checks two activities of one package surviv
 A14: README removed duplicated Compact FT button copy and misleading backup/GPS descriptions; ICCOA-DEVELOPMENT no longer labels ICCOA 'experimental'; wireless-pairing guide corrects stale source SHA and A13 status; GPS guide defines same-phone DHU comparison with phone Location ON.
 
 Acceptance: no Gradle/unit/CI/APK/sign/release until separate owner approval. No Google DHU physical phone test and no HU test. FTMP plans and worker assignments unchanged.
+
+Additional A14 correction: the old ICCOA-TESTER-RU.md is explicitly marked as archived FT141 and no longer linked as the current tester guide. README points to the new FT182 Russian checklist, clearly marked pending APK build.

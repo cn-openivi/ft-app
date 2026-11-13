@@ -11,7 +11,7 @@ FT runs in English, Arabic, Kurdish Sorani, Kurdish Badini and Russian, on the p
 
 ## How it connects
 
-**ICCOA:** Settings → Car and connection → Car protocol offers an independent ICCOA Carlink backend, with its own Bluetooth/Wi-Fi connection, code/quick authentication, video and input transport. Source implementation is available; physical receiver compatibility, Android Auto sensors and new direct-H.264 mode still require field testing. CarLife remains the default. See the [tester instructions in Russian](docs/ICCOA-TESTER-RU.md) and [implementation status](docs/ICCOA-DEVELOPMENT.md).
+**ICCOA:** Settings → Car and connection → Car protocol offers an independent ICCOA Carlink backend, with its own Bluetooth/Wi-Fi connection, code/quick authentication, video and input transport. Source implementation is available; physical receiver compatibility, Android Auto sensors and new direct-H.264 mode still require field testing. CarLife remains the default. See the [FT182 tester checklist in Russian](docs/FT182-ICCOA-TEST-RU.md) (pending APK build) and [implementation status](docs/ICCOA-DEVELOPMENT.md).
 
 For the wireless connection sequence, protocol sources and failure diagnosis, see
 [Wireless CarLife and Android Auto in FT](docs/wireless-connection.md).
