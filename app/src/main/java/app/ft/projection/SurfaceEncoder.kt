@@ -13,6 +13,8 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
+internal class AvcOutputMismatchException(message: String) : IllegalStateException(message)
+
 class SurfaceEncoder(
     private val width: Int,
     private val height: Int,
@@ -217,6 +219,16 @@ class SurfaceEncoder(
         val kinds = AvcNalScan.types(data)
         if (7 in kinds) sawSps.set(true)
         if (8 in kinds) sawPps.set(true)
+        if (h264LevelIdc > 0) {
+            AvcNalScan.spsProfileLevel(data)?.let { (profile, level) ->
+                if (profile != 66 || level > h264LevelIdc) {
+                    if (asyncFailed.compareAndSet(false, true))
+                        onFailure?.invoke(AvcOutputMismatchException(
+                            "WFD AVC SPS profile=$profile level=$level outside " +
+                                "advertised Baseline level=$h264LevelIdc"))
+                }
+            }
+        }
     }
 
     fun requestKeyframe(): Boolean {
@@ -275,6 +287,27 @@ class SurfaceEncoder(
 
 /** Small pure decoder for AVC NAL headers; does not copy or retain screen data. */
 internal object AvcNalScan {
+    /** Read SPS profile_idc/level_idc without trusting an opaque frame timestamp. */
+    fun spsProfileLevel(data: ByteArray): Pair<Int, Int>? {
+        for (i in data.indices) {
+            if (i + 6 >= data.size || data[i] != 0.toByte() || data[i + 1] != 0.toByte()) continue
+            val start = when {
+                data[i + 2] == 1.toByte() -> i + 3
+                i + 7 < data.size && data[i + 2] == 0.toByte() &&
+                    data[i + 3] == 1.toByte() -> i + 4
+                else -> continue
+            }
+            if (start + 3 < data.size && data[start].toInt() and 31 == 7)
+                return (data[start + 1].toInt() and 255) to
+                    (data[start + 3].toInt() and 255)
+        }
+        if (data.size > 3 && data[0].toInt() and 31 == 7)
+            return (data[1].toInt() and 255) to (data[3].toInt() and 255)
+        if (data.size > 7 && data[4].toInt() and 31 == 7)
+            return (data[5].toInt() and 255) to (data[7].toInt() and 255)
+        return null
+    }
+
     fun types(data: ByteArray): Set<Int> {
         val found = mutableSetOf<Int>()
         var i = 0
