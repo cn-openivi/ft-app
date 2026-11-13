@@ -606,6 +606,9 @@
     <string name="iccoa_err_p2p_unsupported">Автомобиль запросил Wi-Fi Direct. Эта версия ICCOA поддерживает только режим точки доступа (AP)</string>
     <string name="iccoa_err_wifi_config">Некорректные параметры Wi-Fi ICCOA (%1$s)</string>
     <string name="iccoa_err_wifi_cancel">Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут</string>
+    <string name="iccoa_err_wifi_disabled">На телефоне выключен Wi-Fi. Включите его и подключитесь снова.</string>
+    <string name="ft184_share_consent_title">Разрешение на трансляцию экрана</string>
+    <string name="ft184_share_consent_body">На телефоне разрешите захват экрана. Если окно не появилось автоматически, нажмите кнопку ниже.</string>
     <string name="iccoa_err_wifi_lost">Соединение с Wi-Fi автомобиля потеряно</string>
     <string name="iccoa_err_wifi_denied">Android запретил подключение к Wi-Fi автомобиля</string>
     <string name="iccoa_err_wifi_request">Не удалось запросить Wi-Fi автомобиля (%1$s)</string>

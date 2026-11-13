@@ -16,6 +16,7 @@ import android.view.Surface
 import app.ft.FTApp
 import app.ft.FTTouchService
 import app.ft.MainActivity
+import app.ft.ShareActivity
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSteeringMediaKeys
 import app.ft.aa.AaSession
@@ -521,8 +522,11 @@ class IccoaProjection(
     private fun askShare(forSound: Boolean) {
         mutableState.update { it.copy(waitingForShare = true, shareForSound = forSound) }
         runCatching {
-            context.startActivity(Intent(context, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra("mirror", true))
+            // Android 14+ capture consent must originate in non-exported ShareActivity;
+            // MainActivity does not consume intent extras and cannot ask MediaProjection.
+            context.startActivity(Intent(context, ShareActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(ShareActivity.EXTRA_INTERACTIVE, true))
         }.onFailure { DiagLog.w("ICCOA", "open FT on the phone to allow screen sharing: ${it.message}") }
     }
 

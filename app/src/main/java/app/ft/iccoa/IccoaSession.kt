@@ -510,6 +510,14 @@ class IccoaSession(
     }
 
     private fun joinWifi(attempt: Attempt, info: JSONObject) {
+        // Fail early on a genuinely disabled radio; a 12ms onUnavailable is not a timeout.
+        // Null means the platform did not disclose state, not that Wi-Fi is off.
+        val enabled = runCatching { context.getSystemService(WifiManager::class.java)?.isWifiEnabled }.getOrNull()
+        if (IccoaWifiAvailability.radioDisabled(enabled)) {
+            DiagLog.w("ICCOA", "WiFi radio disabled before ICCOA network request")
+            fail(attempt, Lang.str(R.string.iccoa_err_wifi_disabled))
+            return
+        }
         val specifier = WifiNetworkSpecifier.Builder().setSsid(info.getString("ssid"))
             .setWpa2Passphrase(info.getString("psk")).apply {
                 val mac = info.optString("mac")
@@ -559,8 +567,14 @@ class IccoaSession(
             // May mean the owner declined Android's Wi-Fi consent prompt.
             // Do not repeat permission prompts automatically.
             override fun onUnavailable() {
-                DiagLog.w("ICCOA", "WiFi request unavailable (permission/timeout not distinguishable)")
-                fail(attempt, Lang.str(R.string.iccoa_err_wifi_cancel))
+                val enabled = runCatching { context.getSystemService(WifiManager::class.java)?.isWifiEnabled }.getOrNull()
+                if (IccoaWifiAvailability.radioDisabled(enabled)) {
+                    DiagLog.w("ICCOA", "WiFi radio disabled during ICCOA network request")
+                    fail(attempt, Lang.str(R.string.iccoa_err_wifi_disabled))
+                } else {
+                    DiagLog.w("ICCOA", "WiFi request unavailable (Android rejection/timeout not distinguishable)")
+                    fail(attempt, Lang.str(R.string.iccoa_err_wifi_cancel))
+                }
             }
             override fun onLost(network: Network) = post(attempt) {
                 val owned = attempt.networkGate.onLost(network)

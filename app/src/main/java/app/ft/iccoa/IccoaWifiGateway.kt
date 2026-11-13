@@ -20,3 +20,8 @@ internal object IccoaWifiGateway {
         return peer
     }
 }
+
+/** Split a provably disabled radio from a generic Android network refusal. */
+internal object IccoaWifiAvailability {
+    fun radioDisabled(enabled: Boolean?): Boolean = enabled == false
+}

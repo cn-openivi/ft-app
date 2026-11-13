@@ -608,6 +608,9 @@
     <string name="iccoa_err_p2p_unsupported">Car requested Wi-Fi Direct. This ICCOA version supports access-point mode only</string>
     <string name="iccoa_err_wifi_config">Invalid ICCOA Wi-Fi parameters (%1$s)</string>
     <string name="iccoa_err_wifi_cancel">Connection to car Wi-Fi was canceled or timed out</string>
+    <string name="iccoa_err_wifi_disabled">Phone Wi-Fi is off. Turn it on and reconnect.</string>
+    <string name="ft184_share_consent_title">Screen sharing permission</string>
+    <string name="ft184_share_consent_body">Allow screen capture on your phone. If Android did not show the dialog, tap below.</string>
     <string name="iccoa_err_wifi_lost">Connection to car Wi-Fi lost</string>
     <string name="iccoa_err_wifi_denied">Android denied connection to car Wi-Fi</string>
     <string name="iccoa_err_wifi_request">Could not request car Wi-Fi (%1$s)</string>

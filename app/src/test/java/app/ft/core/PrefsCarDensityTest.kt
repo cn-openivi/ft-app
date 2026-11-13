@@ -18,19 +18,19 @@ class PrefsCarDensityTest {
         return Prefs(context) to store
     }
 
-    @Test fun freshFt181InstallUses240DpiForPictureApps() {
+    @Test fun freshFt184InstallUses160DpiForPictureApps() {
         val (prefs, store) = preferences()
-        `when`(store.getInt("carDensity", 240)).thenReturn(240)
+        `when`(store.getInt("carDensity", 160)).thenReturn(160)
 
-        assertEquals(240, Prefs.DEFAULT_CAR_DENSITY_DPI)
-        assertEquals(240, prefs.carDensity)
-        verify(store).getInt("carDensity", 240)
+        assertEquals(160, Prefs.DEFAULT_CAR_DENSITY_DPI)
+        assertEquals(160, prefs.carDensity)
+        verify(store).getInt("carDensity", 160)
         verify(store, never()).edit()
     }
 
     @Test fun updatePreservesStoredDpiIncludingAnIntentional160() {
         val (prefs, store) = preferences()
-        `when`(store.getInt("carDensity", 240)).thenReturn(160, 320)
+        `when`(store.getInt("carDensity", 160)).thenReturn(160, 320)
 
         assertEquals(160, prefs.carDensity)
         assertEquals(320, prefs.carDensity)

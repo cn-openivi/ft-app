@@ -87,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.ft.FTApp
+import app.ft.ShareActivity
 import app.ft.FTTouchService
 import app.ft.aa.AaInstaller
 import app.ft.aa.AaHeadUnitService
@@ -263,6 +264,19 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                         Text(stringResource(R.string.step_bluetooth_on))
                     }
                 }
+            }
+        }
+        // Background Activity launch can be blocked by Android 14–17. Keep a visible
+        // phone-initiated path to the real MediaProjection dialog during ICCOA/CarLife.
+        if (screenState.waitingForShare) item {
+            Section(stringResource(R.string.ft184_share_consent_title)) {
+                Text(stringResource(R.string.ft184_share_consent_body))
+                FilledTonalButton(onClick = {
+                    runCatching {
+                        context.startActivity(Intent(context, ShareActivity::class.java)
+                            .putExtra(ShareActivity.EXTRA_INTERACTIVE, true))
+                    }.onFailure { DiagLog.w("Mirror", "cannot open phone capture consent: ${it.javaClass.simpleName}") }
+                }) { Text(stringResource(R.string.action_allow)) }
             }
         }
         // Do not silently promise panel protection when Android has not granted it.
