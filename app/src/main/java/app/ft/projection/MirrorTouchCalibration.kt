@@ -131,9 +131,9 @@ internal object MirrorTouchCalibration {
         val normalized = bounds.normalized(x, y)
         val scoped = key(bounds, carWidth, carHeight) ?: return normalized
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val saved = prefs.getString(scoped, null)
+        val saved = (prefs.getString(scoped, null)
             ?: if (IccoaCalibrationScope.mayUseLegacy())
-                prefs.getString(legacyKey(bounds, carWidth, carHeight), null) else null
+                prefs.getString(legacyKey(bounds, carWidth, carHeight), null) else null)
             ?: return normalized
         return TouchQuad.deserialize(saved, UNIT, UNIT)?.map(normalized.first, normalized.second, UNIT, UNIT)
             ?: normalized
