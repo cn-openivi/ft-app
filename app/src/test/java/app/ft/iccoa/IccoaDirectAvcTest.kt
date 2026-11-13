@@ -85,6 +85,20 @@ class IccoaDirectAvcTest {
         assertFalse(IccoaDirectAvc.compatible(good, 1920, 1080, 30, 1280, 720))
     }
 
+    @Test fun alignsOnlyPlausibleAaFrameDeltasWithHostAacTimeline() {
+        var now = 1_000_000L
+        val clock = IccoaDirectClock { now }
+        assertEquals(1_000_000L, clock.next(9_000_000L))
+        now += 32_000L
+        assertEquals(1_033_333L, clock.next(9_033_333L))
+        // Unknown input units (e.g. nanoseconds) use the local clock.
+        now += 32_000L
+        assertEquals(1_064_000L, clock.next(9_033_333L + 33_333_000L))
+        clock.reset()
+        now += 32_000L
+        assertEquals(1_096_000L, clock.next(0L))
+    }
+
     @Test fun directRtpPtsUsesMonotonicHostClockEvenIfSamplesRepeatOrRewind() {
         var now = 1_000_000L
         val clock = IccoaDirectClock { now }
