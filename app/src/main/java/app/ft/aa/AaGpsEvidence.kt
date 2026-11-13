@@ -35,7 +35,7 @@ internal data class AaGpsEvidenceSnapshot(
     }
 
     fun reportLine(): String =
-        "session=$sessionId mode=${if (developerSelfMode) "DEVELOPER_SELF_MODE" else "INBOUND_HEADUNIT"} " +
+        "session=$sessionId mode=${if (developerSelfMode) "DEVELOPER_SELF_MODE" else "INBOUND_TRANSPORT"} " +
             "ended=$ended locationOffered=$locationOffered " +
             "characterization=$locationCharacterization " +
             "oemFreshAtDiscovery=$oemFreshAtDiscovery " +
@@ -53,7 +53,7 @@ internal object AaGpsEvidence {
     private val ids = AtomicLong()
     private val latestState = AtomicReference<AaGpsEvidenceSnapshot?>(null)
 
-    fun begin(developerSelfMode: Boolean): Recorder {
+    @Synchronized fun begin(developerSelfMode: Boolean): Recorder {
         val state = AaGpsEvidenceSnapshot(ids.incrementAndGet(), developerSelfMode)
         latestState.set(state)
         return Recorder(state.sessionId)
@@ -63,14 +63,14 @@ internal object AaGpsEvidence {
     fun summary(): String = latest()?.reportLine() ?: "no Android Auto GPS session recorded"
 
     internal class Recorder(private val id: Long) {
-        fun snapshot(): AaGpsEvidenceSnapshot? = latestState.get()?.takeIf { it.sessionId == id }
+        fun snapshot(): AaGpsEvidenceSnapshot? = AaGpsEvidence.latestState.get()?.takeIf { it.sessionId == id }
         fun summary(): String = snapshot()?.reportLine() ?: "older session superseded"
 
         private fun change(update: (AaGpsEvidenceSnapshot) -> AaGpsEvidenceSnapshot) {
             while (true) {
-                val old = latestState.get() ?: return
+                val old = AaGpsEvidence.latestState.get() ?: return
                 if (old.sessionId != id || old.ended) return
-                if (latestState.compareAndSet(old, update(old))) return
+                if (AaGpsEvidence.latestState.compareAndSet(old, update(old))) return
             }
         }
 

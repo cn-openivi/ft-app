@@ -31,6 +31,7 @@ class AaGpsEvidenceTest {
             AaGpsEvidence.latest()!!.diagnosis())
         assertEquals(1L, AaGpsEvidence.latest()!!.eventsFlushed)
         assertTrue(AaGpsEvidence.summary().contains("phoneGpsUse=UNKNOWN"))
+        assertFalse(AaGpsEvidence.summary().contains("phoneGpsUse=CAR"))
     }
 
     @Test fun reopeningSensorChannelInvalidatesSubscriptionNotHistoricalProof() {
@@ -44,6 +45,7 @@ class AaGpsEvidenceTest {
         assertFalse(AaGpsEvidence.latest()!!.currentChannelRequested)
         assertEquals(0L, AaGpsEvidence.latest()!!.eventsSubmitted)
         assertEquals(1, AaGpsEvidence.latest()!!.locationRequests)
+        assertEquals("LOCATION_REQUESTED_NO_SOCKET_WRITE", AaGpsEvidence.latest()!!.diagnosis())
     }
 
     @Test fun oldSessionsCannotChangeNewSessionAndFinishedEvidenceIsRetained() {
@@ -58,5 +60,6 @@ class AaGpsEvidenceTest {
         assertTrue(AaGpsEvidence.latest()!!.ended)
         assertEquals(0, AaGpsEvidence.latest()!!.locationCharacterization)
         assertEquals("CAR_LOCATION_NOT_ADVERTISED", AaGpsEvidence.latest()!!.diagnosis())
+        assertTrue(AaGpsEvidence.summary().contains("INBOUND_TRANSPORT"))
     }
 }
