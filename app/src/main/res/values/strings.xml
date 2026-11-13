@@ -412,8 +412,8 @@
     <string name="supercast_way_root">With root, by itself</string>
     <string name="supercast_way_root_body">Your phone is rooted, so FT sets this up every drive with nothing for you to do.</string>
     <string name="supercast_way_wireless">With the phone\'s own debug bridge</string>
-    <string name="supercast_way_wireless_body">If debugging is already switched on and you have allowed FT on it once, FT sets itself up with no computer. Android will not let FT ask for that permission on its own, so the first time still needs the computer step below.</string>
-    <string name="supercast_way_computer">From a computer, once</string>
+    <string name="supercast_way_wireless_body">On Android 11+, wireless debugging uses a temporary pairing code and a changing port. FT must pair securely (TLS); simply enabling wireless debugging does not open port 5555. A computer is not inherently required for on-device pairing.</string>
+    <string name="supercast_way_computer">From a computer (repeat after reboot)</string>
     <string name="supercast_way_computer_body">Plug the phone into a computer with USB debugging on and run the one line below. It needs no files and sets everything up. Run it again after a phone restart.</string>
     <string name="supercast_copy_command">Copy the command</string>
     <string name="supercast_stop">Stop</string>
@@ -449,7 +449,7 @@
     <string name="apps_car_size_about">Wider, but some phones refuse it and FT quietly mirrors instead.</string>
     <string name="apps_setup_now">Set it up now</string>
     <string name="apps_setting_up">Setting up</string>
-    <string name="apps_failed">FT could not set it up. Open the ways below and try one.</string>
+    <string name="apps_failed">Apps could not start. Check the selected connection method and the specific error.</string>
     <string name="apps_ready_now">Ready, apps will run on the car</string>
     <string name="aa_switch_on">Switch it on</string>
     <string name="aa_switching_on">Switching it on</string>
@@ -514,4 +514,5 @@
     <string name="picture_video_power_mode_cruise">cruise</string>
     <string name="picture_video_power_mode_static">static</string>
     <string name="picture_video_power_mode_thermal">thermal</string>
+    <string name="settings_integer_range">Enter a number from %1$d to %2$d.</string>
 </resources>

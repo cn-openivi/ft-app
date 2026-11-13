@@ -345,16 +345,16 @@ private fun PageContent(page: SettingsPage) {
                 detail = "Выключено: передаём реальную свежую передачу автомобиля. Включено: Android Auto получает P независимо от фактической передачи. Меняет только данные Android Auto, не состояние машины. При отсутствии подписки GEAR переподключи Android Auto."
             ) { p.aaForcePark = it }
             BoolSetting(stringResource(R.string.aa_controls_left), p.aaControlsLeft) { p.aaControlsLeft = it }
-            IntSetting(stringResource(R.string.aa_port), p.aaPort) { p.aaPort = it }
-            IntSetting(stringResource(R.string.aa_width), p.aaWidth) { p.aaWidth = it }
-            IntSetting(stringResource(R.string.aa_height), p.aaHeight) { p.aaHeight = it }
+            IntSetting(stringResource(R.string.aa_port), p.aaPort, min = 1, max = 65535) { p.aaPort = it }
+            IntSetting(stringResource(R.string.aa_width), p.aaWidth, min = 320, max = 4096) { p.aaWidth = it }
+            IntSetting(stringResource(R.string.aa_height), p.aaHeight, min = 320, max = 4096) { p.aaHeight = it }
             var fps by remember { mutableIntStateOf(p.aaFps) }
             PickSetting(
                 stringResource(R.string.aa_fps),
                 listOf(Option("30"), Option("60")),
                 if (fps == 60) 1 else 0
             ) { index -> fps = if (index == 1) 60 else 30; p.aaFps = fps }
-            IntSetting(stringResource(R.string.aa_density), p.aaDensity) { p.aaDensity = it }
+            IntSetting(stringResource(R.string.aa_density), p.aaDensity, min = 120, max = 480) { p.aaDensity = it }
         }
         SettingsPage.ADVANCED -> {
             BoolSetting(
@@ -390,12 +390,12 @@ private fun PageContent(page: SettingsPage) {
                             ))
                         }
                         if (editCarLifePorts) {
-                            IntSetting(stringResource(R.string.adv_command), p.cmdPort) { p.cmdPort = it }
-                            IntSetting(stringResource(R.string.adv_video), p.videoPort) { p.videoPort = it }
-                            IntSetting(stringResource(R.string.adv_media), p.mediaPort) { p.mediaPort = it }
-                            IntSetting(stringResource(R.string.adv_tts), p.ttsPort) { p.ttsPort = it }
-                            IntSetting(stringResource(R.string.adv_voice), p.vrPort) { p.vrPort = it }
-                            IntSetting(stringResource(R.string.adv_touch), p.touchPort) { p.touchPort = it }
+                            IntSetting(stringResource(R.string.adv_command), p.cmdPort, min = 1, max = 65535) { p.cmdPort = it }
+                            IntSetting(stringResource(R.string.adv_video), p.videoPort, min = 1, max = 65535) { p.videoPort = it }
+                            IntSetting(stringResource(R.string.adv_media), p.mediaPort, min = 1, max = 65535) { p.mediaPort = it }
+                            IntSetting(stringResource(R.string.adv_tts), p.ttsPort, min = 1, max = 65535) { p.ttsPort = it }
+                            IntSetting(stringResource(R.string.adv_voice), p.vrPort, min = 1, max = 65535) { p.vrPort = it }
+                            IntSetting(stringResource(R.string.adv_touch), p.touchPort, min = 1, max = 65535) { p.touchPort = it }
                         }
                     }
                     CarProtocol.ICCOA -> {
@@ -495,17 +495,47 @@ private fun Group(content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
+/**
+ * Do not persist a half-typed port, DPI or resolution. A bare "5" while
+ * replacing "5288" is not a user-confirmed setting.
+ */
 @Composable
-private fun IntSetting(label: String, initial: Int, rev: Int = 0, onChange: (Int) -> Unit) {
-    var text by remember(rev) { mutableStateOf(initial.toString()) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = { v -> text = v; v.toIntOrNull()?.let(onChange) },
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth()
-    )
+private fun IntSetting(
+    label: String,
+    initial: Int,
+    rev: Int = 0,
+    min: Int = 0,
+    max: Int = Int.MAX_VALUE,
+    onChange: (Int) -> Unit
+) {
+    var text by remember(label, rev) { mutableStateOf(initial.toString()) }
+    val parsed = text.toIntOrNull()
+    val valid = parsed != null && parsed in min..max
+    val edited = parsed != initial || text != initial.toString()
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        OutlinedTextField(
+            value = text,
+            onValueChange = { candidate ->
+                if (candidate.length <= 10 && candidate.all { it.isDigit() }) text = candidate
+            },
+            label = { Text(label) },
+            singleLine = true,
+            isError = edited && !valid,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = if (edited && !valid) {
+                { Text(stringResource(R.string.settings_integer_range, min, max)) }
+            } else null,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (edited) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(enabled = valid, onClick = {
+                if (valid && parsed != null) onChange(parsed)
+            }) { Text(stringResource(R.string.action_done)) }
+            TextButton(onClick = { text = initial.toString() }) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    }
 }
 
 @Composable
@@ -623,7 +653,7 @@ private fun IccoaPictureSettings() {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    IntSetting(stringResource(R.string.picture_density), prefs.carDensity) {
+    IntSetting(stringResource(R.string.picture_density), prefs.carDensity, min = 80, max = 640) {
         prefs.carDensity = it
     }
     BoolSetting(
@@ -669,8 +699,8 @@ private fun CarLifePictureSettings() {
         SIZE_CHOICES.indexOfFirst { it.first == size }.coerceAtLeast(0)
     ) { index -> size = SIZE_CHOICES[index].first; p.videoSize = size }
     if (size == VideoPlans.SIZE_CUSTOM) {
-        IntSetting(stringResource(R.string.picture_width), p.videoWidth, rev) { p.videoWidth = it }
-        IntSetting(stringResource(R.string.picture_height), p.videoHeight, rev) { p.videoHeight = it }
+        IntSetting(stringResource(R.string.picture_width), p.videoWidth, rev, min = 0, max = 4096) { p.videoWidth = it }
+        IntSetting(stringResource(R.string.picture_height), p.videoHeight, rev, min = 0, max = 4096) { p.videoHeight = it }
     }
     PickSetting(
         stringResource(R.string.picture_fps_label),
@@ -689,8 +719,8 @@ private fun CarLifePictureSettings() {
         FLOOR_CHOICES.indexOfFirst { it.first == floor }.coerceAtLeast(0),
         about = stringResource(R.string.picture_floor_note)
     ) { index -> floor = FLOOR_CHOICES[index].first; p.videoQpFloor = floor }
-    IntSetting(stringResource(R.string.picture_min_fps), p.videoMinFps, rev) { p.videoMinFps = it }
-    IntSetting(stringResource(R.string.picture_density), p.carDensity, rev) { p.carDensity = it }
+    IntSetting(stringResource(R.string.picture_min_fps), p.videoMinFps, rev, min = 0, max = 60) { p.videoMinFps = it }
+    IntSetting(stringResource(R.string.picture_density), p.carDensity, rev, min = 80, max = 640) { p.carDensity = it }
     key(rev) {
         BoolSetting(stringResource(R.string.picture_save_power), savePower, stringResource(R.string.picture_save_power_body)) { savePower = it; p.encoderSavePower = it }
     }
