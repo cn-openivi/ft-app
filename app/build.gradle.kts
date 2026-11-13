@@ -93,7 +93,11 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("com.google.zxing:core:3.5.3")
-    // Android 11+ SPAKE2/TLS ADB; exact artifact resolution remains a later build gate.
-    implementation("io.github.rhythmcache:adb-kt:1.0.0")
+    // Vendored Apache-2.0 adb-kt v1.0.6 + spake2-kt v1.0.2 source.
+    // Only standard Maven Central BouncyCastle / Okio dependencies remain.
+    implementation("com.squareup.okio:okio:3.18.1")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85")
+    implementation("org.bouncycastle:bcpkix-jdk18on:1.85")
+    implementation("org.bouncycastle:bctls-jdk18on:1.85")
     implementation(project(":server"))
 }

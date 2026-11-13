@@ -5,7 +5,8 @@ import app.ft.supercast.Helper
 import io.github.rhythmcache.adb.AdbConnection
 import io.github.rhythmcache.adb.FileKeyProvider
 import io.github.rhythmcache.adb.pairing.buildPairingIdentity
-import io.github.rhythmcache.adb.AdbClient as LibraryAdbClient
+import io.github.rhythmcache.adb.pairing.PairingClient
+import io.github.rhythmcache.adb.pairing.PeerInfoBuilder
 import io.github.rhythmcache.adb.runShell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,7 +47,14 @@ internal object WirelessAdbEngine {
         require(pairingPort in 1..65535)
         val store = provider(context)
         val result = withTimeout(12_000L) {
-            LibraryAdbClient.pairTls(HOST, pairingPort, code, store, connectTimeoutMs = 8_000)
+            PairingClient.pair(
+                host = HOST,
+                port = pairingPort,
+                password = code.toByteArray(Charsets.US_ASCII),
+                ourPeerInfo = PeerInfoBuilder.forOurKeyProvider(store),
+                identity = buildPairingIdentity(store),
+                connectTimeoutMs = 8_000
+            )
         }
         if (result.isFailure) return@withContext false
         val peerPem = result.getOrThrow().peerCertPem ?: return@withContext false

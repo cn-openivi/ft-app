@@ -1,18 +1,11 @@
-# FT182 — ADB TLS dependency and provenance
+# FT182 — vendored ADB/SPAKE2 and provenance
 
-- `rhythmcache/adb-kt`, Apache-2.0, v1.0.6 source studied:
-  https://github.com/rhythmcache/adb-kt/tree/v1.0.6
-- `PinnedTlsPacketTransport.kt` is adapted from `lib/src/main/kotlin/io/github/rhythmcache/adb/TlsPacketTransport.kt`.
-  Explicit fix: verify the SHA-256 of the TLS server's leaf certificate against the exact
-  peer certificate learned ONLY after SPAKE2 authenticated pairing. Never use a trust-all
-  transport for automatic reconnect. Restrict host to phone's own loopback.
-- `AdbConnection.connect(..., skipInitialCnxn=true)` is essential after the plaintext STLS
-  handshake already sent by the transport.
-- `FileKeyProvider` persists the app-private RSA key; the peer SHA-256 is stored
-  in `ft_adb_tls.peer.sha256`; no pairing codes are persisted.
-- Dependency coordinates `io.github.rhythmcache:adb-kt:1.0.0` are publisher-documented,
-  artifact resolution is NOT VERIFIED until owner permits Gradle/CI. If resolution fails,
-  source stays blocked; do not fake PASS or silently weaken pinning.
-- AOSP protocol details:
-  https://android.googlesource.com/platform/packages/modules/adb/+/HEAD/docs/dev/adb_wifi.md
-- Preserve upstream license/attribution in derivative files.
+- adb-kt v1.0.6: https://github.com/rhythmcache/adb-kt/tree/v1.0.6 — Apache License 2.0, Copyright 2026 rhythmcache.
+- spake2-kt v1.0.2: https://github.com/rhythmcache/spake2-kt/tree/v1.0.2 — Apache License 2.0, Copyright 2026 rhythmcache.
+- Both source sets are retained in FT's app/source tree under original package names. Versions pinned by exact upstream tags, not an uncertain unverified binary dependency.
+- Upstream AdbClient.kt and the unpinned upstream TlsPacketTransport.kt were NOT copied. AdbConnection.kt was changed only to disable implicit TLS autodetection, requiring explicit pin-aware transport.
+- PinnedTlsPacketTransport.kt is an adaptation of TlsPacketTransport.kt, checking the paired server certificate SHA-256 before permitting encrypted ADB CNXN or shell commands. PairingClient.pair is SPAKE2 authenticated.
+- Store peer SHA-256 in app-private ft_adb_tls.peer.sha256 and a stable app-private RSA key; never store six-digit codes.
+- Compatible build dependencies: Maven Central Okio 3.18.1, BouncyCastle 1.85 (bcprov/bcpkix/bctls); no JitPack requirement.
+- Verify binary dependencies, source compile, exact TLS handshake and physical phone after separate authorization. This is SOURCE_ONLY/NOT_COMPILED.
+- FT source derivative must preserve Apache-2.0 notices and original authorship.
