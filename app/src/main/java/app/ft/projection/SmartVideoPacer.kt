@@ -1,5 +1,8 @@
 package app.ft.projection
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
 /**
  * Session-local video output pacing policy. It never gates touch, audio, GPS or
  * upstream Android Auto H.264. Time comes from a monotonic clock.
@@ -77,4 +80,14 @@ internal class UrgentFreshFrame(
 /** Human input priority is independent of the video FPS limit. */
 internal object VideoTouchPriority {
     fun urgent(action: Int): Boolean = action == CarTouch.DOWN || action == CarTouch.POINTER_DOWN
+}
+
+/** Effective output rate, not a promise that every frame reached the receiver. */
+internal object VideoPacingStatus {
+    data class Effective(val fps: Int, val mode: SmartVideoPacer.Mode)
+    private val _state = MutableStateFlow<Effective?>(null)
+    val state: StateFlow<Effective?> = _state
+
+    fun publish(fps: Int, mode: SmartVideoPacer.Mode) { _state.value = Effective(fps, mode) }
+    fun clear() { _state.value = null }
 }
