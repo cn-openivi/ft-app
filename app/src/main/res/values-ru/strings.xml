@@ -625,4 +625,8 @@
     <string name="iccoa_err_remote_disconnected">Автомобиль завершил соединение ICCOA</string>
     <string name="iccoa_err_write_timeout">Тайм-аут отправки данных ICCOA</string>
     <string name="iccoa_err_transport">Ошибка подключения ICCOA (%1$s)</string>
+    <string name="home_optional_permissions_title">Дополнительные возможности</string>
+    <string name="home_optional_permissions_body">Для голосовых функций и уведомлений нужны отдельные разрешения Android. Их можно включить здесь, но для подключения они не обязательны.</string>
+    <string name="home_allow_microphone">Разрешить микрофон для голоса</string>
+    <string name="home_allow_notifications">Разрешить уведомления</string>
 </resources>

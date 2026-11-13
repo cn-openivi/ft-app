@@ -627,4 +627,8 @@
     <string name="iccoa_err_remote_disconnected">Car disconnected ICCOA</string>
     <string name="iccoa_err_write_timeout">ICCOA data send timeout</string>
     <string name="iccoa_err_transport">ICCOA connection error (%1$s)</string>
+    <string name="home_optional_permissions_title">Optional features</string>
+    <string name="home_optional_permissions_body">Voice and notifications need separate Android permissions. You can enable them now or keep connecting without them.</string>
+    <string name="home_allow_microphone">Allow microphone for voice</string>
+    <string name="home_allow_notifications">Allow notifications</string>
 </resources>

@@ -138,6 +138,13 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { MediaLibrary.permissionsChanged() }
+    var optionalPermissionVersion by remember { mutableIntStateOf(0) }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { optionalPermissionVersion++ }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { optionalPermissionVersion++ }
     val mediaVersion by MediaLibrary.permissionVersion.collectAsState()
     var iccoaShowAll by rememberSaveable { mutableStateOf(false) }
     val iccoaState by IccoaService.state.collectAsState()
@@ -169,6 +176,13 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     val backgroundOn = remember(resumed) { (context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) != false }
     val mediaMissing = remember(resumed, mediaVersion) { missingMediaPermissions(context) }
     val connectionMissing = remember(resumed) { ConnectionPermissions.missing(context) }
+    val microphoneMissing = remember(resumed, optionalPermissionVersion) {
+        context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED
+    }
+    val notificationMissing = remember(resumed, optionalPermissionVersion) {
+        Build.VERSION.SDK_INT >= 33 &&
+            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+    }
     val aaOwnCopy = remember(resumed) { AaInstaller.weInstalledIt(context) }
     val aaInstalled = remember(resumed) { AaInstaller.installed(context) }
 
@@ -258,6 +272,26 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                 Check(stringResource(R.string.check_overlay), overlayOn, onOpenOverlay)
                 Check(stringResource(R.string.check_background), backgroundOn) {
                     Fixes.open(context, Fixes.background(context))
+                }
+            }
+        }
+
+        // Optional microphone and notifications never block the core connection.
+        // Offer these independent grants only after the user has enabled FT.
+        if (on && (microphoneMissing || notificationMissing)) item {
+            Section(stringResource(R.string.home_optional_permissions_title)) {
+                Text(stringResource(R.string.home_optional_permissions_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (microphoneMissing) {
+                    FilledTonalButton(onClick = {
+                        microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }) { Text(stringResource(R.string.home_allow_microphone)) }
+                }
+                if (notificationMissing) {
+                    FilledTonalButton(onClick = {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }) { Text(stringResource(R.string.home_allow_notifications)) }
                 }
             }
         }
