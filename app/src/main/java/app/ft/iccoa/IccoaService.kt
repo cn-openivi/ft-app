@@ -42,7 +42,10 @@ data class IccoaState(
     val status: String = "",
     val pinRequired: Boolean = false,
     val connecting: Boolean = false,
-    val connected: Boolean = false
+    val connected: Boolean = false,
+    /** Actual video path, never inferred from the user-selected preference. */
+    val effectiveVideoMode: Int = 0,
+    val videoFallbackReason: String? = null
 )
 
 /** Independent ICCOA connection, control and WFD lifecycle. */
@@ -574,9 +577,17 @@ class IccoaService : Service() {
                 IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
             else prefs.aaWidth to prefs.aaHeight
             projection?.let { target ->
-                directVideo = IccoaDirectVideo(main, output, target, plan, aaWidth, aaHeight) { status ->
-                    main.post { if (media === output) _state.update { it.copy(status = status) } }
-                }.also { app.ft.aa.AaH264Tap.listener = it }
+                directVideo = IccoaDirectVideo(main, output, target, plan, aaWidth, aaHeight,
+                    onStatus = { status ->
+                        main.post { if (media === output) _state.update { it.copy(status = status) } }
+                    },
+                    onModeChanged = { isDirect, reason ->
+                        main.post { if (media === output) _state.update { it.copy(
+                            effectiveVideoMode = if (isDirect) 1 else 0,
+                            videoFallbackReason = reason
+                        ) } }
+                    }
+                ).also { app.ft.aa.AaH264Tap.listener = it }
             }
         }
         DiagLog.i("ICCOA", "video profile ${plan.streamWidth}x${plan.streamHeight}@${plan.fps} CBR ${plan.bitrate / 1000} kbps; receiver asked ${config.fps} fps")
@@ -691,6 +702,7 @@ class IccoaService : Service() {
         directVideo?.close()
         directVideo = null
         connectionVideoMode = 0
+        _state.update { it.copy(effectiveVideoMode = 0, videoFallbackReason = null) }
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(audioStateRetry)
         main.removeCallbacks(requestConfig)
