@@ -9,7 +9,9 @@ data class VideoPlan(
     val bitrate: Int,
     val qpFloor: Int = 0,
     val constantBitrate: Boolean = false,
-    val preserveAspect: Boolean = false
+    val preserveAspect: Boolean = false,
+    /** 0 means no confirmed WFD H.264 level; 31..51 are negotiated level_idc. */
+    val h264LevelIdc: Int = 0
 )
 
 object VideoPlans {
