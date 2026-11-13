@@ -508,10 +508,11 @@ private fun IntSetting(
     max: Int = Int.MAX_VALUE,
     onChange: (Int) -> Unit
 ) {
+    var committed by remember(label, rev) { mutableIntStateOf(initial) }
     var text by remember(label, rev) { mutableStateOf(initial.toString()) }
     val parsed = text.toIntOrNull()
     val valid = parsed != null && parsed in min..max
-    val edited = parsed != initial || text != initial.toString()
+    val edited = parsed != committed || text != committed.toString()
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         OutlinedTextField(
             value = text,
@@ -529,9 +530,9 @@ private fun IntSetting(
         )
         if (edited) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TextButton(enabled = valid, onClick = {
-                if (valid && parsed != null) onChange(parsed)
+                if (valid && parsed != null) { committed = parsed; onChange(parsed) }
             }) { Text(stringResource(R.string.action_done)) }
-            TextButton(onClick = { text = initial.toString() }) {
+            TextButton(onClick = { text = committed.toString() }) {
                 Text(stringResource(R.string.action_cancel))
             }
         }
