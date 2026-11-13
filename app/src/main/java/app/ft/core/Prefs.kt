@@ -178,6 +178,17 @@ class Prefs(context: Context) {
     var iccoaSensorRefresh: Boolean get() = bool("iccoaSensorRefresh", false); set(v) = set("iccoaSensorRefresh", v)
     /** ICCOA only: 0 = normal FT composition, 1 = opt-in AA H.264 passthrough trial. */
     var iccoaVideoMode: Int get() = int("iccoaVideoMode", 0).coerceIn(0, 1); set(v) = set("iccoaVideoMode", v.coerceIn(0, 1))
+    /** Only a cryptographically verified OEM EC public-key fingerprint may scope a car setting. */
+    fun iccoaVideoModeFor(receiverId: String?): Int {
+        val id = receiverId?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+            ?: return iccoaVideoMode
+        return int("iccoaVideoMode.receiver.$id", iccoaVideoMode).coerceIn(0, 1)
+    }
+    fun setIccoaVideoModeFor(receiverId: String?, mode: Int) {
+        val id = receiverId?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }
+        if (id == null) iccoaVideoMode = mode
+        else set("iccoaVideoMode.receiver.$id", mode.coerceIn(0, 1))
+    }
     var swapTrackKeys: Boolean get() = bool("swapTrackKeys", false); set(v) = set("swapTrackKeys", v)
     var guidanceMode: Int get() = int("directions", CarAudioBus.GUIDANCE_UNTOUCHED); set(v) = set("directions", v)
     var linkMode: Int get() = int("linkMode", 0); set(v) = set("linkMode", v)
