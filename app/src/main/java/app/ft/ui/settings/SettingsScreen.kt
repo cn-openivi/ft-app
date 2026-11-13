@@ -563,7 +563,9 @@ private fun IccoaPictureSettings() {
     val prefs = FTApp.instance.prefs
     val screen by CarControls.state.collectAsStateWithLifecycle()
     val iccoa by IccoaService.state.collectAsStateWithLifecycle()
-    var selectedMode by remember { mutableIntStateOf(prefs.iccoaVideoMode) }
+    var selectedMode by remember(iccoa.verifiedReceiverId) {
+        mutableIntStateOf(prefs.iccoaVideoModeFor(iccoa.verifiedReceiverId))
+    }
     PickSetting(
         stringResource(R.string.picture_iccoa_video_mode_title),
         listOf(
@@ -574,7 +576,7 @@ private fun IccoaPictureSettings() {
         about = stringResource(R.string.picture_iccoa_video_mode_info)
     ) { mode ->
         selectedMode = mode.coerceIn(0, 1)
-        prefs.iccoaVideoMode = selectedMode
+        prefs.setIccoaVideoModeFor(iccoa.verifiedReceiverId, selectedMode)
         if (selectedMode == 0) IccoaService.restoreNormalVideo()
     }
     Text(
