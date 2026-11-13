@@ -67,8 +67,11 @@ import app.ft.ui.theme.LeftToRight
 @Composable
 fun CarVideos(pad: PaddingValues) {
     val context = LocalContext.current
-    val allowed = remember { canReadVideos(context) }
-    val videos by produceState(MediaLibrary.lastVideos) { value = MediaLibrary.videos(context) }
+    val permissionVersion by MediaLibrary.permissionVersion.collectAsState()
+    val allowed = remember(permissionVersion) { canReadVideos(context) }
+    val videos by produceState(MediaLibrary.lastVideos, allowed, permissionVersion) {
+        value = if (allowed) MediaLibrary.videos(context) else null
+    }
     val grid = rememberLazyGridState()
     LaunchedEffect(videos, grid) {
         val list = videos ?: return@LaunchedEffect

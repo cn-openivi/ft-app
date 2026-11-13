@@ -117,7 +117,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val permissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     private val pickAaApk = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) DiagLog.w("AaSetup", "no file chosen") else AaInstaller.install(this, uri)
@@ -151,7 +150,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         applyBars(Looks.dark(Looks.mode.value, (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES))
         registerReceiver(installResult, IntentFilter(AaInstaller.ACTION_RESULT), RECEIVER_NOT_EXPORTED)
-        requestRuntimePermissions()
         handleIntent(intent)
         if (app.prefs.autoConnect) CarConnection.startAuto(this)
         setContent {
@@ -221,26 +219,7 @@ class MainActivity : ComponentActivity() {
         mirrorConsent.launch(request)
     }
 
-    private fun requestRuntimePermissions() {
-        val wanted = ArrayList<String>()
-        if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.POST_NOTIFICATIONS
-        if (Build.VERSION.SDK_INT >= 31) {
-            wanted += Manifest.permission.BLUETOOTH_CONNECT
-            wanted += Manifest.permission.BLUETOOTH_SCAN
-            wanted += Manifest.permission.BLUETOOTH_ADVERTISE
-        }
-        if (Build.VERSION.SDK_INT >= 33) wanted += Manifest.permission.NEARBY_WIFI_DEVICES
-        else wanted += Manifest.permission.ACCESS_FINE_LOCATION
-        wanted += Manifest.permission.RECORD_AUDIO
-        if (Build.VERSION.SDK_INT >= 33) {
-            wanted += Manifest.permission.READ_MEDIA_VIDEO
-            wanted += Manifest.permission.READ_MEDIA_AUDIO
-        } else {
-            wanted += Manifest.permission.READ_EXTERNAL_STORAGE
-        }
-        val missing = wanted.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) permissions.launch(missing.toTypedArray())
-    }
+
 }
 
 @Composable

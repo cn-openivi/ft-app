@@ -3,6 +3,7 @@ package app.ft.ui.car
 import app.ft.ui.theme.ownDirection
 import android.annotation.SuppressLint
 import android.content.Context
+import org.json.JSONObject
 import android.os.Handler
 import android.os.Looper
 import android.view.View
@@ -72,10 +73,8 @@ private const val ENTER_JS = """
 })();
 """
 
-private fun insertJs(text: String): String {
-    val esc = text.replace("\\", "\\\\").replace("'", "\\'")
-    return "document.execCommand('insertText', false, '$esc');"
-}
+private fun insertJs(text: String): String =
+    "document.execCommand('insertText', false, ${JSONObject.quote(text)});"
 
 class WebPage(val startUrl: String, val searchTemplate: String = "https://duckduckgo.com/?q=%s") {
     private var web: WebView? = null

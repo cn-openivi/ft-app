@@ -85,8 +85,11 @@ fun CarMusic(pad: PaddingValues, showPlaying: Boolean, onPlaying: (Boolean) -> U
     val player by CarPlayer.state.collectAsState()
     var tab by remember { mutableStateOf(MusicTab.SONGS) }
     var album by remember { mutableStateOf<Album?>(null) }
-    val allowed = remember { canReadMusic(context) }
-    val songs by produceState(MediaLibrary.lastSongs) { value = MediaLibrary.songs(context) }
+    val permissionVersion by MediaLibrary.permissionVersion.collectAsState()
+    val allowed = remember(permissionVersion) { canReadMusic(context) }
+    val songs by produceState(MediaLibrary.lastSongs, allowed, permissionVersion) {
+        value = if (allowed) MediaLibrary.songs(context) else null
+    }
     val albums by produceState(MediaLibrary.lastAlbums, songs) {
         value = songs?.let { list -> MediaLibrary.albums(context, list.map { it.albumId }.toSet()) }
     }

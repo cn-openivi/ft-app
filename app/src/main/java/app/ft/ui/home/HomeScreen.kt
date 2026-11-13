@@ -8,6 +8,12 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.foundation.Canvas
 import android.provider.Settings
+import android.Manifest
+import android.os.Build
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import app.ft.media.MediaLibrary
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -115,6 +121,21 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     val app = FTApp.instance
     val iccoa = rememberCarProtocol() == CarProtocol.ICCOA
     val iccoaActions = if (iccoa) rememberIccoaConnectionActions() else null
+    // Permission prompts happen at the first explicit feature use, never at app start.
+    val connectionPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.isNotEmpty() && grants.values.all { it }) {
+            if (iccoaActions != null) iccoaActions.start(false)
+            else CarConnection.switchOn(context)
+        } else {
+            app.ft.core.DiagLog.w("Setup", "connection permissions not granted")
+        }
+    }
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { MediaLibrary.permissionsChanged() }
+    val mediaVersion by MediaLibrary.permissionVersion.collectAsState()
     var iccoaShowAll by rememberSaveable { mutableStateOf(false) }
     val iccoaState by IccoaService.state.collectAsState()
     val screenState by CarControls.state.collectAsState()
@@ -143,6 +164,7 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     val touchOn = remember(resumed) { FTTouchService.enabled }
     val overlayOn = remember(resumed) { Settings.canDrawOverlays(context) }
     val backgroundOn = remember(resumed) { (context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) != false }
+    val mediaMissing = remember(resumed, mediaVersion) { missingMediaPermissions(context) }
     val aaOwnCopy = remember(resumed) { AaInstaller.weInstalledIt(context) }
     val aaInstalled = remember(resumed) { AaInstaller.installed(context) }
 
@@ -201,8 +223,12 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
         item {
             StatusCard(status, on) { want ->
                 if (!want) CarConnection.switchOff(context)
-                else if (iccoaActions != null) iccoaActions.start(false)
-                else CarConnection.switchOn(context)
+                else {
+                    val missing = missingConnectionPermissions(context)
+                    if (missing.isNotEmpty()) connectionPermissionLauncher.launch(missing)
+                    else if (iccoaActions != null) iccoaActions.start(false)
+                    else CarConnection.switchOn(context)
+                }
             }
         }
         // One prominent first-run permission card, independent of phone UI style.
@@ -216,6 +242,18 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                 Check(stringResource(R.string.check_overlay), overlayOn, onOpenOverlay)
                 Check(stringResource(R.string.check_background), backgroundOn) {
                     Fixes.open(context, Fixes.background(context))
+                }
+            }
+        }
+
+        // MediaStore access is optional and requested only when user wants local media.
+        if (mediaMissing.isNotEmpty()) item {
+            Section(stringResource(R.string.home_media_access_title)) {
+                Text(stringResource(R.string.home_media_access_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { mediaPermissionLauncher.launch(missingMediaPermissions(context)) }) {
+                    Text(stringResource(R.string.action_allow))
                 }
             }
         }
@@ -589,4 +627,27 @@ private fun ClassicSection(title: String, content: @Composable ColumnScope.() ->
             content()
         }
     }
+}
+
+/** Permissions required only when enabling a live car connection. */
+private fun missingConnectionPermissions(context: android.content.Context): Array<String> {
+    val wanted = mutableListOf<String>()
+    if (Build.VERSION.SDK_INT >= 31) {
+        wanted += Manifest.permission.BLUETOOTH_CONNECT
+        wanted += Manifest.permission.BLUETOOTH_SCAN
+        wanted += Manifest.permission.BLUETOOTH_ADVERTISE
+    }
+    if (Build.VERSION.SDK_INT >= 33) {
+        wanted += Manifest.permission.NEARBY_WIFI_DEVICES
+        wanted += Manifest.permission.POST_NOTIFICATIONS
+    } else wanted += Manifest.permission.ACCESS_FINE_LOCATION
+    wanted += Manifest.permission.RECORD_AUDIO
+    return wanted.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
+}
+
+private fun missingMediaPermissions(context: android.content.Context): Array<String> {
+    val wanted = if (Build.VERSION.SDK_INT >= 33)
+        listOf(Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VIDEO)
+    else listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    return wanted.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
 }

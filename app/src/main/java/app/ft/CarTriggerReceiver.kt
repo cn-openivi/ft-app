@@ -27,8 +27,14 @@ class CarTriggerReceiver : BroadcastReceiver() {
                     return
                 }
                 val want = prefs.carBtName.trim()
-                if (want.isEmpty() || name.contains(want, true)) {
-                    DiagLog.i("Trigger", "bluetooth connected to '${name.ifBlank { "device" }}', starting")
+                val knownAddress = prefs.carBtAddress.trim()
+                val matched = try {
+                    (knownAddress.isNotBlank() && dev?.address.equals(knownAddress, ignoreCase = true)) ||
+                        (want.isNotEmpty() && name.contains(want, true))
+                } catch (_: SecurityException) { false }
+                // Unknown Bluetooth devices must not wake an unrelated car session.
+                if (matched) {
+                    DiagLog.i("Trigger", "known car bluetooth connected; starting")
                     CarConnection.startAuto(context)
                 }
             }

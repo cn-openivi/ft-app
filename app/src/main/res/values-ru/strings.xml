@@ -566,4 +566,14 @@
     <string name="wireless_pair_expired_error">Код или порт сопряжения изменился. Откройте новый код в настройках Android и повторите.</string>
     <string name="wireless_pair_wrong_code_error">Сопряжение не удалось. Проверьте актуальные шесть цифр и повторите, не переключая приложения.</string>
     <string name="wireless_pair_unsupported">Для сопряжения через беспроводную отладку требуется Android 11 или новее.</string>
+    <string name="iccoa_mirror_calibration_title">Калибровка касаний зеркалирования на ГУ</string>
+    <string name="iccoa_mirror_calibration_about">Сначала откройте зеркалирование телефона на ГУ. Запустите четыре точки и последовательно коснитесь кружков на экране автомобиля. Профили портрет/альбом сохраняются раздельно.</string>
+    <string name="iccoa_mirror_calibration_step">Калибровка %1$d/4</string>
+    <string name="iccoa_mirror_calibration_start">4 точки</string>
+    <string name="aa_force_park_title">Android Auto: всегда передавать P (эксперимент)</string>
+    <string name="aa_force_park_about">Выключено: передаём фактическую свежую передачу автомобиля. Включено: Android Auto получает P независимо от реальной передачи. Меняет только данные Android Auto, а не состояние машины. Требуется подписка телефона на GEAR.</string>
+    <string name="aa_cluster_iccoa_unverified">Передача стрелок навигации на приборку через ICCOA пока не подтверждена. Переключатель доступен только для CarLife.</string>
+    <string name="home_media_access_title">Музыка и видео с телефона</string>
+    <string name="home_media_access_body">Предоставьте доступ для воспроизведения местной музыки и видео в FT. Для навигации и трансляции экрана он не нужен.</string>
+    <string name="iccoa_pin_prompt">Введите шестизначный код с экрана автомобиля</string>
 </resources>

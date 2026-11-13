@@ -277,18 +277,18 @@ private fun PageContent(page: SettingsPage) {
                 IccoaBluetoothIdentityLinkSetting()
                 val iccoa by IccoaService.state.collectAsStateWithLifecycle()
                 val mirrorCalibration by MirrorTouchCalibration.state.collectAsStateWithLifecycle()
-                Text("Зеркалирование: калибровка касаний ГУ", style = MaterialTheme.typography.titleMedium)
-                Text("Сначала откройте зеркалирование телефона на ГУ. Запустите четыре точки отсюда, " +
-                    "затем последовательно коснитесь кружков на экране автомобиля. " +
-                    "Профили портрет/альбом сохраняются раздельно.",
+                Text(stringResource(R.string.iccoa_mirror_calibration_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(R.string.iccoa_mirror_calibration_about),
                     style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = { IccoaService.calibrateMirrorTouch() },
                         enabled = iccoa.connected) {
-                        Text(if (mirrorCalibration.step in 1..4) "Калибровка ${mirrorCalibration.step}/4" else "4 точки")
+                        Text(if (mirrorCalibration.step in 1..4)
+                            stringResource(R.string.iccoa_mirror_calibration_step, mirrorCalibration.step)
+                            else stringResource(R.string.iccoa_mirror_calibration_start))
                     }
                     OutlinedButton(onClick = { IccoaService.resetMirrorTouchCalibration() },
-                        enabled = iccoa.connected) { Text("Сброс") }
+                        enabled = iccoa.connected) { Text(stringResource(R.string.home_touch_reset)) }
                 }
                 IccoaMicrophoneGainSetting(p.iccoaMicGain) { p.iccoaMicGain = it }
                 BoolSetting(
@@ -329,8 +329,15 @@ private fun PageContent(page: SettingsPage) {
                 p.aaCompactReturnButton = it
                 CarStyles.reload()
             }
-            BoolSetting(stringResource(R.string.aa_cluster_navigation), p.aaClusterNavigation,
-                detail = stringResource(R.string.aa_cluster_navigation_body)) { p.aaClusterNavigation = it }
+            // ICCOA OEM Control11 activates sensors; cluster turn routing is unverified.
+            if (rememberCarProtocol() == CarProtocol.CARLIFE) {
+                BoolSetting(stringResource(R.string.aa_cluster_navigation), p.aaClusterNavigation,
+                    detail = stringResource(R.string.aa_cluster_navigation_body)) { p.aaClusterNavigation = it }
+            } else {
+                Text(stringResource(R.string.aa_cluster_iccoa_unverified),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             BoolSetting(stringResource(R.string.aa_show_return_button), p.aaShowReturnButton) {
                 p.aaShowReturnButton = it
                 CarStyles.reload()
@@ -340,9 +347,9 @@ private fun PageContent(page: SettingsPage) {
             // Real car GEAR is the non-disableable ICCOA default. Only
             // the optional P override needs a user-facing control.
             BoolSetting(
-                "Android Auto: всегда передавать P (эксперимент)",
+                stringResource(R.string.aa_force_park_title),
                 p.aaForcePark,
-                detail = "Выключено: передаём реальную свежую передачу автомобиля. Включено: Android Auto получает P независимо от фактической передачи. Меняет только данные Android Auto, не состояние машины. При отсутствии подписки GEAR переподключи Android Auto."
+                detail = stringResource(R.string.aa_force_park_about)
             ) { p.aaForcePark = it }
             BoolSetting(stringResource(R.string.aa_controls_left), p.aaControlsLeft) { p.aaControlsLeft = it }
             IntSetting(stringResource(R.string.aa_port), p.aaPort, min = 1, max = 65535) { p.aaPort = it }

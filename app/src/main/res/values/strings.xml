@@ -568,4 +568,14 @@
     <string name="wireless_pair_expired_error">The pairing code or port has changed. Open a new code in Android Settings and try again.</string>
     <string name="wireless_pair_wrong_code_error">Pairing failed. Verify the current six-digit code and try again without switching apps.</string>
     <string name="wireless_pair_unsupported">Wireless debugging pairing requires Android 11 or later.</string>
+    <string name="iccoa_mirror_calibration_title">Car screen mirroring touch calibration</string>
+    <string name="iccoa_mirror_calibration_about">Open phone mirroring on the head unit first. Start four points here and touch each circle on the car screen. Portrait and landscape profiles are saved separately.</string>
+    <string name="iccoa_mirror_calibration_step">Calibration %1$d/4</string>
+    <string name="iccoa_mirror_calibration_start">Four points</string>
+    <string name="aa_force_park_title">Android Auto: always report P (experimental)</string>
+    <string name="aa_force_park_about">Off: report the fresh real gear. On: Android Auto receives P regardless of the vehicle gear. This changes only the data sent to Android Auto, not the car. Requires the phone to subscribe to GEAR.</string>
+    <string name="aa_cluster_iccoa_unverified">Instrument cluster directions over ICCOA are not verified. The switch is shown for CarLife only.</string>
+    <string name="home_media_access_title">Local music and videos</string>
+    <string name="home_media_access_body">Grant access if you want to play music or videos stored on this phone in FT. This is optional for navigation and projection.</string>
+    <string name="iccoa_pin_prompt">Enter the six-digit code displayed on the car screen</string>
 </resources>

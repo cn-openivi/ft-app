@@ -274,7 +274,7 @@ class IccoaSession(
         val attempt = current ?: return
         post(attempt) {
             if (!pin.matches(Regex("[0-9]{6}"))) {
-                status(attempt, "Введите шестизначный код с экрана автомобиля")
+                status(attempt, app.ft.core.Lang.str(app.ft.R.string.iccoa_pin_prompt))
                 onPinRequired()
                 return@post
             }
@@ -475,7 +475,7 @@ class IccoaSession(
         } catch (e: Exception) { fail(attempt, "Ошибка служб Bluetooth (${e.javaClass.simpleName})") }
     }
 
-    private fun requestPin(attempt: Attempt, message: String = "Введите шестизначный код с экрана автомобиля") {
+    private fun requestPin(attempt: Attempt, message: String = app.ft.core.Lang.str(app.ft.R.string.iccoa_pin_prompt)) {
         attempt.pin = null
         attempt.reusingPin = false
         attempt.quickMode = false

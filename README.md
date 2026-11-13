@@ -11,7 +11,7 @@ FT runs in English, Arabic, Kurdish Sorani, Kurdish Badini and Russian, on the p
 
 ## How it connects
 
-**Experimental ICCOA:** Settings → Car and connection → Car protocol also offers an independent ICCOA Carlink backend, with its own Bluetooth/Wi-Fi connection, car-code authentication, screen stream and input transport. It currently targets car access-point mode with a fresh six-digit code; physical Toyota XA60 testing is still required. CarLife remains the default. See the [tester instructions in Russian](docs/ICCOA-TESTER-RU.md) and [implementation status](docs/ICCOA-DEVELOPMENT.md).
+**ICCOA:** Settings → Car and connection → Car protocol offers an independent ICCOA Carlink backend, with its own Bluetooth/Wi-Fi connection, code/quick authentication, video and input transport. Source implementation is available; physical receiver compatibility, Android Auto sensors and new direct-H.264 mode still require field testing. CarLife remains the default. See the [tester instructions in Russian](docs/ICCOA-TESTER-RU.md) and [implementation status](docs/ICCOA-DEVELOPMENT.md).
 
 For the wireless connection sequence, protocol sources and failure diagnosis, see
 [Wireless CarLife and Android Auto in FT](docs/wireless-connection.md).
@@ -70,7 +70,7 @@ Every CarLife touch message is understood: touch actions, down, up and move, sin
 
 ## Phone apps on the car
 
-With root, or once from a computer with one adb line, FT starts a small helper from its own APK that runs real phone apps on hidden screens and shows them on the car:
+With root, or an opt-in user-initiated wireless-debugging pairing on Android 11+, FT can start a helper from its APK to run phone apps on hidden screens. Android pairing through code/notification and device-specific compatibility remain unverified until runtime tests; an explicit computer/ADB setup remains the expert alternative:
 
 - One app or two side by side, picked from a dock that lists only the apps you choose. **Swap** puts the two apps in each other's places, each keeping its width.
 - Drag the handle between two apps to give one more room, anywhere from a quarter to three quarters of the width; it settles in the middle when let go near it, and a double tap puts it back in the middle. While it moves, each app shows its name, and its hidden screen takes the new size once the finger lifts. FT remembers the split.

@@ -154,7 +154,7 @@ fun SuperCastSettings() {
                 val detail = when (pairing.reason) {
                     "notifications_disabled" -> R.string.wireless_pair_notifications
                     "foreground_denied", "background_restricted" -> R.string.wireless_pair_background_error
-                    "expired_code" -> R.string.wireless_pair_expired_error
+                    "expired_code", "timed_out" -> R.string.wireless_pair_expired_error
                     "pairing_failed" -> R.string.wireless_pair_wrong_code_error
                     "helper_failed" -> R.string.wireless_pair_helper_failed
                     "unsupported" -> R.string.wireless_pair_unsupported

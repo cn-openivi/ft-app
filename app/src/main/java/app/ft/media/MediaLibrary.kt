@@ -12,6 +12,7 @@ import android.util.LruCache
 import android.util.Size
 import app.ft.core.DiagLog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -34,6 +35,11 @@ data class Album(val id: Long, val title: String, val artist: String, val songs:
 }
 
 object MediaLibrary {
+    // Shared by phone-side grants and the independently composed car display.
+    private val _permissionVersion = MutableStateFlow(0)
+    val permissionVersion = _permissionVersion
+    fun permissionsChanged() { _permissionVersion.value = _permissionVersion.value + 1 }
+
     private val art = object : LruCache<String, Bitmap>(32 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
