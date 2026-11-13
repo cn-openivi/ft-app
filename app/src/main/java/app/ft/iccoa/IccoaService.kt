@@ -32,6 +32,9 @@ import app.ft.core.MotionVector
 import app.ft.core.VehicleMotionTelemetry
 import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
+import app.ft.projection.IccoaCalibrationScope
+import app.ft.projection.CarTouchCalibration
+import app.ft.projection.MirrorTouchCalibration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -539,6 +542,7 @@ class IccoaService : Service() {
                         return@current
                     }
                     connectionVideoMode = FTApp.instance.prefs.iccoaVideoModeFor(receiverId)
+                    IccoaCalibrationScope.activate(receiverId, connection.verifiedLegacyPrimary)
                     _state.update { it.copy(verifiedReceiverId = receiverId) }
                     lastBluetoothLinkSession = token
                     val payload = bluetoothIdentityLink.addPayload()
@@ -712,6 +716,9 @@ class IccoaService : Service() {
     }
 
     private fun endConnection() {
+        IccoaCalibrationScope.clear()
+        CarTouchCalibration.cancel()
+        MirrorTouchCalibration.cancel()
         directVideo?.close()
         directVideo = null
         connectionVideoMode = 0
@@ -811,9 +818,9 @@ class IccoaService : Service() {
         fun connectNormal(context: Context, address: String) = send(context, CONNECT_NORMAL, address = address)
         fun submitPin(context: Context, pin: String) = send(context, PIN, pin = pin)
         fun disconnect(context: Context) = send(context, DISCONNECT)
-        fun calibrateTouch() { if (_state.value.connected) instance?.projection?.startTouchCalibration() }
+        fun calibrateTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startTouchCalibration() }
         fun resetTouchCalibration() { if (_state.value.connected) instance?.projection?.resetTouchCalibration() }
-        fun calibrateMirrorTouch() { if (_state.value.connected) instance?.projection?.startMirrorTouchCalibration() }
+        fun calibrateMirrorTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startMirrorTouchCalibration() }
         fun resetMirrorTouchCalibration() { if (_state.value.connected) instance?.projection?.resetMirrorTouchCalibration() }
         /** Safety control usable on the phone even when the HU cannot display direct H.264. */
         fun restoreNormalVideo() {
