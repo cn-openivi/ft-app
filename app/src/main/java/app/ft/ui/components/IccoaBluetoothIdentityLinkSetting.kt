@@ -23,14 +23,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ft.iccoa.IccoaBluetoothIdentityLinkStore
 import app.ft.iccoa.IccoaBluetoothMacInfo
+import app.ft.iccoa.IccoaService
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** Explicit HU-observed phone MAC only; never silently use the car or Wi-Fi MAC. */
 @Composable
 fun IccoaBluetoothIdentityLinkSetting() {
     val context = LocalContext.current
     val store = remember(context) { IccoaBluetoothIdentityLinkStore(context) }
-    var configured by remember { mutableStateOf(store.configured()) }
-    var enabled by remember { mutableStateOf(store.enabled()) }
+    val session by IccoaService.state.collectAsStateWithLifecycle()
+    val receiverId = session.verifiedReceiverId
+    var configured by remember(receiverId) { mutableStateOf(
+        receiverId?.let { store.configured(it) } == true) }
+    var enabled by remember(receiverId) { mutableStateOf(
+        receiverId?.let { store.enabled(it) } == true) }
     var address by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(false) }
     var result by remember { mutableStateOf("") }
@@ -43,6 +49,12 @@ fun IccoaBluetoothIdentityLinkSetting() {
                 "По умолчанию выключено. Поддержка ГУ и работа HFP не гарантированы.",
             style = MaterialTheme.typography.bodySmall
         )
+        if (receiverId == null) Text(
+            "Подключите автомобиль и дождитесь подтверждённой ICCOA-авторизации. " +
+                "Привязка сохраняется отдельно для каждого проверенного ГУ.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
         Text(
             if (configured) "Адрес телефона сохранён в виде SHA-256 (исходный MAC не хранится)"
             else "MAC телефона ещё не задан",
@@ -52,10 +64,10 @@ fun IccoaBluetoothIdentityLinkSetting() {
             Text("Передавать привязку после авторизации ICCOA", Modifier.weight(1f))
             Switch(
                 checked = enabled,
-                enabled = configured,
+                enabled = receiverId != null && configured,
                 onCheckedChange = {
-                    result = if (store.setEnabled(it)) {
-                        enabled = store.enabled()
+                    result = if (receiverId != null && store.setEnabled(receiverId, it)) {
+                        enabled = store.enabled(receiverId)
                         "Изменение применится при следующем подключении"
                     } else "Не удалось сохранить настройку"
                 }
@@ -79,19 +91,19 @@ fun IccoaBluetoothIdentityLinkSetting() {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
-                enabled = confirmed && valid,
+                enabled = receiverId != null && confirmed && valid,
                 onClick = {
-                    if (store.saveHuObservedPhoneMac(address)) {
+                    if (receiverId != null && store.saveHuObservedPhoneMac(receiverId, address)) {
                         address = ""
                         confirmed = false
-                        configured = store.configured()
-                        enabled = store.enabled()
+                        configured = store.configured(receiverId)
+                        enabled = store.enabled(receiverId)
                         result = "SHA-256 сохранён. Передачу привязки включите отдельно."
                     } else result = "Недопустимый адрес или сбой сохранения"
                 }
             ) { Text("Сохранить") }
-            TextButton(onClick = {
-                if (store.forget()) {
+            TextButton(enabled = receiverId != null, onClick = {
+                if (receiverId != null && store.forget(receiverId)) {
                     address = ""
                     configured = false
                     enabled = false
