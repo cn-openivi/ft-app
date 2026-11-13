@@ -1886,7 +1886,7 @@ class CarLifeService : Service() {
             WheelAction.CAR_HOME -> _screenKeys.tryEmit(3)
             WheelAction.MAPS -> launch(app.prefs.mapsPackage)
             WheelAction.PHONE_SCREEN -> phoneScreen()
-            WheelAction.PLAY_PAUSE -> mediaKey(85)
+            WheelAction.PLAY_PAUSE -> handleHardKey(85, 85) // Use the same AA/media-owner router.
             WheelAction.VOICE -> {
                 val aa = AaHeadUnitService.current
                 if (_state.value.aaOverlay && aa != null) aa.sendKey(84)
