@@ -30,8 +30,12 @@ object MirrorPanelSaver {
         }
         if (source in owners) return true
         if (owners.isEmpty()) {
-            restore(c) // recover any interrupted previous attempt before making another snapshot
             val prefs = c.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+            if (prefs.getBoolean(ACTIVE, false)) {
+                restore(c)
+                // Never replace an unrecovered original snapshot with today's dimmed values.
+                if (prefs.getBoolean(ACTIVE, false)) return false
+            }
             val oldMode = Settings.System.getInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
                 Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
             val oldLevel = Settings.System.getInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
@@ -40,10 +44,11 @@ object MirrorPanelSaver {
                 DiagLog.w("MirrorPanel", "could not commit brightness recovery snapshot; no changes made")
                 return false
             }
-            val manual = Settings.System.putInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
-                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
-            val dim = manual && Settings.System.putInt(c.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS, DIM_LEVEL)
+            val dim = runCatching {
+                Settings.System.putInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL) &&
+                Settings.System.putInt(c.contentResolver, Settings.System.SCREEN_BRIGHTNESS, DIM_LEVEL)
+            }.getOrDefault(false)
             if (!dim) {
                 DiagLog.w("MirrorPanel", "Android refused minimum brightness")
                 restore(c)
@@ -69,8 +74,12 @@ object MirrorPanelSaver {
         }
         val brightness = prefs.getInt(OLD_LEVEL, 128)
         val mode = prefs.getInt(OLD_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
-        val levelOK = Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, brightness)
-        val modeOK = Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, mode)
+        val levelOK = runCatching {
+            Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS, brightness)
+        }.getOrDefault(false)
+        val modeOK = runCatching {
+            Settings.System.putInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS_MODE, mode)
+        }.getOrDefault(false)
         if (levelOK && modeOK && prefs.edit().clear().commit()) {
             DiagLog.i("MirrorPanel", "phone brightness and automatic brightness mode restored")
         } else DiagLog.w("MirrorPanel", "brightness restoration incomplete; saved for retry on next launch")

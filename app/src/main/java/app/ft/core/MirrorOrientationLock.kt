@@ -26,7 +26,11 @@ object MirrorOrientationLock {
             return false
         }
         if (owners.isEmpty()) {
-            restore(c)
+            val savedPrefs = c.getSharedPreferences(STORE, Context.MODE_PRIVATE)
+            if (savedPrefs.getBoolean("saved", false)) {
+                restore(c)
+                if (savedPrefs.getBoolean("saved", false)) return false
+            }
             val cr = c.contentResolver
             val auto = Settings.System.getInt(cr, Settings.System.ACCELEROMETER_ROTATION, 1)
             val rotation = Settings.System.getInt(cr, Settings.System.USER_ROTATION, 0)
@@ -58,8 +62,10 @@ object MirrorOrientationLock {
     private fun apply(context: Context, wanted: Int) {
         if (applied == wanted || !Settings.System.canWrite(context)) return
         val cr = context.contentResolver
-        val ok = Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0) &&
-            Settings.System.putInt(cr, Settings.System.USER_ROTATION, wanted)
+        val ok = runCatching {
+            Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, 0) &&
+                Settings.System.putInt(cr, Settings.System.USER_ROTATION, wanted)
+        }.getOrDefault(false)
         if (ok) {
             applied = wanted
             DiagLog.i("MirrorOrientation", if (wanted == 0) "phone launcher portrait" else "mirrored app landscape")
@@ -83,8 +89,8 @@ object MirrorOrientationLock {
         val cr = context.contentResolver
         val old = prefs.getInt("rotation", 0)
         val auto = prefs.getInt("auto", 1)
-        val r = Settings.System.putInt(cr, Settings.System.USER_ROTATION, old)
-        val a = Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, auto)
+        val r = runCatching { Settings.System.putInt(cr, Settings.System.USER_ROTATION, old) }.getOrDefault(false)
+        val a = runCatching { Settings.System.putInt(cr, Settings.System.ACCELEROMETER_ROTATION, auto) }.getOrDefault(false)
         if (r && a && prefs.edit().clear().commit()) {
             applied = null
             DiagLog.i("MirrorOrientation", "user rotation preference restored")
