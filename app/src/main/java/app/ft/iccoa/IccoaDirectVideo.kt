@@ -20,7 +20,8 @@ internal class IccoaDirectVideo(
     private val plan: VideoPlan,
     private val aaWidth: Int,
     private val aaHeight: Int,
-    private val onStatus: (String) -> Unit
+    private val onStatus: (String) -> Unit,
+    private val onModeChanged: (Boolean, String?) -> Unit
 ) : AaH264Tap.Listener {
     @Volatile var active: Boolean = false
         private set
@@ -75,6 +76,7 @@ internal class IccoaDirectVideo(
         if (!supported) {
             DiagLog.i("ICCOA", "DIRECT_VIDEO declined: AA AVC SPS incompatible with selected WFD raster")
             onStatus("H.264 direct unavailable for this stream; normal FT video remains active")
+            onModeChanged(false, "AA H.264 SPS incompatible with the negotiated WFD raster")
         } else {
             DiagLog.i("ICCOA", "DIRECT_VIDEO candidate " + sps!!.width + "x" + sps.height +
                 " AVC profile=" + sps.profileIdc + " level=" + sps.levelIdc)
@@ -109,6 +111,7 @@ internal class IccoaDirectVideo(
         if (!projection.beginDirectVideo(plan, aaWidth, aaHeight)) {
             failed = true
             onStatus("Direct AA requires the full-screen Android Auto view")
+            onModeChanged(false, "Android Auto is not full-screen")
             return
         }
         output.pause() // discard earlier composited GOP and audio from same RTP muxer
@@ -119,6 +122,7 @@ internal class IccoaDirectVideo(
         activatedAtMs = SystemClock.elapsedRealtime()
         active = true
         output.resume() // now request IDR from AA, not the stopped FT encoder
+        onModeChanged(true, null)
         onStatus("ICCOA H.264 passthrough active (trial)")
         DiagLog.i("ICCOA", "DIRECT_VIDEO activated, FT SurfaceEncoder stopped")
         main.removeCallbacks(watchdog)
@@ -172,6 +176,7 @@ internal class IccoaDirectVideo(
             projection.resumeCompositedVideo(plan, output::configure, output::frame)
             if (resumeTransport) output.resume()
         }
+        onModeChanged(false, reason)
         onStatus("ICCOA direct video: " + reason + "; normal FT video restored")
         DiagLog.w("ICCOA", "DIRECT_VIDEO fallback: " + reason)
     }
