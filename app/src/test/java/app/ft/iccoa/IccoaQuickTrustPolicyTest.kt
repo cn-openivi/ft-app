@@ -11,6 +11,17 @@ class IccoaQuickTrustPolicyTest {
         assertTrue(IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE.isNotBlank())
     }
 
+    @Test fun receiverLookupScopeDoesNotTreatBluetoothAddressAsTrust() {
+        val token = "00112233445566778899aabbccddeeff"
+        assertEquals("receiver-token-v1:" + token,
+            IccoaQuickTrustPolicy.scopeForReceiverToken(token.uppercase()))
+        assertEquals(null, IccoaQuickTrustPolicy.scopeForReceiverToken(null))
+        assertEquals(null, IccoaQuickTrustPolicy.scopeForReceiverToken("AA:BB:CC:DD:EE:FF"))
+        assertEquals(null, IccoaQuickTrustPolicy.scopeForReceiverToken(""))
+        assertEquals(IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE,
+            IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE)
+    }
+
     @Test fun rememberedApprovedCarMayTryQuick() {
         assertTrue(IccoaQuickTrustPolicy.mayAttemptQuick(
             remembered = true, explicitlySelected = false, forceCurrentPin = false))
