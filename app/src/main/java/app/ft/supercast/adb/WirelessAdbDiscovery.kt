@@ -40,8 +40,8 @@ internal class WirelessAdbDiscovery(
     private val manager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val _endpoint = MutableStateFlow<Endpoint?>(null)
     val endpoint: StateFlow<Endpoint?> = _endpoint
-    private var started = false
-    private var registered = false
+    @Volatile private var started = false
+    @Volatile private var registered = false
 
     fun start() {
         if (started) return
@@ -66,15 +66,15 @@ internal class WirelessAdbDiscovery(
 
     override fun onServiceFound(info: NsdServiceInfo) {
         if (!started) return
-        // resolveService supports pre-API34 implementations without a custom executor.
-            manager.resolveService(info, object : NsdManager.ResolveListener {
+        // Resolve with the platform callback; failures leave endpoint UNKNOWN.
+        runCatching { manager.resolveService(info, object : NsdManager.ResolveListener {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                 if (!started || serviceInfo.port !in 1..65535) return
                 if (!isOurOwnInterface(serviceInfo.host)) return
                 _endpoint.value = Endpoint(serviceInfo.serviceName, serviceInfo.port)
             }
-        })
+        }) }
     }
 
     override fun onServiceLost(info: NsdServiceInfo) {

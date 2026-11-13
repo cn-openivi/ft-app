@@ -27,6 +27,7 @@ object PairingClient {
             val socket = Socket()
             try {
                 socket.connect(java.net.InetSocketAddress(host, port), connectTimeoutMs)
+                socket.soTimeout = connectTimeoutMs // Bound TLS/SPAKE2 socket reads too.
                 socket.tcpNoDelay = true
             } catch (e: Exception) {
                 runCatching { socket.close() }

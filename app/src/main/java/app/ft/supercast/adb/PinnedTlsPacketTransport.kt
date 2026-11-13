@@ -30,6 +30,7 @@ import org.bouncycastle.tls.crypto.TlsCryptoParameters
 import org.bouncycastle.tls.crypto.impl.bc.BcDefaultTlsCredentialedSigner
 import org.bouncycastle.tls.crypto.impl.bc.BcTlsCrypto
 import java.net.Socket
+import java.net.InetSocketAddress
 import java.security.SecureRandom
 import org.bouncycastle.asn1.x509.Certificate as ASN1Certificate
 
@@ -70,7 +71,9 @@ class PinnedTlsPacketTransport private constructor(
             expectedPeerSha256: ByteArray,
         ): PinnedTlsPacketTransport =
             withContext(Dispatchers.IO) {
-                val socket = Socket(host, port)
+                val socket = Socket()
+                socket.connect(InetSocketAddress(host, port), 5_000)
+                socket.soTimeout = 8_000
                 socket.tcpNoDelay = true
 
                 val crypto: TlsCrypto = sharedCrypto

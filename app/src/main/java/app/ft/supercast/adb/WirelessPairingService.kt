@@ -13,7 +13,6 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.os.SystemClock
 import app.ft.MainActivity
 import app.ft.R
 import app.ft.supercast.SuperCast
@@ -52,7 +51,6 @@ class WirelessPairingService : Service() {
         private val _status = MutableStateFlow(State(Phase.IDLE))
         val status: StateFlow<State> = _status
         @Volatile private var activePairingPort: Int? = null
-        @Volatile private var lastPairingRequestAt: Long = 0
 
         fun currentPort(): Int? = activePairingPort
 
@@ -112,7 +110,6 @@ class WirelessPairingService : Service() {
         when (intent?.action) {
             ACTION_START -> {
                 if (scanner != null) return START_NOT_STICKY
-                lastPairingRequestAt = SystemClock.elapsedRealtime()
                 if (!startForegroundSafely()) return START_NOT_STICKY
                 _status.value = State(Phase.SEARCHING)
                 val mdns = WirelessAdbDiscovery(this, WirelessAdbDiscovery.PAIRING)
