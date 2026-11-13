@@ -1,0 +1,11 @@
+# FT183 — Android launcher icon from the prepared OpenIVI FTMP pack
+
+Owner direction: embed the newly created **OpenIVI FTMP app icon** into the **OpenIVI FT / FT183** source, without compiling FT183 until the owner explicitly lifts the HOLD.
+
+Authoritative binary input: Google Drive folder 'OpenIVI Android Icons' (ID `1dffT2cGBWX-WM9YwzwRMXgpPEWBs3wCy`), prepared archive `OpenIVI_FTMP_Android_Icon_Pack.zip` (Drive file `1OkRWAtl7A8IZrBVOs4PwY4jRJE2OxMo_`, 2,642,811 bytes), original `OpenIVI_FTMP_app_icon.png` (Drive ID `1GMmEfOjTOsbc0ii9JKIlUBhZ87ltYjPN`). 26 prepared PNG assets extracted and each validated against the ZIP stored uncompressed length and CRC32 before upload to GitHub. GitHub immutable blobs were uploaded with base64 API and deterministic content hashes.
+
+New active source launcher resources: 5 density families (`mdpi/hdpi/xhdpi/xxhdpi/xxxhdpi`), each with `ic_launcher.png`, `ic_launcher_round.png`, `ic_launcher_foreground.png`, `ic_launcher_background.png`, and `ic_launcher_monochrome.png` (25 resource files). The previous 25 WEBP files having the same Android resource names are deleted, preventing AAPT duplicate resource errors. The Play Store asset `app/src/main/ic_launcher-playstore.png` is replaced with the matching prepared 512px source. Both existing `mipmap-anydpi-v26/ic_launcher*.xml` adaptive launchers remain in place, already reference the intended foreground/background/monochrome names; `AndroidManifest.xml` still uses `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`.
+
+App label **OpenIVI FT** remains in strings; `applicationId=app.ft.xa60`, signing, `versionCode=183`, AA/ICCOA/CarLife protocols and FTMP source are untouched. This update targets the Android launcher icon and PlayStore artwork only; embedded legacy in-app FT artwork (`drawable-*/ft_logo.png`) remains unchanged pending explicit separate design decision.
+
+No Gradle build, unit test, APK, release or CI trigger is authorized for FT183 while the owner's HOLD remains active. Only static source and resource consistency checks are performed. The prepared pack marks the adaptive raster components as preliminary; review adaptive mask, monochrome theme, contrast and launcher display on physical phone after lifting HOLD and building the APK by owner command.
