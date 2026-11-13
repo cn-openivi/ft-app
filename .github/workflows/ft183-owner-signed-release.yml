@@ -18,10 +18,10 @@ jobs:
     runs-on: [self-hosted, linux]
     timeout-minutes: 90
     env:
-      SOURCE_PIN: d2cd0b55c25c99320543fbb9eab40414f1456fbb
+      SOURCE_PIN: 601cbd7e29b0c1da6f4ef2b33b7263778a1bbd5e
       CERT_PIN: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
-      TAG_NAME: xa60-ft183-d2cd0b55
-      APK_NAME: FT183_XA60_OWNER_SIGNED_d2cd0b55.apk
+      TAG_NAME: xa60-ft183-601cbd7e
+      APK_NAME: FT183_XA60_OWNER_SIGNED_601cbd7e.apk
     steps:
       - name: Checkout immutable FT183 source plus release notes/workflow
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -196,7 +196,7 @@ jobs:
           received="$(rclone cat "$dst" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
           test "$expected" = "$received"
           for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
-            rpath="openivi-drive:FT183_d2cd0b55_$name"
+            rpath="openivi-drive:FT183_601cbd7e_$name"
             rclone copyto "verified/$name" "$rpath" "${opts[@]}"
             test "$(sha256sum "verified/$name" | cut -d' ' -f1)" = "$(rclone cat "$rpath" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
           done
