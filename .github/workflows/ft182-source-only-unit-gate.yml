@@ -1,0 +1,89 @@
+name: FT182 source-only compile and unit tests (owner authorized 2026-11-13)
+
+on:
+  push:
+    branches:
+      - openivi/ft182-supercast-ux-source-20261113
+    paths:
+      - '.github/workflows/ft182-source-only-unit-gate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft182-source-only-unit-gate
+  cancel-in-progress: false
+
+jobs:
+  source-only-verify:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact FT182 GitHub commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Guard FT182 branch, version, and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft182-supercast-ux-source-20261113"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 182' app/build.gradle.kts
+          test -f app/src/test/java/app/ft/ui/car/LauncherComponentsTest.kt
+          test -f app/src/test/java/app/ft/aa/AaGpsEvidenceTest.kt
+          echo "FT182_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Compile FT182 and run all unsignedTransit JVM unit tests (NO APK)
+        shell: bash
+        env:
+          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 --console=plain \
+            -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dkotlin.incremental=false \
+            :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest --stacktrace
+      - name: Verify test reports and prove no APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=sorted(Path("app/build/test-results/testUnsignedTransitUnitTest").glob("TEST-*.xml"))
+          assert files, "No JUnit XML results"
+          suites=[ET.parse(p).getroot() for p in files]
+          totals={key:sum(int(root.get(key,0)) for root in suites) for key in ("tests","failures","errors","skipped")}
+          print("FT182_JUNIT_TOTALS",totals)
+          assert totals["tests"] > 0, "Zero tests"
+          assert totals["failures"] == totals["errors"] == 0
+          PY
+          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+            echo "REFUSE unexpected APK: source-only gate" >&2
+            exit 1
+          fi
+          echo "FT182_SOURCE_ONLY_GATE_PASS=$GITHUB_SHA"
+          echo "APK=NOT_ASSEMBLED"
+          echo "FIELD=NOT_TESTED"
+      - name: Remove only temporary app/server Gradle build outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
