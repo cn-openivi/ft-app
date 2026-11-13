@@ -67,6 +67,7 @@ class FrameGate(
     private val pacer = SmartVideoPacer(smartSavePower)
     private val urgentFresh = UrgentFreshFrame()
     private var effectiveFps = 0
+    private var effectiveMode: SmartVideoPacer.Mode? = null
     @Volatile private var awakeUntilNs = 0L
     var input: Surface? = null
         private set
@@ -152,8 +153,9 @@ class FrameGate(
 
     private fun refreshRate() {
         val state = pacer.state()
-        if (state.fps == effectiveFps) return
+        if (state.fps == effectiveFps && state.mode == effectiveMode) return
         effectiveFps = state.fps
+        effectiveMode = state.mode
         intervalNs = 1_000_000_000L / state.fps
         DiagLog.i(tag, "video pacing ${state.mode} ${state.fps} fps")
         onEffectiveRate?.invoke(state.fps, state.mode.name)
