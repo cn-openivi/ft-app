@@ -432,10 +432,14 @@ class IccoaService : Service() {
                           ownerSelected: Boolean = false) {
         pendingCar = _state.value.discovery.peers.singleOrNull { it.address.equals(address, ignoreCase = true) }
         val known = rememberedCar.matches(pendingCar, _state.value.discovery.peers)
-        // BLE advertisements from the real XA60 contain an empty name. The
-        // owner's PRIMARY trusted car slot is stable; the pinned OEM EC key,
-        // not a BLE name/address, authenticates the receiver in QUICK.
-        val trustedCarName = IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE
+        // ServiceData is an untrusted lookup hint. Pinned OEM EC signatures,
+        // not BLE names, tokens or rotating addresses, authenticate QUICK.
+        // Preserve the existing PRIMARY for receivers without a stable token.
+        val tokenScope = IccoaQuickTrustPolicy.scopeForReceiverToken(pendingCar?.receiverToken)
+        val trustedCarName = tokenScope
+            ?: if (known) IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE else ""
+        val legacyTrust = if (known && tokenScope != null)
+            IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE else ""
         val canTryQuick = IccoaQuickTrustPolicy.mayAttemptQuick(known, ownerSelected, forceCurrentPin)
         DiagLog.i("ICCOA", "Quick eligibility remembered=$known manuallySelected=$ownerSelected forcedNormal=$forceCurrentPin eligible=$canTryQuick")
         endConnection()
@@ -547,6 +551,7 @@ class IccoaService : Service() {
                 navigationSend.run()
             } },
             trustedCarName = trustedCarName,
+            legacyTrustedCarName = legacyTrust,
             tryRememberedPin = canTryQuick,
             forceCurrentPin = forceCurrentPin)
         session = connection
