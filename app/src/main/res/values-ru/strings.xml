@@ -576,4 +576,11 @@
     <string name="home_media_access_title">Музыка и видео с телефона</string>
     <string name="home_media_access_body">Предоставьте доступ для воспроизведения местной музыки и видео в FT. Для навигации и трансляции экрана он не нужен.</string>
     <string name="iccoa_pin_prompt">Введите шестизначный код с экрана автомобиля</string>
+    <string name="iccoa_status_connecting_bt">Подключение ICCOA по Bluetooth…</string>
+    <string name="iccoa_status_quick_check">ICCOA Quick: проверка доверенного телефона…</string>
+    <string name="iccoa_status_code_check">Проверка кода ICCOA…</string>
+    <string name="iccoa_status_wifi_approval">Подключение к Wi-Fi автомобиля. Подтвердите запрос Android</string>
+    <string name="iccoa_status_gateway_wait">Wi-Fi подключён. Ожидание адреса шлюза автомобиля…</string>
+    <string name="iccoa_status_auth">Проверка подлинности ICCOA…</string>
+    <string name="iccoa_status_channels_wait">ICCOA: аутентификация завершена, ожидание каналов автомобиля…</string>
 </resources>

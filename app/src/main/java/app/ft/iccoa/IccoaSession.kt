@@ -210,7 +210,7 @@ class IccoaSession(
         current = attempt
         post(attempt) {
             try {
-                status(attempt, "Подключение ICCOA по Bluetooth…")
+                status(attempt, Lang.str(R.string.iccoa_status_connecting_bt))
                 val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
                 require(adapter?.isEnabled == true) { "Bluetooth disabled" }
                 synchronized(attempt) {
@@ -243,7 +243,7 @@ class IccoaSession(
             attempt.pinnedCarIdentity = pinned.copyOf()
             val revision = ++attempt.pinAttempt
             attempt.serverInfo.reset()
-            status(attempt, "ICCOA Quick: проверка доверенного телефона…")
+            status(attempt, Lang.str(R.string.iccoa_status_quick_check))
             val queued = if (Build.VERSION.SDK_INT >= 33) {
                 gatt.writeCharacteristic(characteristic, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == 0
             } else {
@@ -294,7 +294,7 @@ class IccoaSession(
                 attempt.pinnedCarIdentity = null
                 val revision = ++attempt.pinAttempt
                 attempt.serverInfo.reset()
-                status(attempt, "Проверка кода ICCOA…")
+                status(attempt, Lang.str(R.string.iccoa_status_code_check))
                 val accepted = if (Build.VERSION.SDK_INT >= 33) {
                     gatt.writeCharacteristic(characteristic, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT) == 0
                 } else {
@@ -572,7 +572,7 @@ class IccoaSession(
         }
         attempt.wifiRequested = true
         attempt.networkCallback = callback
-        status(attempt, "Подключение к Wi-Fi автомобиля. Подтвердите запрос Android")
+        status(attempt, Lang.str(R.string.iccoa_status_wifi_approval))
         try {
             connectivity.requestNetwork(request, callback, 60_000)
         } catch (e: SecurityException) {
@@ -594,7 +594,7 @@ class IccoaSession(
             !attempt.gatewayRetry.schedule(network)) return
         if (attempt.gatewayWaitStatusNetwork != network) {
             attempt.gatewayWaitStatusNetwork = network
-            status(attempt, "Wi-Fi подключён. Ожидание адреса шлюза автомобиля…")
+            status(attempt, Lang.str(R.string.iccoa_status_gateway_wait))
         }
         later(attempt, 1_000) {
             // A's old timer must NOT steal B's pending retry.
@@ -641,7 +641,7 @@ class IccoaSession(
         attempt.network = network
         // Keep the PIN across Network replacement within this attempt only.
         attempt.pin = IccoaNetworkPinLifecycle.afterAuthQueued(pin)
-        status(attempt, "Проверка подлинности ICCOA…")
+        status(attempt, Lang.str(R.string.iccoa_status_auth))
         worker(attempt) { authenticate(attempt, network, local, peer, pin, pinned) }
     }
 
@@ -721,7 +721,7 @@ class IccoaSession(
                 confirmTrustedCarAfterControl(attempt)
                 if (active(attempt) && attempt.control != null) onVerifiedControlReady()
             }
-            status(attempt, "ICCOA: аутентификация завершена, ожидание каналов автомобиля…")
+            status(attempt, Lang.str(R.string.iccoa_status_channels_wait))
             later(attempt, 25_000) {
                 if (attempt.control == null) fail(attempt, "Автомобиль не открыл канал управления ICCOA", transportFailure = true)
             }

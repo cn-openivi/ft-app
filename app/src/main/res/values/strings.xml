@@ -578,4 +578,11 @@
     <string name="home_media_access_title">Local music and videos</string>
     <string name="home_media_access_body">Grant access if you want to play music or videos stored on this phone in FT. This is optional for navigation and projection.</string>
     <string name="iccoa_pin_prompt">Enter the six-digit code displayed on the car screen</string>
+    <string name="iccoa_status_connecting_bt">Connecting to the car over ICCOA Bluetooth…</string>
+    <string name="iccoa_status_quick_check">ICCOA Quick: checking the trusted phone…</string>
+    <string name="iccoa_status_code_check">Verifying the ICCOA code…</string>
+    <string name="iccoa_status_wifi_approval">Connecting to the car Wi-Fi. Confirm the Android prompt.</string>
+    <string name="iccoa_status_gateway_wait">Wi-Fi connected. Waiting for the car gateway address…</string>
+    <string name="iccoa_status_auth">Authenticating ICCOA…</string>
+    <string name="iccoa_status_channels_wait">ICCOA authenticated. Waiting for car channels…</string>
 </resources>
