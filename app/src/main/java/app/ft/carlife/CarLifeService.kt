@@ -1632,15 +1632,9 @@ class CarLifeService : Service() {
     }
 
     private fun onHardKey(key: Int) {
-        val swap = app.prefs.swapTrackKeys
-        val mapped = when (key) {
-            15 -> if (swap) 87 else 88
-            16 -> if (swap) 88 else 87
-            14 -> 85
-            231, 219 -> 84
-            79 -> 85
-            else -> key
-        }
+        // CarLife OEM hard-key identifiers differ from standard Android keycodes.
+        val mapped = if (key == 231 || key == 219) 84
+            else app.ft.aa.AaSteeringMediaKeys.normalize(key, app.prefs.swapTrackKeys)
         val extra = when (mapped) {
             87 -> app.prefs.wheelLongNext
             88 -> app.prefs.wheelLongPrev
@@ -1905,15 +1899,32 @@ class CarLifeService : Service() {
 
     private fun handleHardKey(key: Int, mapped: Int) {
         val st = _state.value
+        val aa = AaHeadUnitService.current
+        // Playback ownership is not the same as visual foreground. Android Auto
+        // may keep playing after the driver returns to the FT or car screen.
+        if (app.ft.aa.AaSteeringMediaKeys.routeToAa(
+                code = mapped,
+                aaVisible = st.aaOverlay,
+                aaConnected = aa != null,
+                aaPlaying = AaHeadUnitService.music.value.playing,
+                ftPlaying = CarPlayer.playing
+            )) {
+            if (aa?.sendKey(mapped) == true) {
+                DiagLog.i(tag, "steering wheel raw=$key normalized=$mapped target=AA queued")
+                if (mapped == 87 || mapped == 88) catchUp(keyName(mapped))
+            } else {
+                DiagLog.w(tag, "steering wheel raw=$key normalized=$mapped target=AA skipped: input channel unavailable")
+            }
+            return
+        }
         when {
             st.aaOverlay -> {
-                val aa = AaHeadUnitService.current
                 when {
                     aa == null -> Unit
                     mapped in AA_KEYS -> {
-                        DiagLog.i(tag, "steering wheel key $key sent to Android Auto as ${keyName(mapped)}")
-                        aa.sendKey(mapped)
-                        if (mapped == 87 || mapped == 88) catchUp(keyName(mapped))
+                        if (aa.sendKey(mapped))
+                            DiagLog.i(tag, "steering wheel key $key queued to Android Auto as ${keyName(mapped)}")
+                        else DiagLog.w(tag, "steering wheel key $key skipped: Android Auto input channel unavailable")
                     }
                     else -> DiagLog.w(tag, "steering wheel key $key has no Android Auto action yet")
                 }
