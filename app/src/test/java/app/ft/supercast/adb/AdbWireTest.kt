@@ -17,6 +17,24 @@ class AdbWireTest {
         .generateKeyPair().public as RSAPublicKey
 
     @Test
+    fun aospAdbCommandWordsMatchLittleEndianWireBytes() {
+        // Exact wire-level values from Android ADB protocol, not self-consistency.
+        val cases = listOf(
+            AdbWire.CNXN to "CNXN",
+            AdbWire.AUTH to "AUTH",
+            AdbWire.OPEN to "OPEN",
+            AdbWire.OKAY to "OKAY",
+            AdbWire.CLSE to "CLSE",
+            AdbWire.WRTE to "WRTE"
+        )
+        for ((cmd, spelling) in cases) {
+            val bytes = java.nio.ByteBuffer.allocate(4)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(cmd).array()
+            assertArrayEquals(spelling.toByteArray(Charsets.US_ASCII), bytes)
+        }
+    }
+
+    @Test
     fun aMessageFramesIntoTwentyFourBytesPlusPayload() {
         val message = AdbMessage(AdbWire.OPEN, 7, 0, "shell:id\u0000".toByteArray())
         val framed = AdbWire.frame(message)

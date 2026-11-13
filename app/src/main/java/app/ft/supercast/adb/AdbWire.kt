@@ -14,12 +14,15 @@ data class AdbMessage(val command: Int, val arg0: Int, val arg1: Int, val payloa
 }
 
 object AdbWire {
+    // AOSP ADB packet command IDs are 32-bit little-endian, not the readable
+    // big-endian ASCII spelling of the command (AUTH, OPEN, OKAY, CLSE, WRTE).
+
     const val CNXN = 0x4E584E43
-    const val AUTH = 0x41555448
-    const val OPEN = 0x4F50454E
-    const val OKAY = 0x4F4B4159
-    const val CLSE = 0x434C5345
-    const val WRTE = 0x57525445
+    const val AUTH = 0x48545541
+    const val OPEN = 0x4E45504F
+    const val OKAY = 0x59414B4F
+    const val CLSE = 0x45534C43
+    const val WRTE = 0x45545257
 
     const val AUTH_TOKEN = 1
     const val AUTH_SIGNATURE = 2
