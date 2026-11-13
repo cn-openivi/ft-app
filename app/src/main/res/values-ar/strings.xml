@@ -633,4 +633,15 @@
     <string name="home_allow_microphone">Allow microphone for voice</string>
     <string name="home_allow_notifications">Allow notifications</string>
     <string name="wireless_pair_steps">In Android Settings: Developer options → Wireless debugging → Pair device with pairing code. Leave the code window open; FT will find the temporary port. Settings cannot open this pairing popup automatically on every phone.</string>
+    <!-- FT183 source strings; untranslated locales use explicit English fallback. -->
+    <string name="mirror_radios_off_title">Wireless connection is switched off on your phone</string>
+    <string name="mirror_wifi_off_body">Wi-Fi is off. Turn it on for wireless connection.</string>
+    <string name="mirror_bluetooth_off_body">Bluetooth is off. Turn it on to find the car.</string>
+    <string name="mirror_use_calibration_title">Use touch calibration</string>
+    <string name="mirror_use_calibration_about">Normally not needed. FT maps touches by image geometry. Enable only for offset touches.</string>
+    <string name="mirror_calibrate_headunit_title">Calibrate head unit screen</string>
+    <string name="mirror_dim_phone_title">Dim phone screen to minimum while mirroring</string>
+    <string name="mirror_dim_phone_about">Requires Modify system settings. Restores the original brightness after mirroring.</string>
+    <string name="mirror_landscape_title">Lock mirrored apps to landscape</string>
+    <string name="mirror_landscape_about">Optional. Phone launcher remains portrait. Requires Modify system settings and FT accessibility service.</string>
 </resources>

@@ -630,4 +630,15 @@
     <string name="home_allow_microphone">Разрешить микрофон для голоса</string>
     <string name="home_allow_notifications">Разрешить уведомления</string>
     <string name="wireless_pair_steps">В настройках Android откройте: Для разработчиков → Беспроводная отладка → Сопряжение с помощью кода. Оставьте окно открытым: временный порт FT найдёт сам. Сразу открыть окно кода на любом телефоне Android не позволяет.</string>
+    <!-- FT183 source strings; untranslated locales use explicit English fallback. -->
+    <string name="mirror_radios_off_title">На телефоне выключена беспроводная связь</string>
+    <string name="mirror_wifi_off_body">Wi-Fi выключен. Включите его для беспроводного подключения.</string>
+    <string name="mirror_bluetooth_off_body">Bluetooth выключен. Включите его для поиска автомобиля.</string>
+    <string name="mirror_use_calibration_title">Применять калибровку касаний</string>
+    <string name="mirror_use_calibration_about">Обычно не требуется: FT рассчитывает касания по геометрии изображения. Включайте при смещении.</string>
+    <string name="mirror_calibrate_headunit_title">Калибровка экрана головного устройства</string>
+    <string name="mirror_dim_phone_title">Максимально затемнять экран телефона</string>
+    <string name="mirror_dim_phone_about">Требуется разрешение «Изменение системных настроек». Исходная яркость восстановится.</string>
+    <string name="mirror_landscape_title">Зафиксировать приложения альбомно</string>
+    <string name="mirror_landscape_about">Необязательно. Рабочий стол вертикальный. Требуются изменение системных настроек и служба касаний.</string>
 </resources>

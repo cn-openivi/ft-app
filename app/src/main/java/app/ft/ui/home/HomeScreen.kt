@@ -104,7 +104,6 @@ import app.ft.carlife.CarLifeService
 import app.ft.core.CarConnection
 import app.ft.core.CarProtocol
 import app.ft.iccoa.IccoaService
-import app.ft.projection.CarTouchCalibration
 import app.ft.projection.CarControls
 import app.ft.ui.components.rememberCarProtocol
 import app.ft.ui.components.CarProtocolSetting
@@ -149,7 +148,6 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     var iccoaShowAll by rememberSaveable { mutableStateOf(false) }
     val iccoaState by IccoaService.state.collectAsState()
     val screenState by CarControls.state.collectAsState()
-    val touchCalibration by CarTouchCalibration.state.collectAsState()
     val car by CarLifeService.state.collectAsState()
     val disconnectHelp by AaHeadUnitService.disconnectHelpPending.collectAsState()
     var systemHelp by rememberSaveable { mutableStateOf(false) }
@@ -249,6 +247,23 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                 }
             }
         }
+        // Explicit radio states before connection; cable/USB mode does not need them.
+        if (!connected && (iccoa || !cable) && (!radios.wifi || (radios.nearby && !radios.bluetooth))) item {
+            Section(stringResource(R.string.mirror_radios_off_title)) {
+                if (!radios.wifi) {
+                    Text(stringResource(R.string.mirror_wifi_off_body))
+                    FilledTonalButton(onClick = { Fixes.open(context, Fixes.wifi()) }) {
+                        Text(stringResource(R.string.step_wifi_on))
+                    }
+                }
+                if (radios.nearby && !radios.bluetooth) {
+                    Text(stringResource(R.string.mirror_bluetooth_off_body))
+                    FilledTonalButton(onClick = { Fixes.open(context, Fixes.bluetooth(context)) }) {
+                        Text(stringResource(R.string.step_bluetooth_on))
+                    }
+                }
+            }
+        }
         // Auto-connect may be enabled while Android has revoked a permission.
         if (autoConnect && connectionMissing.isNotEmpty()) item {
             Section(stringResource(R.string.home_connection_permissions_title)) {
@@ -308,22 +323,6 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             }
         }
 
-        if (iccoa && projecting && !screenState.aaOverlay && !screenState.mirroring) item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.home_touch_calibration_title), style = MaterialTheme.typography.titleMedium)
-                    Text(if (touchCalibration.step > 0)
-                        stringResource(R.string.home_touch_calibration_step, touchCalibration.step)
-                        else stringResource(R.string.home_touch_calibration_body))
-                    FilledTonalButton(onClick = { IccoaService.calibrateTouch() }) {
-                        Text(stringResource(if (touchCalibration.step > 0) R.string.home_touch_restart else R.string.home_touch_start))
-                    }
-                    TextButton(onClick = { IccoaService.resetTouchCalibration() }) {
-                        Text(stringResource(R.string.home_touch_reset))
-                    }
-                }
-            }
-        }
 
         if (iccoa && screenState.mirroring &&
             screenState.mirrorPackage.contains("yandex", ignoreCase = true)) item {

@@ -260,6 +260,10 @@ class Prefs(context: Context) {
     var supercastToken: String get() = str("supercastToken", ""); set(v) = set("supercastToken", v)
     var supercastOn: Boolean get() = bool("supercastOn", false); set(v) = set("supercastOn", v)
     var supercastScreenOff: Boolean get() = bool("supercastScreenOff", true); set(v) = set("supercastScreenOff", v)
+    /** Geometry mapping is the default. Existing calibration is opt-in for unusual hardware. */
+    var mirrorUseCalibration: Boolean get() = bool("mirrorUseCalibration", false); set(v) = set("mirrorUseCalibration", v)
+    var mirrorDimPhone: Boolean get() = bool("mirrorDimPhone", true); set(v) = set("mirrorDimPhone", v)
+    var mirrorLandscapeApps: Boolean get() = bool("mirrorLandscapeApps", false); set(v) = set("mirrorLandscapeApps", v)
     var supercastApps: String get() = str("supercastApps", ""); set(v) = set("supercastApps", v)
     var supercastWay: Int get() = int("supercastWay", 0); set(v) = set("supercastWay", v)
     var supercastLegacyAdb: Boolean get() = bool("supercastLegacyAdb", false); set(v) = set("supercastLegacyAdb", v)

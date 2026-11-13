@@ -1,0 +1,18 @@
+# FT183 mirrored-phone usability experiment (source-only)
+
+Version: 3.9.69-xa60-ft183-mirror-preview, versionCode 183. Separate FT183 source branch `openivi/ft183-aa-floating-return-20261113` is based on FT182 source SHA `b7727791af7b07bb3ef50baa05fcb7c53ee01a56` including verified floating AA button. FTMP and canonical worker plans are NOT changed.
+
+## Connection first
+Home displays explicit warnings only when Wi-Fi is truly off or Bluetooth is off **and BLUETOOTH_CONNECT is permitted**, with buttons that open Android's Wi-Fi panel / Bluetooth enable prompt. Missing Bluetooth permission is not incorrectly labeled "Bluetooth turned off". No warnings for wired CarLife mode.
+
+## Mirroring and battery/screen
+The Android screen may be required for MediaProjection, and true panel-off support cannot be guaranteed across manufacturers and Android releases. Screen locking can terminate projection. Rather than a black overlay (which MediaProjection may capture, causing black video on HU), FT183 implements opt-in system-level brightness fallback: when mirroring starts and "Modify system settings" is allowed, store both previous brightness and auto-brightness mode synchronously and set manual brightness level 1. Restore both when mirror ends/AA takes over/disconnects and recover the snapshot on FT app process restart. If permission is denied, do not modify the system, log a bounded warning and offer a permission link under Settings > Car. This is **minimum panel brightness, not physically off**.
+
+## Optional app orientation, launcher portrait
+Settings > Car > Keep mirrored apps in landscape, **OFF by default**. Requires enabled FT accessibility and allowed Modify system settings; without both, no system change. When mirroring a physical phone display, save previous rotation settings, use 90-degree rotation for selected launched application, observe accessibility `TYPE_WINDOW_STATE_CHANGED` to restore portrait for the actual launcher and landscape for the selected application. Ignore unrelated windows and IMEs. Restore exact previous auto rotation and USER_ROTATION on mirror stop/disconnect/app recovery; no changes to app manifests for third-party apps. On Android 12+ OEM orientation overrides or unsupported device modes can ignore the request; needs field verification. CarLife isolated virtual display runs independently and does not need physical rotation.
+
+## Calibration is optional
+Geometry mapping in ICCOA is default (no calibration) for both FT compositor and phone mirror. Saved CarTouchCalibration / MirrorTouchCalibration corrections are applied only if Settings > Car > Use touch calibration is explicitly enabled. Existing four-target calibration and reset remain available in settings when enabled; no longer block or distract Home on initial connection. This is a UI/touch policy only; **no ICCOA/CarLife/AA wire protocol changes**. A real device could still have systematic coordinate skew; optional calibration remains the fallback.
+
+## Verification
+Source-only JVM tests cover app vs home rotation policy; existing touch and geometry tests stay active. Compilation and regression suite must pass before an APK can be considered. Validate on real phone/HU: minimum display brightness, MediaProjection picture remains visible on the car, restored adaptive brightness after stop and crash-restart; orientation app/launcher toggling and no restore leaks; touchscreen accuracy with calibration off then optionally on; Bluetooth/Wi-Fi warnings with permissions and USB mode. Fields are all NOT_TESTED until actual evidence. Transfer only independently verified mechanisms into FTMP by owner command and canonical project procedures.

@@ -35,6 +35,8 @@ import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
 import app.ft.core.CarBluetoothReconnect
 import app.ft.core.DiagLog
+import app.ft.core.MirrorPanelSaver
+import app.ft.core.MirrorOrientationLock
 import app.ft.core.CarProtocol
 import app.ft.supercast.SuperCast
 import app.ft.core.DiagSnapshot
@@ -2043,6 +2045,12 @@ class CarLifeService : Service() {
         if (ticket != launchTicket.get()) return
         aaGestureViewport.reset() // AA -> mirror can happen between DOWN and MOVE.
         _state.update { it.copy(aaOverlay = false, mirroring = true, mirrorPackage = pkg) }
+        MirrorPanelSaver.begin(this, "carlife")
+        if (!mirror.ownDisplay) {
+            val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val launcher = packageManager.resolveActivity(home, 0)?.activityInfo?.packageName
+            MirrorOrientationLock.begin(this, "carlife", pkg, pkg == launcher)
+        } else MirrorOrientationLock.end(this, "carlife")
         watchTurning()
         mirrorJob?.cancel()
         mirrorJob = scope.launch {
@@ -2089,6 +2097,8 @@ class CarLifeService : Service() {
                             mirrorJob?.cancel()
                             mirrorJob = null
                             mirror.close()
+                            MirrorPanelSaver.end(this@CarLifeService, "carlife")
+                            MirrorOrientationLock.end(this@CarLifeService, "carlife")
                             _state.update { it.copy(mirroring = false, mirrorPackage = "") }
                         }
                     }
@@ -2237,6 +2247,8 @@ class CarLifeService : Service() {
     }
 
     private fun mirrorStop() {
+        MirrorPanelSaver.end(this, "carlife")
+        MirrorOrientationLock.end(this, "carlife")
         launchTicket.incrementAndGet()
         mirrorJob?.cancel()
         mirrorJob = null
@@ -2285,6 +2297,8 @@ class CarLifeService : Service() {
     }
 
     private fun teardown() {
+        MirrorPanelSaver.end(this, "carlife")
+        MirrorOrientationLock.end(this, "carlife")
         if (AaHeadUnitService.running) runCatching { AaHeadUnitService.stop(this) }
         if (SuperCast.ready.value) SuperCast.later {
             SuperCast.phoneScreen(true)

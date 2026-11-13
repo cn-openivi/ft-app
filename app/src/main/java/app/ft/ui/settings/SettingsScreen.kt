@@ -58,6 +58,7 @@ import android.app.AppOpsManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.DisposableEffect
@@ -87,6 +88,7 @@ import app.ft.ui.components.BluetoothCallsSetting
 import app.ft.ui.components.IccoaBluetoothIdentityLinkSetting
 import app.ft.iccoa.IccoaService
 import app.ft.projection.MirrorTouchCalibration
+import app.ft.projection.CarTouchCalibration
 import app.ft.projection.CarControls
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoPlan
@@ -269,6 +271,27 @@ private fun PageContent(page: SettingsPage) {
         }
         SettingsPage.CAR -> {
             val protocol = CarProtocolSetting()
+            val ctx = LocalContext.current
+            var dimEnabled by remember { mutableStateOf(p.mirrorDimPhone) }
+            var landscapeEnabled by remember { mutableStateOf(p.mirrorLandscapeApps) }
+            BoolSetting(stringResource(R.string.mirror_dim_phone_title), dimEnabled,
+                detail = stringResource(R.string.mirror_dim_phone_about)) {
+                dimEnabled = it
+                p.mirrorDimPhone = it
+            }
+            BoolSetting(stringResource(R.string.mirror_landscape_title), landscapeEnabled,
+                detail = stringResource(R.string.mirror_landscape_about)) {
+                landscapeEnabled = it
+                p.mirrorLandscapeApps = it
+            }
+            if ((dimEnabled || landscapeEnabled) && !Settings.System.canWrite(ctx)) {
+                FilledTonalButton(onClick = {
+                    runCatching {
+                        ctx.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                            Uri.parse("package:${ctx.packageName}")))
+                    }
+                }) { Text(stringResource(R.string.action_allow)) }
+            }
             BoolSetting(stringResource(R.string.car_bt_reconnect), p.carBtReconnect,
                 detail = stringResource(R.string.car_bt_reconnect_about)) { p.carBtReconnect = it }
             if (protocol == CarProtocol.ICCOA) {
@@ -276,19 +299,39 @@ private fun PageContent(page: SettingsPage) {
                 BluetoothCallsSetting()
                 IccoaBluetoothIdentityLinkSetting()
                 val iccoa by IccoaService.state.collectAsStateWithLifecycle()
-                val mirrorCalibration by MirrorTouchCalibration.state.collectAsStateWithLifecycle()
-                Text(stringResource(R.string.iccoa_mirror_calibration_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.iccoa_mirror_calibration_about),
-                    style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { IccoaService.calibrateMirrorTouch() },
-                        enabled = iccoa.connected) {
-                        Text(if (mirrorCalibration.step in 1..4)
-                            stringResource(R.string.iccoa_mirror_calibration_step, mirrorCalibration.step)
-                            else stringResource(R.string.iccoa_mirror_calibration_start))
+                var calibrationEnabled by remember { mutableStateOf(p.mirrorUseCalibration) }
+                BoolSetting(stringResource(R.string.mirror_use_calibration_title), calibrationEnabled,
+                    detail = stringResource(R.string.mirror_use_calibration_about)) {
+                    calibrationEnabled = it
+                    p.mirrorUseCalibration = it
+                }
+                if (calibrationEnabled) {
+                    val carCalibration by CarTouchCalibration.state.collectAsStateWithLifecycle()
+                    Text(stringResource(R.string.mirror_calibrate_headunit_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.mirror_use_calibration_about), style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { IccoaService.calibrateTouch() },
+                            enabled = iccoa.connected && !CarControls.state.value.aaOverlay) {
+                            Text(if (carCalibration.step in 1..4)
+                                stringResource(R.string.home_touch_calibration_step, carCalibration.step)
+                                else stringResource(R.string.home_touch_start))
+                        }
+                        OutlinedButton(onClick = { IccoaService.resetTouchCalibration() },
+                            enabled = iccoa.connected) { Text(stringResource(R.string.home_touch_reset)) }
                     }
-                    OutlinedButton(onClick = { IccoaService.resetMirrorTouchCalibration() },
-                        enabled = iccoa.connected) { Text(stringResource(R.string.home_touch_reset)) }
+                    val mirrorCalibration by MirrorTouchCalibration.state.collectAsStateWithLifecycle()
+                    Text(stringResource(R.string.iccoa_mirror_calibration_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.iccoa_mirror_calibration_about), style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { IccoaService.calibrateMirrorTouch() },
+                            enabled = iccoa.connected) {
+                            Text(if (mirrorCalibration.step in 1..4)
+                                stringResource(R.string.iccoa_mirror_calibration_step, mirrorCalibration.step)
+                                else stringResource(R.string.iccoa_mirror_calibration_start))
+                        }
+                        OutlinedButton(onClick = { IccoaService.resetMirrorTouchCalibration() },
+                            enabled = iccoa.connected) { Text(stringResource(R.string.home_touch_reset)) }
+                    }
                 }
                 IccoaMicrophoneGainSetting(p.iccoaMicGain) { p.iccoaMicGain = it }
                 BoolSetting(

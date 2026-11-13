@@ -44,11 +44,15 @@ class FTTouchService : AccessibilityService() {
 
     private fun gone() {
         if (instance !== this) return
+        app.ft.core.MirrorOrientationLock.stopAll(this)
         instance = null
         _connected.value = false
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        app.ft.core.MirrorOrientationLock.foreground(
+            this, event?.eventType ?: 0, event?.packageName?.toString()
+        )
         if (app.ft.supercast.adb.WirelessPairingService.currentPort() == null) return
         WirelessPairingAutoCode.onEvent(event, rootInActiveWindow, this)
     }

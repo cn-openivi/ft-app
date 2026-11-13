@@ -36,6 +36,8 @@ import app.ft.projection.MirrorTouchMap
 import app.ft.projection.MirrorTouchBounds
 import app.ft.projection.MirrorTouchViewport
 import app.ft.projection.MirrorTouchCalibration
+import app.ft.core.MirrorPanelSaver
+import app.ft.core.MirrorOrientationLock
 import app.ft.projection.MirrorTouchSequence
 import app.ft.projection.PhoneMirror
 import app.ft.projection.VideoPlan
@@ -298,7 +300,7 @@ class IccoaProjection(
         val isFtUi = !state.value.aaOverlay && !state.value.mirroring
         if (isFtUi && CarTouchCalibration.consume(context, raw.action, initialX, y)) return@onMain
         // Apply the stored HU X/Y calibration before routing FT, mirror and AA touch.
-        val applyCalibration = true
+        val applyCalibration = app.prefs.mirrorUseCalibration
         val (mappedX, mappedY) = if (applyCalibration)
             CarTouchCalibration.correct(context, initialX, y, display.width, display.height) else initialX to y
         val (mappedX2, mappedY2) = if (applyCalibration && second.first >= 0 && second.second >= 0)
@@ -381,8 +383,9 @@ class IccoaProjection(
                 } else if (t.action == CarTouch.DOWN && !bounds.inside(mappedX, mappedY)) {
                     null
                 } else {
-                    val corrected = MirrorTouchCalibration.map(context, bounds, mappedX, mappedY,
-                        display.width, display.height)
+                    val corrected = if (app.prefs.mirrorUseCalibration)
+                        MirrorTouchCalibration.map(context, bounds, mappedX, mappedY, display.width, display.height)
+                    else bounds.normalized(mappedX, mappedY)
                     MirrorTouchMap.normalizedPhonePoint(corrected.first, corrected.second,
                         viewport.phoneWidth, viewport.phoneHeight)
                 }
@@ -543,6 +546,8 @@ class IccoaProjection(
         runCatching { context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)) }
             .onFailure { DiagLog.e("ICCOA", "could not launch $pkg", it); return }
         mutableState.update { it.copy(mirroring = true, mirrorPackage = pkg, waitingForShare = false, shareForSound = false) }
+        MirrorPanelSaver.begin(context, "iccoa")
+        MirrorOrientationLock.begin(context, "iccoa", pkg, intent.hasCategory(Intent.CATEGORY_HOME))
         mirrorJob?.cancel()
         mirrorJob = scope.launch {
             MirrorSink.surface.collect { surface ->
@@ -562,6 +567,8 @@ class IccoaProjection(
 
     override fun stopMirror() = onMain { hideMirror() }
     private fun hideMirror() {
+        MirrorPanelSaver.end(context, "iccoa")
+        MirrorOrientationLock.end(context, "iccoa")
         MirrorTouchCalibration.cancel()
         mirrorTouches.reset()
         FTTouchService.instance?.cancelStroke()

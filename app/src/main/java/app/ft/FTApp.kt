@@ -29,6 +29,8 @@ class FTApp : Application() {
         super.onCreate()
         instance = this
         prefs = Prefs(this)
+        app.ft.core.MirrorPanelSaver.recover(this)
+        app.ft.core.MirrorOrientationLock.recover(this)
         Lang.init(prefs)
         Looks.init(prefs)
         app.ft.core.PhoneStyle.init(prefs)
