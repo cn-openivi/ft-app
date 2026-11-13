@@ -16,18 +16,18 @@ internal class WirelessPairingWindowCapture(
     private var settingsPackage: String? = null
     private var expiresAt: Long = 0
 
-    fun arm(resolvedSettingsPackage: String, durationMs: Long = 90_000L) {
+    @Synchronized fun arm(resolvedSettingsPackage: String, durationMs: Long = 90_000L) {
         require(resolvedSettingsPackage.isNotBlank())
         settingsPackage = resolvedSettingsPackage
         expiresAt = monotonicMs() + durationMs.coerceIn(1_000L, 120_000L)
     }
 
-    fun cancel() {
+    @Synchronized fun cancel() {
         settingsPackage = null
         expiresAt = 0
     }
 
-    fun codeForOpenedSystemDialog(
+    @Synchronized fun codeForOpenedSystemDialog(
         activeWindowPackage: String?,
         visibleNodeTexts: List<String>,
         mdnsPairingPort: Int?

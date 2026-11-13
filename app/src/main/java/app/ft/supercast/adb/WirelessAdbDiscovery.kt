@@ -3,7 +3,6 @@ package app.ft.supercast.adb
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import android.os.Build
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -22,8 +21,8 @@ internal class WirelessAdbDiscovery(
     private val serviceType: String
 ) : NsdManager.DiscoveryListener {
     companion object {
-        const val PAIRING = "_adb-tls-pairing._tcp."
-        const val CONNECT = "_adb-tls-connect._tcp."
+        const val PAIRING = "_adb-tls-pairing._tcp"
+        const val CONNECT = "_adb-tls-connect._tcp"
 
         suspend fun findConnect(context: Context, timeoutMs: Long = 5_000): Int? {
             val scanner = WirelessAdbDiscovery(context.applicationContext, CONNECT)
@@ -68,8 +67,7 @@ internal class WirelessAdbDiscovery(
     override fun onServiceFound(info: NsdServiceInfo) {
         if (!started) return
         // resolveService supports pre-API34 implementations without a custom executor.
-        @Suppress("DEPRECATION")
-        manager.resolveService(info, object : NsdManager.ResolveListener {
+            manager.resolveService(info, object : NsdManager.ResolveListener {
             override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) = Unit
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                 if (!started || serviceInfo.port !in 1..65535) return

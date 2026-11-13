@@ -5,8 +5,8 @@ import org.junit.Test
 
 class PairingStateTest {
     @Test fun sourcesAreDistinctAndContainNoUserConfigurablePort() {
-        assertEquals("_adb-tls-pairing._tcp.", WirelessAdbDiscovery.PAIRING)
-        assertEquals("_adb-tls-connect._tcp.", WirelessAdbDiscovery.CONNECT)
+        assertEquals("_adb-tls-pairing._tcp", WirelessAdbDiscovery.PAIRING)
+        assertEquals("_adb-tls-connect._tcp", WirelessAdbDiscovery.CONNECT)
     }
 
     @Test fun pairingCodeRequiresSixDigits() {
