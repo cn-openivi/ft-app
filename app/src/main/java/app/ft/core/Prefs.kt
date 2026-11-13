@@ -76,6 +76,21 @@ class Prefs(context: Context) {
         }
     var aaControlsLeft: Boolean get() = bool("aaControlsLeft", true); set(v) = set("aaControlsLeft", v)
     var aaCompactReturnButton: Boolean get() = bool("aaCompactReturnButton", false); set(v) = set("aaCompactReturnButton", v)
+    /** AA-only, normalized across head-unit resolutions and rotation. Absence means original selected corner. */
+    val aaFloatingReturnPosition: app.ft.ui.car.AaFloatingReturnPlacement.Point?
+        get() {
+            if (!sp.contains("aaFloatingReturnX") || !sp.contains("aaFloatingReturnY")) return null
+            val x = flt("aaFloatingReturnX", Float.NaN)
+            val y = flt("aaFloatingReturnY", Float.NaN)
+            if (!x.isFinite() || !y.isFinite()) return null
+            return app.ft.ui.car.AaFloatingReturnPlacement.Point(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+        }
+
+    fun saveAaFloatingReturnPosition(position: app.ft.ui.car.AaFloatingReturnPlacement.Point) {
+        if (!position.x.isFinite() || !position.y.isFinite()) return
+        sp.edit().putFloat("aaFloatingReturnX", position.x.coerceIn(0f, 1f))
+            .putFloat("aaFloatingReturnY", position.y.coerceIn(0f, 1f)).apply()
+    }
     var aaClusterNavigation: Boolean get() = bool("aaClusterNavigation", true); set(v) = set("aaClusterNavigation", v)
     var aaMatchCar: Boolean get() = bool("aaMatchCar", true); set(v) = set("aaMatchCar", v)
     // Real OEM GEAR is always available in ICCOA; no separate diagnostic toggle.

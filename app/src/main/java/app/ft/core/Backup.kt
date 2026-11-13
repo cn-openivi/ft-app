@@ -22,7 +22,7 @@ object Backup {
         "carBackground", "carAccent", "carTiles", "carClock24", "carShowLink", "carSongInfo",
         "carInfoRight", "carColumns", "carShowClock", "carShowMusic", "carShowAa", "carShowCarHome",
         "carWidgets", "weatherFahrenheit", "speedMph", "carDayNight", "carNightBackground", "carNightAccent",
-        "aaCorner", "aaCompactReturnButton"
+        "aaCorner", "aaCompactReturnButton", "aaFloatingReturnX", "aaFloatingReturnY"
     )
 
     fun everything(prefs: Prefs): String = write(safeForExport(prefs.all))

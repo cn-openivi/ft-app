@@ -24,6 +24,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -78,6 +79,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.onClick
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -380,11 +389,19 @@ private fun CarRoot(style: CarStyle) {
             if ((state.aaOverlay || state.mirroring || view != CarView.LAUNCHER) && !castFullNow && (!state.aaOverlay || style.aaShowReturnButton)) {
                 // FT163 field log: top-corner taps were intercepted by FT's return pill
                 // rather than reaching small close buttons inside Android Auto.
-                CornerPill(CarOverlayPlacement.corner(style.corner, aa = state.aaOverlay),
-                    compact = state.aaOverlay && style.aaCompactReturnButton) {
+                val goHome = {
                     view = CarView.LAUNCHER
                     nowPlaying = false
                     CarControls.goHome()
+                }
+                if (state.aaOverlay) {
+                    AaFloatingReturnButton(
+                        corner = CarOverlayPlacement.corner(style.corner, aa = true),
+                        compact = style.aaCompactReturnButton,
+                        onClick = goHome
+                    )
+                } else {
+                    CornerPill(CarOverlayPlacement.corner(style.corner, aa = false), onClick = goHome)
                 }
             }
         }
@@ -418,6 +435,93 @@ private fun ShareWait(pkg: String, forSound: Boolean) {
                 color = Color.White.copy(alpha = 0.7f)
             )
             Button(onClick = { CarControls.cancelShareWait() }) { Text(stringResource(if (forSound) R.string.action_not_now else R.string.action_cancel)) }
+        }
+    }
+}
+
+@Composable
+private fun AaFloatingReturnButton(corner: Int, compact: Boolean, onClick: () -> Unit) {
+    val prefs = remember { FTApp.instance.prefs }
+    var normalized by remember(corner) {
+        mutableStateOf(prefs.aaFloatingReturnPosition ?: AaFloatingReturnPlacement.fromCorner(corner))
+    }
+    val description = stringResource(R.string.aa_return_to_ft)
+    val density = LocalDensity.current
+    val buttonWidth = if (compact) 48.dp else 68.dp
+    val buttonHeight = if (compact) 48.dp else CAR_ROW
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val widthPx = with(density) { buttonWidth.roundToPx() }
+        val heightPx = with(density) { buttonHeight.roundToPx() }
+        val edgePx = with(density) { CAR_EDGE.roundToPx() }
+        val travelX = (constraints.maxWidth - widthPx - 2 * edgePx).coerceAtLeast(0)
+        val travelY = (constraints.maxHeight - heightPx - 2 * edgePx).coerceAtLeast(0)
+        val left = AaFloatingReturnPlacement.pixel(normalized.x, constraints.maxWidth, widthPx, edgePx)
+        val top = AaFloatingReturnPlacement.pixel(normalized.y, constraints.maxHeight, heightPx, edgePx)
+        val shape = if (compact) CircleShape else RoundedCornerShape(50)
+        Surface(
+            shape = shape,
+            color = if (compact) Color(0xFF25272A) else MaterialTheme.colorScheme.primary.copy(alpha = 0.92f),
+            contentColor = if (compact) Color(0xFFF1F3F4) else MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier
+                .offset { IntOffset(left, top) }
+                .size(width = buttonWidth, height = buttonHeight)
+                .touchZone("aa-floating-return", slopPx = 0)
+                .pointerInput(travelX, travelY) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var movedTooSoon = false
+                        // Unlike Android's short system long-click, require an intentional four-second hold.
+                        val earlyRelease = withTimeoutOrNull(AaFloatingReturnPlacement.HOLD_MS) {
+                            while (true) {
+                                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                                if (change == null || !change.pressed) return@withTimeoutOrNull true
+                                if ((change.position - down.position).getDistance() > viewConfiguration.touchSlop) {
+                                    movedTooSoon = true
+                                    return@withTimeoutOrNull true
+                                }
+                            }
+                            @Suppress("UNREACHABLE_CODE")
+                            false
+                        }
+                        if (earlyRelease != null) {
+                            if (!movedTooSoon) onClick()
+                        } else {
+                            // A hold alone must never activate 'Return to FT'.
+                            var dragged = false
+                            while (true) {
+                                val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                                if (change == null || !change.pressed) break
+                                val delta = change.positionChange()
+                                if (delta.x != 0f || delta.y != 0f) {
+                                    normalized = AaFloatingReturnPlacement.dragBy(
+                                        normalized, delta.x, delta.y, travelX, travelY
+                                    )
+                                    dragged = true
+                                    change.consume()
+                                }
+                            }
+                            if (dragged) prefs.saveAaFloatingReturnPosition(normalized)
+                        }
+                    }
+                }
+                .semantics {
+                    contentDescription = description
+                    role = Role.Button
+                    onClick { onClick(); true }
+                }
+        ) {
+            if (compact) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("FT", fontSize = 16.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clearAndSetSemantics {})
+                }
+            } else {
+                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.KeyboardArrowLeft, contentDescription = null)
+                    Text("FT", fontWeight = FontWeight.Black)
+                }
+            }
         }
     }
 }
