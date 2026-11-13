@@ -503,4 +503,15 @@
     <string name="picture_iccoa_live">ICCOA video stream: %1$d × %2$d, %3$d fps.</string>
     <string name="picture_iccoa_disconnected">ICCOA video is not streaming yet.</string>
     <string name="picture_iccoa_codec">H.264, target bitrate 8 Mbps, up to 1920 × 1080 at 30 fps in the current FT implementation. Encoder power saving is shared by both protocols.</string>
+    <string name="picture_iccoa_actual_normal">Actual video: Normal</string>
+    <string name="picture_iccoa_actual_direct">Actual video: H.264 passthrough</string>
+    <string name="picture_iccoa_direct_pending">Direct mode selected; waiting for a compatible AA video stream</string>
+    <string name="picture_iccoa_direct_fallback">Direct video fallback: %1$s</string>
+    <string name="picture_video_power_current">Output pacing: %1$d fps (%2$s)</string>
+    <string name="picture_video_power_bypassed">Smart FPS pacing is inactive during H.264 passthrough</string>
+    <string name="picture_video_power_mode_off">off</string>
+    <string name="picture_video_power_mode_active">active</string>
+    <string name="picture_video_power_mode_cruise">cruise</string>
+    <string name="picture_video_power_mode_static">static</string>
+    <string name="picture_video_power_mode_thermal">thermal</string>
 </resources>
