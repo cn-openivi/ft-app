@@ -37,7 +37,7 @@ jobs:
           test "$GITHUB_REF_NAME" = 'openivi/ft183-signed-release-20261113'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor "$SOURCE_PIN" "$GITHUB_SHA"
-          diff -u <(printf '%s\n' '.github/workflows/ft183-owner-signed-release.yml' 'docs/releases/FT183.ru.md') <(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA" | sort)
+          diff -u <(printf '%s\n' '.github/workflows/ft183-owner-signed-release.yml' 'docs/releases/FT183.ru.md' | sort) <(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA" | sort)
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 183' app/build.gradle.kts
           grep -Fq 'versionName = "3.9.69-xa60-ft183-mirror-preview"' app/build.gradle.kts
