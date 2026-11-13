@@ -234,16 +234,35 @@ internal object IccoaDirectAvc {
     }
 }
 
-/** A/V share the Android host's monotonic time domain; never pass opaque AA timestamps
- * unchanged into ICCOA's System.nanoTime-based audio queue until their units are proven.
+/**
+ * Align plausible AA microsecond frame deltas with ICCOA's monotonic audio clock.
+ * Unknown AA timestamp units, resets, discontinuities and implausible deltas use
+ * local presentation time; opaque absolute AA timestamps are never forwarded.
  */
 internal class IccoaDirectClock(private val nowUs: () -> Long = { System.nanoTime() / 1000 }) {
     private var previous = Long.MIN_VALUE
-    fun next(): Long {
-        val sample = nowUs()
-        val value = if (previous == Long.MIN_VALUE) sample else maxOf(sample, previous + 1)
-        previous = value
-        return value
+    private var previousInput = Long.MIN_VALUE
+
+    fun next(): Long = nextWithInput(null)
+
+    fun next(inputPtsUs: Long): Long = nextWithInput(inputPtsUs)
+
+    private fun nextWithInput(input: Long?): Long {
+        val now = nowUs()
+        val delta = if (input != null && previousInput != Long.MIN_VALUE &&
+            input > previousInput) input - previousInput else -1L
+        val candidate = if (previous != Long.MIN_VALUE && delta in 10_000L..200_000L)
+            previous + delta else now
+        // Bound jitter correction to keep output video near host-clocked AAC.
+        val aligned = candidate.coerceIn(now - 100_000L, now + 100_000L)
+        val result = if (previous == Long.MIN_VALUE) now else maxOf(aligned, previous + 1L)
+        previous = result
+        previousInput = input ?: Long.MIN_VALUE
+        return result
     }
-    fun reset() { previous = Long.MIN_VALUE }
+
+    fun reset() {
+        previous = Long.MIN_VALUE
+        previousInput = Long.MIN_VALUE
+    }
 }
