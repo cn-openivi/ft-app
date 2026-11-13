@@ -587,4 +587,44 @@
     <string name="iccoa_status_channels_wait">ICCOA authenticated. Waiting for car channels…</string>
     <string name="home_connection_permissions_title">Connection permissions required</string>
     <string name="home_connection_permissions_body">Automatic connection is paused because Android needs permission for Bluetooth or nearby networking. Allow them here to continue connecting.</string>
+    <string name="iccoa_err_bt_timeout">ICCOA Bluetooth connection timed out</string>
+    <string name="iccoa_err_bt_connect">Bluetooth connection failed (%1$s)</string>
+    <string name="iccoa_err_quick_queue">ICCOA Quick: Bluetooth queue rejected the request</string>
+    <string name="iccoa_err_quick_pin">Quick authorization not confirmed. Enter the current car PIN</string>
+    <string name="iccoa_err_quick_bt">ICCOA Quick Bluetooth error (%1$s)</string>
+    <string name="iccoa_err_cached_queue">Could not queue stored code over Bluetooth</string>
+    <string name="iccoa_err_send_pin">Could not send code. Enter the current car PIN</string>
+    <string name="iccoa_err_pin_timeout">Car did not respond in time. Enter the current PIN</string>
+    <string name="iccoa_err_pin_send">Error sending ICCOA code (%1$s)</string>
+    <string name="iccoa_err_category_closed">ICCOA channel %1$d closed (%2$s)</string>
+    <string name="iccoa_err_control_queue">ICCOA control queue is full</string>
+    <string name="iccoa_err_bt_closed">ICCOA Bluetooth disconnected (status=%1$d)</string>
+    <string name="iccoa_err_no_channel">Device did not provide ICCOA channel (%1$s)</string>
+    <string name="iccoa_err_quick_bt_status">ICCOA Quick Bluetooth error (status=%1$d)</string>
+    <string name="iccoa_err_cached_bt_status">Could not write stored code over Bluetooth (status=%1$d)</string>
+    <string name="iccoa_err_code_bt_status">ICCOA code write failed (status=%1$d). Enter current PIN</string>
+    <string name="iccoa_err_discovery_request">Could not request ICCOA services</string>
+    <string name="iccoa_err_discovery">Bluetooth service discovery failed (%1$s)</string>
+    <string name="iccoa_err_p2p_unsupported">Car requested Wi-Fi Direct. This ICCOA version supports access-point mode only</string>
+    <string name="iccoa_err_wifi_config">Invalid ICCOA Wi-Fi parameters (%1$s)</string>
+    <string name="iccoa_err_wifi_cancel">Connection to car Wi-Fi was canceled or timed out</string>
+    <string name="iccoa_err_wifi_lost">Connection to car Wi-Fi lost</string>
+    <string name="iccoa_err_wifi_denied">Android denied connection to car Wi-Fi</string>
+    <string name="iccoa_err_wifi_request">Could not request car Wi-Fi (%1$s)</string>
+    <string name="iccoa_err_gateway">Car Wi-Fi connected but no verified gateway address was found</string>
+    <string name="iccoa_err_no_ipv4">No IPv4 address received from car Wi-Fi</string>
+    <string name="iccoa_err_auth_method">No verified ICCOA authentication method available</string>
+    <string name="iccoa_err_no_control">Car did not open the ICCOA control channel</string>
+    <string name="iccoa_err_pin_mismatch">Car response does not match the code. Start a new pairing with the current code</string>
+    <string name="iccoa_err_new_code">Car requested a new connection with a code</string>
+    <string name="iccoa_err_confirm_car">Car requested confirmation on its screen</string>
+    <string name="iccoa_err_internal_car">Car reported an internal error</string>
+    <string name="iccoa_err_mode_rejected">Car rejected the connection mode</string>
+    <string name="iccoa_err_connection_rejected">Car rejected connection</string>
+    <string name="iccoa_err_report">Send a report from FT</string>
+    <string name="iccoa_err_auth_stage">ICCOA failed at %1$s (%2$s). %3$s</string>
+    <string name="iccoa_err_lane_closed">ICCOA channel %1$d closed (%2$s)</string>
+    <string name="iccoa_err_remote_disconnected">Car disconnected ICCOA</string>
+    <string name="iccoa_err_write_timeout">ICCOA data send timeout</string>
+    <string name="iccoa_err_transport">ICCOA connection error (%1$s)</string>
 </resources>

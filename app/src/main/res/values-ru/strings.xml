@@ -585,4 +585,44 @@
     <string name="iccoa_status_channels_wait">ICCOA: аутентификация завершена, ожидание каналов автомобиля…</string>
     <string name="home_connection_permissions_title">Нужны разрешения для подключения</string>
     <string name="home_connection_permissions_body">Автоподключение приостановлено: Android не предоставил доступ к Bluetooth или ближайшим устройствам. Разрешите доступ, чтобы продолжить.</string>
+    <string name="iccoa_err_bt_timeout">Тайм-аут подключения ICCOA по Bluetooth</string>
+    <string name="iccoa_err_bt_connect">Не удалось подключиться по Bluetooth (%1$s)</string>
+    <string name="iccoa_err_quick_queue">ICCOA Quick: ошибка очереди Bluetooth</string>
+    <string name="iccoa_err_quick_pin">Quick не подтверждён. Введите текущий PIN автомобиля</string>
+    <string name="iccoa_err_quick_bt">ICCOA Quick: ошибка Bluetooth (%1$s)</string>
+    <string name="iccoa_err_cached_queue">Не удалось поставить сохранённый код в очередь Bluetooth</string>
+    <string name="iccoa_err_send_pin">Не удалось отправить код. Введите текущий PIN</string>
+    <string name="iccoa_err_pin_timeout">Автомобиль не ответил вовремя. Введите текущий PIN</string>
+    <string name="iccoa_err_pin_send">Ошибка отправки кода ICCOA (%1$s)</string>
+    <string name="iccoa_err_category_closed">Канал ICCOA %1$d закрыт (%2$s)</string>
+    <string name="iccoa_err_control_queue">Переполнена очередь управления ICCOA</string>
+    <string name="iccoa_err_bt_closed">Соединение Bluetooth ICCOA закрыто (status=%1$d)</string>
+    <string name="iccoa_err_no_channel">Устройство не предоставило канал ICCOA (%1$s)</string>
+    <string name="iccoa_err_quick_bt_status">ICCOA Quick: ошибка Bluetooth (status=%1$d)</string>
+    <string name="iccoa_err_cached_bt_status">Ошибка записи сохранённого кода по Bluetooth (status=%1$d)</string>
+    <string name="iccoa_err_code_bt_status">Ошибка записи кода ICCOA (status=%1$d). Введите текущий PIN</string>
+    <string name="iccoa_err_discovery_request">Не удалось запросить службы ICCOA</string>
+    <string name="iccoa_err_discovery">Ошибка служб Bluetooth (%1$s)</string>
+    <string name="iccoa_err_p2p_unsupported">Автомобиль запросил Wi-Fi Direct. Эта версия ICCOA поддерживает только режим точки доступа (AP)</string>
+    <string name="iccoa_err_wifi_config">Некорректные параметры Wi-Fi ICCOA (%1$s)</string>
+    <string name="iccoa_err_wifi_cancel">Подключение к Wi-Fi автомобиля отменено или истёк тайм-аут</string>
+    <string name="iccoa_err_wifi_lost">Соединение с Wi-Fi автомобиля потеряно</string>
+    <string name="iccoa_err_wifi_denied">Android запретил подключение к Wi-Fi автомобиля</string>
+    <string name="iccoa_err_wifi_request">Не удалось запросить Wi-Fi автомобиля (%1$s)</string>
+    <string name="iccoa_err_gateway">Wi-Fi автомобиля подключён, но не получен проверенный адрес шлюза</string>
+    <string name="iccoa_err_no_ipv4">Не получен IPv4-адрес Wi-Fi автомобиля</string>
+    <string name="iccoa_err_auth_method">Нет подтверждённого способа авторизации ICCOA</string>
+    <string name="iccoa_err_no_control">Автомобиль не открыл канал управления ICCOA</string>
+    <string name="iccoa_err_pin_mismatch">Код и ответ автомобиля не совпали. Начните новое подключение с текущим кодом</string>
+    <string name="iccoa_err_new_code">Автомобиль запросил новое подключение с кодом</string>
+    <string name="iccoa_err_confirm_car">Автомобиль запросил подтверждение на своём экране</string>
+    <string name="iccoa_err_internal_car">Автомобиль сообщил о внутренней ошибке</string>
+    <string name="iccoa_err_mode_rejected">Автомобиль отклонил режим подключения</string>
+    <string name="iccoa_err_connection_rejected">Автомобиль отклонил подключение</string>
+    <string name="iccoa_err_report">Отправьте отчёт из FT</string>
+    <string name="iccoa_err_auth_stage">Сбой ICCOA на этапе %1$s (%2$s). %3$s</string>
+    <string name="iccoa_err_lane_closed">Канал ICCOA %1$d закрыт (%2$s)</string>
+    <string name="iccoa_err_remote_disconnected">Автомобиль завершил соединение ICCOA</string>
+    <string name="iccoa_err_write_timeout">Тайм-аут отправки данных ICCOA</string>
+    <string name="iccoa_err_transport">Ошибка подключения ICCOA (%1$s)</string>
 </resources>

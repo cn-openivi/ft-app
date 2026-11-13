@@ -17,8 +17,10 @@ class FT182SourceRegressionContractTest {
         val main = src("app/src/main/java/app/ft/MainActivity.kt")
         assertFalse(main.contains("requestRuntimePermissions()"))
         val home = src("app/src/main/java/app/ft/ui/home/HomeScreen.kt")
-        assertTrue(home.contains("missingConnectionPermissions(context)"))
+        assertTrue(home.contains("ConnectionPermissions.missing(context)"))
         assertTrue(home.contains("connectionPermissionLauncher.launch(missing)"))
+        val gate = src("app/src/main/java/app/ft/core/CarConnection.kt")
+        assertTrue(gate.contains("ConnectionPermissions.missing(context)"))
     }
 
     @Test fun carMediaRefreshesAfterPhoneGrant() {
