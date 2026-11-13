@@ -2,11 +2,13 @@ package app.ft.core
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.telecom.TelecomManager
 import app.ft.carlife.JoinWatch
 import app.ft.projection.VideoPlans
 import app.ft.projection.VideoProfile
 
 class Prefs(context: Context) {
+    private val appContext = context.applicationContext
     companion object {
         /** Default only; explicitly saved per-user picture DPI is never migrated. */
         const val DEFAULT_CAR_DENSITY_DPI = 240
@@ -187,7 +189,14 @@ class Prefs(context: Context) {
     var mapsPackage: String get() = str("pkgMaps", "com.google.android.apps.maps"); set(v) = set("pkgMaps", v)
     var musicPackage: String get() = str("pkgMusic", "com.spotify.music"); set(v) = set("pkgMusic", v)
     var videoPackage: String get() = str("pkgVideo", "com.teamsmart.videomanager.tv"); set(v) = set("pkgVideo", v)
-    var phonePackage: String get() = str("pkgPhone", "com.samsung.android.dialer"); set(v) = set("pkgPhone", v)
+    // Resolve the actual default dialer on this Android phone, never assume Samsung.
+    // Previously saved explicit user package choices remain untouched.
+    var phonePackage: String
+        get() = str("pkgPhone", runCatching {
+            appContext.getSystemService(TelecomManager::class.java)?.defaultDialerPackage
+                .orEmpty()
+        }.getOrDefault(""))
+        set(v) = set("pkgPhone", v)
 
     var carInfoRight: Boolean get() = bool("carInfoRight", false); set(v) = set("carInfoRight", v)
     var carColumns: Int get() = int("carColumns", 0); set(v) = set("carColumns", v)
