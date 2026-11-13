@@ -550,7 +550,10 @@ class IccoaService : Service() {
                     if (payload != null) {
                         // True means queued for this authenticated CONTROL lane, NOT an OEM mapping ACK.
                         val queued = connection.sendControl(IccoaBluetoothMacInfo.CONTROL_METHOD, payload)
-                        DiagLog.i("ICCOA", "BT identity association method22 queued=$queued; OEM mapping status UNKNOWN")
+                        DiagLog.i("ICCOA", "BT identity auto-association method22 queued=$queued; OEM mapping/HFP status UNKNOWN")
+                    } else {
+                        // No synthetic MAC, no repeated permission prompt and no unverified OEM extension.
+                        DiagLog.i("ICCOA", "BT identity auto-association skipped: phone Classic MAC unknown or OEM receiver unsupported")
                     }
                 }
             } },
