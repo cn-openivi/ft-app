@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: ft184-xa60-owner-signed-one-shot-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   signed-release:
@@ -133,7 +133,7 @@ jobs:
           unzip -Z1 "$apk" | grep -Fxq AndroidManifest.xml
           BT="$ANDROID_HOME/build-tools/36.0.0"
           "$BT/aapt" dump badging "$apk" > "$RUNNER_TEMP/ft184-badging.txt"
-          grep -Fq "package: name='app.ft.xa60' versionCode='183'" "$RUNNER_TEMP/ft184-badging.txt"
+          grep -Fq "package: name='app.ft.xa60' versionCode='184'" "$RUNNER_TEMP/ft184-badging.txt"
           if grep -q '^application-debuggable' "$RUNNER_TEMP/ft184-badging.txt"; then echo 'Refusing debuggable release' >&2; exit 1; fi
           "$BT/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/ft184-apksigner.txt"
           grep -iq "$CERT_PIN" "$RUNNER_TEMP/ft184-apksigner.txt"
@@ -150,7 +150,7 @@ jobs:
           cp "$apk" "verified/$APK_NAME"
           sha256sum "verified/$APK_NAME" > verified/SHA256SUMS
           apk_sha="$(sha256sum "verified/$APK_NAME" | cut -d' ' -f1)"
-          printf 'SOURCE_SHA=%s\nCI_SHA=%s\nAPP_ID=app.ft.xa60\nVERSION_CODE=183\nOWNER_CERT_SHA256=%s\nAPK_SHA256=%s\nFIELD=NOT_TESTED\n' "$SOURCE_PIN" "$GITHUB_SHA" "$CERT_PIN" "$apk_sha" > verified/PROVENANCE.txt
+          printf 'SOURCE_SHA=%s\nCI_SHA=%s\nAPP_ID=app.ft.xa60\nVERSION_CODE=184\nOWNER_CERT_SHA256=%s\nAPK_SHA256=%s\nFIELD=NOT_TESTED\n' "$SOURCE_PIN" "$GITHUB_SHA" "$CERT_PIN" "$apk_sha" > verified/PROVENANCE.txt
           cp "$RUNNER_TEMP/ft184-badging.txt" verified/apk-badging.txt
           cp "$RUNNER_TEMP/ft184-apksigner.txt" verified/apksigner.txt
           echo "FT184_SIGNED_APK_SHA256=$apk_sha"
