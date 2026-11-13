@@ -151,6 +151,10 @@ class IccoaSession(
     private val trustedCarKey by lazy { IccoaTrustedCarKey(context) }
     @Volatile private var current: Attempt? = null
     val cipher: IccoaControl.Cipher? get() = current?.cipher
+    @Volatile var verifiedReceiverId: String? = null
+        private set
+    @Volatile var verifiedLegacyPrimary: Boolean = false
+        private set
 
     private class Attempt(val profile: IccoaClientProfile) {
         val clientId get() = profile.id
@@ -182,6 +186,8 @@ class IccoaSession(
         var pinnedCarIdentity: ByteArray? = null
         var trustedCommitGate = IccoaTrustedCommitGate()
         var pendingTrustedCarIdentity: ByteArray? = null
+        var verifiedPublicKeyFingerprint: String? = null
+        var verifiedMatchesPrimary: Boolean = false
         var wifiRequested = false
         var authStarted = false
         var hasWifiAddress = false
@@ -331,6 +337,8 @@ class IccoaSession(
     @Synchronized fun stop() {
         val attempt = current ?: return
         current = null
+        verifiedReceiverId = null
+        verifiedLegacyPrimary = false
         close(attempt)
     }
 
@@ -673,6 +681,13 @@ class IccoaSession(
             val key = auth.accept(response.body, ::progress)
             val verifiedCarIdentity = auth.verifiedCarIdentity
                 ?: throw IccoaHandshakeException(IccoaHandshakeException.Reason.IDENTITY_LENGTH)
+            attempt.verifiedPublicKeyFingerprint = MessageDigest.getInstance("SHA-256")
+                .digest(verifiedCarIdentity).joinToString("") {
+                    "%02x".format(java.util.Locale.ROOT, it.toInt() and 255)
+                }
+            attempt.verifiedMatchesPrimary = trustedCarKey.load(
+                attempt.clientId, IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE
+            )?.let { MessageDigest.isEqual(it, verifiedCarIdentity) } == true
             // A Normal response must not silently overwrite an existing trusted car key.
             if (pinned == null && trustedCarName.isNotBlank()) {
                 val oldKey = trustedCarKey.load(attempt.clientId, trustedCarName)
@@ -757,6 +772,9 @@ class IccoaSession(
      */
     private fun confirmTrustedCarAfterControl(attempt: Attempt) {
         if (!active(attempt)) return
+        // Not exposed to settings until BOTH signed auth and authenticated CONTROL.
+        verifiedReceiverId = attempt.verifiedPublicKeyFingerprint
+        verifiedLegacyPrimary = attempt.verifiedMatchesPrimary
         if (attempt.quickMode) {
             // Migration is safe ONLY after signed response + authenticated CONTROL.
             // Keep the original PRIMARY sealed entry intact for rollback.
