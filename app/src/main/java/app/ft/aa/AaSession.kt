@@ -717,7 +717,7 @@ class AaSession(
      * It does not prove the phone consumed them; socket writes may be asynchronous.
      */
     fun sendKey(keycode: Int): Boolean {
-        if (_phase.value < Phase.DISCOVERED || AaProtocol.CH_INPUT !in openChannels) return false
+        if (!lifecycle.running || _phase.value < Phase.DISCOVERED || AaProtocol.CH_INPUT !in openChannels) return false
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputKey(System.nanoTime(), keycode, true))
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputKey(System.nanoTime(), keycode, false))
         return true
