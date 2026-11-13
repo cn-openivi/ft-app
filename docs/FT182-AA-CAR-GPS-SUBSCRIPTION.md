@@ -55,7 +55,7 @@ Source-only tests: `AaGpsEvidenceTest.kt` plus existing `AaSensorAdvertisementTe
 Keep phone **Location ON**, the same Samsung/Android Auto version and navigation app in both branches. Disconnect one headunit before starting the other.
 
 1. **FT182 self-mode:** establish actual car ICCOA GNSS if available, collect `aa-car-gps-evidence.txt`. Check discovery, GPS advertisement, open SENSOR channel, actual inbound `SensorRequest(LOCATION)`, eligible location events and flushed AA socket writes separately.
-2. **Google DHU:** on a workstation with Google's DHU install, load an .ini containing:
+2. **DHU 2.x via USB Accessory (AOA):** preferred *external-headunit* comparison. On a workstation with Google's DHU installed, load an .ini containing:
 
    ```ini
    [general]
@@ -64,9 +64,10 @@ Keep phone **Location ON**, the same Samsung/Android Auto version and navigation
    location = true
    ```
 
-   Connect the **same phone** through supported USB accessory or AA developer-server/ADB-tunnel mode. Use DHU's `location LAT LON [accuracy ...]` only as **labeled synthetic diagnostic input**, not as an OEM GPS claim. Compare the AA/navigation response and available headunit traces; DHU itself is not automatically a plaintext protocol logger.
-3. **Negative control:** separate DHU session with `[sensors] location = false`; check stale navigation caches and mismatch before comparing.
-4. **Optional** real external Android Auto HU, if available; the FAW ICCOA receiver is not itself a native AA HU.
+   Connect the **same phone** directly to DHU with the officially documented `./desktop-head-unit --usb` mode. Use DHU's `location LAT LON [accuracy ...]` only as **labeled synthetic diagnostic input**, not as an OEM GPS claim. Compare AA/navigation response and any trustworthy sensor-channel traces; DHU alone is not a raw protocol logger.
+3. **DHU via ADB tunnel:** separate control run with the same phone and same .ini, using the Android Auto developer headunit server (normally port 5277) over ADB. This reuses the *developer-server path* also used by FT's self-mode; it is **not equivalent** to an independently negotiated external phone/HU runtime mode. If ADB-DHU and FT both omit LOCATION but AOA-DHU does not, investigate transport/mode discrimination before changing FT protobuf.
+4. **Capability-negative control:** perform a separate AOA-DHU session with `[sensors] location = false` and compare navigation/cache effects. If needed also repeat on ADB-DHU. Never interpret a negative control's app behavior as a byte-exact subscription proof without a trace.
+5. **Optional** real external Android Auto HU, if available; the FAW ICCOA receiver is not itself a native AA HU.
 
 Record phone/AA versions, transport and session IDs without personal coordinates. Compare actual SDP capabilities and active SENSOR subscriptions. Treat absent trustworthy DHU wire capture as `SensorRequest=UNKNOWN` rather than claiming it never happened. Neither successful DHU `location` command nor FT socket write proves Maps consumed the location. No guessed AA preference fields, unsolicited FT LOCATION events, disabled phone Location or mock-location configuration changes.
 
