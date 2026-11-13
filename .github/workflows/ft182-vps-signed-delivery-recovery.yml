@@ -128,7 +128,13 @@ jobs:
                   print("DRIVE_BYTES_VERIFIED="+f.name,flush=True)
               drive_ok=True
           except Exception as e:
-              drive_err=str(e)[:1200]
+              if isinstance(e,subprocess.CalledProcessError):
+                  detail=(e.stderr or b"").decode("utf-8","replace")[-1500:]
+                  drive_err=(str(e)+" stderr="+detail)[:1900]
+              elif isinstance(e,subprocess.TimeoutExpired):
+                  drive_err="RCLONE_BOUNDED_TIMEOUT "+str(e)[:1000]
+              else:
+                  drive_err=str(e)[:1200]
               print("DRIVE_ERROR="+drive_err,flush=True)
           headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],"Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28","User-Agent":"OpenIVI-FT182-Recovery"}
           api="https://api.github.com/repos/"+repo
