@@ -21,7 +21,7 @@ internal class IccoaTrustedCarKey(context: Context) {
 
     fun load(profileId: String, carName: String): ByteArray? {
         if (carName.isBlank()) return null
-        val sealed = prefs.getString("car_auth_pk", null) ?: return null
+        val sealed = prefs.getString(storageKey(profileId, carName), null) ?: return null
         return runCatching {
             val key = key(false) ?: return null
             val input = Base64.getDecoder().decode(sealed)
@@ -38,18 +38,30 @@ internal class IccoaTrustedCarKey(context: Context) {
         val existing = load(profileId, carName)
         if (existing != null) return java.security.MessageDigest.isEqual(existing, verifiedPublicKey)
         // A present but undecryptable entry is NOT consent to silently trust a new key.
-        if (prefs.contains("car_auth_pk")) return false
+        if (prefs.contains(storageKey(profileId, carName))) return false
         return runCatching {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, key(true) ?: return false)
             cipher.updateAAD(binding(profileId, carName))
             val sealed = Base64.getEncoder().encodeToString(cipher.iv + cipher.doFinal(verifiedPublicKey))
-            prefs.edit().putString("car_auth_pk", sealed).commit()
+            prefs.edit().putString(storageKey(profileId, carName), sealed).commit()
         }.getOrDefault(false)
     }
 
-    /** Only the owner can explicitly forget a verified car after HU replacement/reset. */
+    /** Legacy explicit reset affects the original PRIMARY slot only. */
     fun clear(): Boolean = prefs.edit().remove("car_auth_pk").commit()
+
+    /** Explicit targeted reset; never erase keys for other verified cars. */
+    fun clear(profileId: String, carName: String): Boolean =
+        prefs.edit().remove(storageKey(profileId, carName)).commit()
+
+    private fun storageKey(profileId: String, carName: String): String {
+        // Existing owner PRIMARY ciphertext and its AAD remain byte-for-byte intact.
+        if (carName == IccoaQuickTrustPolicy.PRIMARY_TRUST_SCOPE) return "car_auth_pk"
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(binding(profileId, carName))
+        return "car_auth_pk_" + digest.joinToString("") { "%02x".format(Locale.ROOT, it.toInt() and 255) }
+    }
 
     private fun binding(profileId: String, carName: String) =
         ("FT_ICCOA_CAR_AUTH_V1|" + profileId + "|" + carName.trim().lowercase(Locale.ROOT))
