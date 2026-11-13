@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import app.ft.media.MediaLibrary
 import app.ft.core.DiagLog
+import app.ft.core.ConnectionPermissions
 import android.content.Intent
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -125,12 +126,13 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     // Permission prompts happen at the first explicit feature use, never at app start.
     val connectionPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        if (grants.isNotEmpty() && grants.values.all { it }) {
+    ) {
+        // Callback may report only new permissions, not previous grants.
+        if (ConnectionPermissions.missing(context).isEmpty()) {
             if (iccoaActions != null) iccoaActions.start(false)
             else CarConnection.switchOn(context)
         } else {
-            DiagLog.w("Setup", "connection permissions not granted")
+            DiagLog.w("Setup", "mandatory connection permissions not granted")
         }
     }
     val mediaPermissionLauncher = rememberLauncherForActivityResult(
@@ -166,6 +168,7 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
     val overlayOn = remember(resumed) { Settings.canDrawOverlays(context) }
     val backgroundOn = remember(resumed) { (context.getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) != false }
     val mediaMissing = remember(resumed, mediaVersion) { missingMediaPermissions(context) }
+    val connectionMissing = remember(resumed) { ConnectionPermissions.missing(context) }
     val aaOwnCopy = remember(resumed) { AaInstaller.weInstalledIt(context) }
     val aaInstalled = remember(resumed) { AaInstaller.installed(context) }
 
@@ -225,13 +228,25 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             StatusCard(status, on) { want ->
                 if (!want) CarConnection.switchOff(context)
                 else {
-                    val missing = missingConnectionPermissions(context)
+                    val missing = ConnectionPermissions.missing(context)
                     if (missing.isNotEmpty()) connectionPermissionLauncher.launch(missing)
                     else if (iccoaActions != null) iccoaActions.start(false)
                     else CarConnection.switchOn(context)
                 }
             }
         }
+        // Auto-connect may be enabled while Android has revoked a permission.
+        if (autoConnect && connectionMissing.isNotEmpty()) item {
+            Section(stringResource(R.string.home_connection_permissions_title)) {
+                Text(stringResource(R.string.home_connection_permissions_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = {
+                    connectionPermissionLauncher.launch(ConnectionPermissions.missing(context))
+                }) { Text(stringResource(R.string.action_allow)) }
+            }
+        }
+
         // One prominent first-run permission card, independent of phone UI style.
         if (!touchOn || !overlayOn || !backgroundOn) item {
             Section(stringResource(R.string.home_finish_setup)) {
@@ -628,22 +643,6 @@ private fun ClassicSection(title: String, content: @Composable ColumnScope.() ->
             content()
         }
     }
-}
-
-/** Permissions required only when enabling a live car connection. */
-private fun missingConnectionPermissions(context: android.content.Context): Array<String> {
-    val wanted = mutableListOf<String>()
-    if (Build.VERSION.SDK_INT >= 31) {
-        wanted += Manifest.permission.BLUETOOTH_CONNECT
-        wanted += Manifest.permission.BLUETOOTH_SCAN
-        wanted += Manifest.permission.BLUETOOTH_ADVERTISE
-    }
-    if (Build.VERSION.SDK_INT >= 33) {
-        wanted += Manifest.permission.NEARBY_WIFI_DEVICES
-        wanted += Manifest.permission.POST_NOTIFICATIONS
-    } else wanted += Manifest.permission.ACCESS_FINE_LOCATION
-    wanted += Manifest.permission.RECORD_AUDIO
-    return wanted.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }.toTypedArray()
 }
 
 private fun missingMediaPermissions(context: android.content.Context): Array<String> {

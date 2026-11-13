@@ -11,6 +11,11 @@ object CarConnection {
     fun startAuto(context: Context) {
         val prefs = FTApp.instance.prefs
         if (!prefs.autoConnect) return
+        val missing = ConnectionPermissions.missing(context)
+        if (missing.isNotEmpty()) {
+            DiagLog.w("Connection", "automatic connection paused: ${missing.size} mandatory runtime permissions missing")
+            return
+        }
         when (prefs.carProtocol) {
             CarProtocol.CARLIFE -> {
                 IccoaService.stop(context)

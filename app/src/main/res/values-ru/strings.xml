@@ -583,4 +583,6 @@
     <string name="iccoa_status_gateway_wait">Wi-Fi подключён. Ожидание адреса шлюза автомобиля…</string>
     <string name="iccoa_status_auth">Проверка подлинности ICCOA…</string>
     <string name="iccoa_status_channels_wait">ICCOA: аутентификация завершена, ожидание каналов автомобиля…</string>
+    <string name="home_connection_permissions_title">Нужны разрешения для подключения</string>
+    <string name="home_connection_permissions_body">Автоподключение приостановлено: Android не предоставил доступ к Bluetooth или ближайшим устройствам. Разрешите доступ, чтобы продолжить.</string>
 </resources>

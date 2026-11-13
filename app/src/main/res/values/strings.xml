@@ -585,4 +585,6 @@
     <string name="iccoa_status_gateway_wait">Wi-Fi connected. Waiting for the car gateway address…</string>
     <string name="iccoa_status_auth">Authenticating ICCOA…</string>
     <string name="iccoa_status_channels_wait">ICCOA authenticated. Waiting for car channels…</string>
+    <string name="home_connection_permissions_title">Connection permissions required</string>
+    <string name="home_connection_permissions_body">Automatic connection is paused because Android needs permission for Bluetooth or nearby networking. Allow them here to continue connecting.</string>
 </resources>
