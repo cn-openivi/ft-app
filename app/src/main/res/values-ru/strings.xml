@@ -403,8 +403,8 @@
     <string name="supercast_way_root">С root, автоматически</string>
     <string name="supercast_way_root_body">На телефоне есть root, поэтому FT сам всё настраивает перед каждой поездкой, от вас ничего не требуется.</string>
     <string name="supercast_way_wireless">Через беспроводную отладку</string>
-    <string name="supercast_way_wireless_body">Если отладка уже включена и вы однажды дали FT к ней доступ, FT настроится сам, без компьютера. Android не позволяет FT запросить это разрешение самостоятельно, поэтому в первый раз всё равно понадобится шаг с компьютером, описанный ниже.</string>
-    <string name="supercast_way_computer">С компьютера, один раз</string>
+    <string name="supercast_way_wireless_body">Для штатной беспроводной отладки Android 11 и новее требуется сопряжение по коду и защищённое TLS-подключение. Старый ADB через порт 5555 — отдельный режим, который не включается автоматически вместе с беспроводной отладкой.</string>
+    <string name="supercast_way_computer">С компьютера (повторить после перезагрузки)</string>
     <string name="supercast_way_computer_body">Подключите телефон с включённой отладкой по USB к компьютеру и выполните одну команду ниже. Файлы не нужны, она всё настроит сама. После перезагрузки телефона выполните её снова.</string>
     <string name="supercast_copy_command">Скопировать команду</string>
     <string name="supercast_stop">Остановить</string>
@@ -440,7 +440,7 @@
     <string name="apps_car_size_about">Изображение будет шире. Некоторые телефоны это не поддерживают — тогда FT просто дублирует экран телефона.</string>
     <string name="apps_setup_now">Настроить сейчас</string>
     <string name="apps_setting_up">Настройка</string>
-    <string name="apps_failed">FT не удалось это настроить. Посмотрите способы ниже и попробуйте один из них.</string>
+    <string name="apps_failed">Не удалось запустить приложения. Проверьте выбранный способ подключения и сообщение об ошибке.</string>
     <string name="apps_ready_now">Готово, приложения будут запускаться на экране автомобиля</string>
     <string name="aa_switch_on">Включить</string>
     <string name="aa_switching_on">Включение</string>

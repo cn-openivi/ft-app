@@ -4,7 +4,7 @@ import android.os.Bundle;
 import android.os.IBinder;
 
 public final class Bridge {
-    private static final String AUTHORITY = "app.ft.supercast";
+    private static final String AUTHORITY = "app.ft.xa60.supercast";
     private static final String GET_CLIENT = "getClient";
 
     private final String token;
