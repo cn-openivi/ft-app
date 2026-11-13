@@ -297,7 +297,6 @@ private fun PageContent(page: SettingsPage) {
             if (protocol == CarProtocol.ICCOA) {
                 Text(stringResource(R.string.iccoa_settings_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BluetoothCallsSetting()
-                IccoaBluetoothIdentityLinkSetting()
                 val iccoa by IccoaService.state.collectAsStateWithLifecycle()
                 val screen by CarControls.state.collectAsStateWithLifecycle()
                 var calibrationEnabled by remember { mutableStateOf(p.mirrorUseCalibration) }
@@ -414,6 +413,11 @@ private fun PageContent(page: SettingsPage) {
             IntSetting(stringResource(R.string.aa_density), p.aaDensity, min = 120, max = 480) { p.aaDensity = it }
         }
         SettingsPage.ADVANCED -> {
+            // Classic BT identity linkage is automatic for a verified OEM receiver.
+            // Manual HU-observed PHONE MAC entry is diagnostic fallback only.
+            if (rememberCarProtocol() == CarProtocol.ICCOA) {
+                IccoaBluetoothIdentityLinkSetting()
+            }
             BoolSetting(
                 stringResource(R.string.vehicle_coordinate_log),
                 p.vehicleCoordinateLogging,
