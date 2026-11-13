@@ -65,6 +65,9 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/*.version", "META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        // BouncyCastle 1.85 ships the same license/notice resource in multiple jars.
+        // Preserve one resource instead of failing mergeReleaseJavaResource.
+        resources.pickFirsts += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md")
     }
 }
 
