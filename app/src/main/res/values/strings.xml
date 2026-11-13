@@ -35,14 +35,15 @@
     <string name="aa_own_copy_body">FT installed Android Auto, so it starts by itself when the car connects. Keep it updated from the Play Store, as Google stops older versions from working.</string>
     <string name="aa_server_option">Android Auto\'s head unit server</string>
     <string name="aa_server_option_body">FT starts Android Auto on the car through this server. It is quick to switch on in Android Auto\'s settings, but Android Auto switches it off again when the phone restarts or Android Auto updates.</string>
+    <string name="aa_server_quick_steps">No server option in the ⋮ menu? At the bottom of Android Auto settings, expand Version and permission info. Tap the version details 10 times and confirm developer mode. Open ⋮ again and select Start head unit server.</string>
     <string name="aa_show_me_how">Show me how</string>
     <string name="aa_open_aa">Open Android Auto</string>
     <string name="aa_open_store">Open Play Store</string>
     <string name="aa_help_title">Switch on the head unit server</string>
     <string name="aa_help_1">Open Android Auto\'s settings</string>
     <string name="aa_help_1_body">FT takes you straight there. Come back here for the next step.</string>
-    <string name="aa_help_2">Scroll to the bottom and tap Version ten times</string>
-    <string name="aa_help_2_body">If Android Auto asks to allow development settings, tap OK. Only needed the first time.</string>
+    <string name="aa_help_2">Expand Version and permission info at the bottom</string>
+    <string name="aa_help_2_body">Tap the revealed version details ten times, then confirm developer mode. This is not Android\'s system Developer options.</string>
     <string name="aa_help_3">Tap the three dots at the top right</string>
     <string name="aa_help_4">Tap Start head unit server</string>
     <string name="aa_help_4_body">FT connects to it by itself. After the phone restarts or Android Auto updates, do steps 1, 3 and 4 again.</string>

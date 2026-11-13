@@ -34,6 +34,7 @@
     <string name="aa_own_copy_body">FT خۆی Android Auto دایمەزراندووە، بۆیە کاتێک ئۆتۆمبێلەکە پەیوەست دەبێت خۆی دەست بەکار دەبێت. لە Play Store نوێی بکەرەوە، چونکە Google وەشانە کۆنەکان لە کار دەخات.</string>
     <string name="aa_server_option">سێرڤەری head unit لە Android Auto</string>
     <string name="aa_server_option_body">FT لە ڕێگەی ئەم سێرڤەرەوە Android Auto لەسەر ئۆتۆمبێل دەست پێدەکات. هەڵکردنی لە ڕێکخستنەکانی Android Auto خێرایە، بەڵام هەر کاتێک مۆبایلەکە ڕیستارت بکرێت یان Android Auto نوێ ببێتەوە، Android Auto دووبارە دەیکوژێنێتەوە.</string>
+    <string name="aa_server_quick_steps">No server option in the ⋮ menu? At the bottom of Android Auto settings, expand Version and permission info. Tap the version details 10 times and confirm developer mode. Open ⋮ again and select Start head unit server.</string>
     <string name="aa_show_me_how">پیشانم بدە چۆن</string>
     <string name="aa_open_aa">کردنەوەی Android Auto</string>
     <string name="aa_open_store">کردنەوەی Play Store</string>
