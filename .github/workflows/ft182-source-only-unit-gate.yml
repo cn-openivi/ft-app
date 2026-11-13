@@ -87,3 +87,5 @@ jobs:
           for p in app/build server/build; do
             if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
           done
+
+# FT182_TRANSLATION_FALLBACK_RETEST: owner-authorized second source-only compile/JUnit check
