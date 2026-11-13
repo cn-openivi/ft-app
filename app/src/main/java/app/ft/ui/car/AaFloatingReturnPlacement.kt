@@ -1,7 +1,7 @@
 package app.ft.ui.car
 
 /** Geometry for the Android Auto FT return overlay. Pure Kotlin; no Android device needed. */
-internal object AaFloatingReturnPlacement {
+object AaFloatingReturnPlacement {
     const val HOLD_MS = 4_000L
 
     data class Point(val x: Float, val y: Float)
