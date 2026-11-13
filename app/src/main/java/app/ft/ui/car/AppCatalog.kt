@@ -18,7 +18,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 object AppCatalog {
-    data class App(val pkg: String, val activity: String, val label: String)
+    data class App(val pkg: String, val activity: String, val label: String) {
+        val componentKey: String get() = LauncherComponents.key(pkg, activity)
+    }
 
     private val _apps = MutableStateFlow<List<App>?>(null)
     val apps: StateFlow<List<App>?> = _apps
@@ -37,10 +39,10 @@ object AppCatalog {
                     pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_ALL)
                         .asSequence()
                         .filter { it.activityInfo.packageName != context.packageName }
-                        .distinctBy { it.activityInfo.packageName }
                         .map { App(it.activityInfo.packageName, it.activityInfo.name, it.loadLabel(pm).toString()) }
-                        .sortedBy { it.label.lowercase() }
                         .toList()
+                        .let { LauncherComponents.uniqueByComponent(it, { app -> app.pkg }, { app -> app.activity }) }
+                        .sortedWith(compareBy<App> { it.label.lowercase() }.thenBy { it.componentKey })
                 }.getOrDefault(emptyList())
             }
             val first = _apps.value == null

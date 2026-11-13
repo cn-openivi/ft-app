@@ -48,7 +48,7 @@ object CarControls {
         fun navNotifications()
         fun rotatePhone()
         fun showPhone()
-        fun launchApp(pkg: String)
+        fun launchApp(pkg: String, activity: String? = null)
         fun stopMirror()
         fun goToCarHome()
         fun goHome()
@@ -89,7 +89,7 @@ object CarControls {
     fun navNotifications() { backend()?.navNotifications() }
     fun rotatePhone() { backend()?.rotatePhone() }
     fun showPhone() { backend()?.showPhone() }
-    fun launchApp(pkg: String) { backend()?.launchApp(pkg) }
+    fun launchApp(pkg: String, activity: String? = null) { backend()?.launchApp(pkg, activity) }
     fun stopMirror() { backend()?.stopMirror() }
     fun goToCarHome() { backend()?.goToCarHome() }
     fun goHome() { backend()?.goHome() }
@@ -120,7 +120,7 @@ object CarControls {
         override fun navNotifications() { CarLifeService.navNotifications() }
         override fun rotatePhone() { CarLifeService.rotatePhone() }
         override fun showPhone() { CarLifeService.showPhone() }
-        override fun launchApp(pkg: String) { CarLifeService.launchApp(pkg) }
+        override fun launchApp(pkg: String, activity: String?) { CarLifeService.launchApp(pkg, activity) }
         override fun stopMirror() { CarLifeService.stopMirror() }
         override fun goToCarHome() { CarLifeService.goToCarHome() }
         override fun goHome() { CarLifeService.goHome() }

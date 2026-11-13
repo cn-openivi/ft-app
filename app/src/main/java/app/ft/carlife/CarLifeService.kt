@@ -213,7 +213,7 @@ class CarLifeService : Service() {
         fun navNotifications() = phoneKey("notifications") { it.notifications() }
         fun rotatePhone() = instance?.rotate()
         fun showPhone() = instance?.phoneScreen()
-        fun launchApp(pkg: String) = instance?.launch(pkg)
+        fun launchApp(pkg: String, activity: String? = null) = instance?.launch(pkg, activity)
         fun stopMirror() = instance?.mirrorStop()
         fun goToCarHome() = instance?.carHome()
         fun goHome() = instance?.home()
@@ -1955,10 +1955,13 @@ class CarLifeService : Service() {
         DiagLog.i(tag, "android auto overlay ${if (on) "on" else "off"}")
     }
 
-    private fun launch(pkg: String) {
+    private fun launch(pkg: String, activity: String? = null) {
         val ticket = launchTicket.incrementAndGet()
         soundLater {
-            val intent = packageManager.getLaunchIntentForPackage(pkg)
+            // The drawer selects a particular LAUNCHER activity; saved package tiles keep default launch.
+            val intent = if (activity == null) packageManager.getLaunchIntentForPackage(pkg)
+                else Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                    .setComponent(android.content.ComponentName(pkg, activity))
             if (intent == null) {
                 DiagLog.w(tag, "no launcher for $pkg")
                 return@soundLater

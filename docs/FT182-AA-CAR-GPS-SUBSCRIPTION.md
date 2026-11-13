@@ -49,3 +49,25 @@ Reference prior owner field findings: Nexus `53689938-e238-4ab7-84e5-3efdc217c26
 
 Source-only tests: `AaGpsEvidenceTest.kt` plus existing `AaSensorAdvertisementTest.kt`.
 **BUILD_VERIFICATION: NOT RUN. LIVE_VEHICLE_TEST: NOT RUN.** No signed APK or release, no FTMP plan advance.
+
+## Controlled same-phone DHU A/B — physical experiment NOT RUN
+
+Keep phone **Location ON**, the same Samsung/Android Auto version and navigation app in both branches. Disconnect one headunit before starting the other.
+
+1. **FT182 self-mode:** establish actual car ICCOA GNSS if available, collect `aa-car-gps-evidence.txt`. Check discovery, GPS advertisement, open SENSOR channel, actual inbound `SensorRequest(LOCATION)`, eligible location events and flushed AA socket writes separately.
+2. **Google DHU:** on a workstation with Google's DHU install, load an .ini containing:
+
+   ```ini
+   [general]
+   touch = true
+   [sensors]
+   location = true
+   ```
+
+   Connect the **same phone** through supported USB accessory or AA developer-server/ADB-tunnel mode. Use DHU's `location LAT LON [accuracy ...]` only as **labeled synthetic diagnostic input**, not as an OEM GPS claim. Compare the AA/navigation response and available headunit traces; DHU itself is not automatically a plaintext protocol logger.
+3. **Negative control:** separate DHU session with `[sensors] location = false`; check stale navigation caches and mismatch before comparing.
+4. **Optional** real external Android Auto HU, if available; the FAW ICCOA receiver is not itself a native AA HU.
+
+Record phone/AA versions, transport and session IDs without personal coordinates. Compare actual SDP capabilities and active SENSOR subscriptions. Treat absent trustworthy DHU wire capture as `SensorRequest=UNKNOWN` rather than claiming it never happened. Neither successful DHU `location` command nor FT socket write proves Maps consumed the location. No guessed AA preference fields, unsolicited FT LOCATION events, disabled phone Location or mock-location configuration changes.
+
+Source: https://developer.android.com/training/cars/testing/dhu . A/B phone experiment and live `SensorRequest` observation are pending physical access.

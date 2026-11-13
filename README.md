@@ -70,6 +70,8 @@ Every CarLife touch message is understood: touch actions, down, up and move, sin
 
 ## Phone apps on the car
 
+The launcher drawer lists each distinct package/**LAUNCHER activity**, including separate icons belonging to one package. Selecting an icon requests that exact activity. Existing package-only saved tiles still launch the package's default activity. This FT182 correction is source-only, awaiting compilation and phone checks.
+
 With root, or an opt-in user-initiated wireless-debugging pairing on Android 11+, FT can start a helper from its APK to run phone apps on hidden screens. Android pairing through code/notification and device-specific compatibility remain unverified until runtime tests; an explicit computer/ADB setup remains the expert alternative:
 
 - One app or two side by side, picked from a dock that lists only the apps you choose. **Swap** puts the two apps in each other's places, each keeping its width.
@@ -80,15 +82,15 @@ With root, or an opt-in user-initiated wireless-debugging pairing on Android 11+
 
 ## Android Auto
 
+**FT182 status:** car-location diagnostics are source-only; Android Auto's use of the car GPS is **not confirmed**. FT announces supported car-location capabilities and transmits only after a genuine `SensorRequest(LOCATION)`. A flushed packet does not prove Maps consumed it. Anonymous per-session evidence is in `aa-car-gps-evidence.txt` of the diagnostic ZIP. See [FT182 GPS A/B validation](docs/FT182-AA-CAR-GPS-SUBSCRIPTION.md); keep phone Location ON in the controlled DHU comparison.
+
 **Settings → Android Auto → Compact FT button** replaces the return button over Android Auto with a small dark circle. It uses the corner you already chose and takes effect immediately. The original button remains the default; other FT screens keep their usual button.
 
-The head unit speaks CarLife, not Android Auto, so FT shows **your own phone's** Android Auto on the car: it runs an Android Auto head unit inside FT, asks Android Auto to project into it, and draws that picture on the car screen with the car's touchscreen driving it. Home starts it, and it can start by itself after the car connects.
+The head unit speaks CarLife or ICCOA, not native Android Auto, so FT shows **your own phone's** Android Auto on the car: it runs an Android Auto head unit inside FT, asks Android Auto to project into it, and draws that picture on the car screen with the car's touchscreen driving it. Home starts it, and it can start by itself after the car connects.
 
 Android Auto only takes FT's head unit when its own head unit server is on, and Android Auto switches that server off whenever the phone restarts or Android Auto updates. FT keeps it on: whenever the car wants Android Auto and the server is off, FT opens Android Auto's settings, taps **Start head unit server** in its menu and comes back, usually in under a second. It does this with root, or without root through FT's accessibility service (the same one the car touchscreen uses). If the phone is locked, FT does it as soon as the phone is unlocked. If Android Auto's developer settings are off, FT says so once instead of trying again and again; the help sheet shows how to switch them on.
 
 Android Auto's frame rate is 30 or 60, the only two it takes from a head unit.
-
-**Settings → Android Auto → Compact FT button** replaces the return button over Android Auto with a small dark circle. It uses the corner you already chose and takes effect immediately. The original button remains the default; other FT screens keep their usual button.
 
 When the assistant listens, FT asks the car to record from its own microphone and passes that sound to Android Auto. When the assistant stops, FT ends the recording and turns the car's microphone light off.
 
@@ -104,7 +106,7 @@ When the assistant listens, FT asks the car to record from its own microphone an
 
 ## Settings
 
-Language and look, car screen, picture, sound, car and connection, apps on the car, Android Auto, backup and advanced (the CarLife ports). **Picture** can send the car's own size, Baidu's size or a custom size, fix the frame rate, set the data rate and the quality floor, let the video encoder save power, and put everything back to the defaults. **Backup** saves and loads every setting and can share the car look as a code.
+Language and look, car screen, picture, sound, car and connection, apps on the car, Android Auto, backup and advanced (the CarLife ports). **Picture** can send the car's own size, Baidu's size or a custom size, fix the frame rate, set the data rate and the quality floor, let the video encoder save power, and put everything back to the defaults. **Backup** saves and loads exportable preferences (not device secrets or pairing credentials) and can share the car look as a code.
 
 ## Diagnostics
 

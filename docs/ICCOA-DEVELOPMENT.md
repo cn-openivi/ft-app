@@ -1,8 +1,8 @@
 # Independent ICCOA Carlink backend
 
-FT has an experimental phone-side ICCOA implementation in `app.ft.iccoa`. It uses its own Bluetooth handshake, Wi-Fi session, authentication, control framing and WFD media connection. It shares FT rendering, screen encoding, audio capture and car UI components with the other transports.
+FT has an independent phone-side ICCOA implementation in `app.ft.iccoa`. It uses its own Bluetooth handshake, Wi-Fi session, authentication, control framing and WFD media connection. It shares FT rendering, screen encoding, audio capture and car UI components with the other transports.
 
-This is an implementation for testing with a real receiver. Building the APK and passing protocol tests do not establish compatibility with a particular vehicle. A tester tried FT builds 133 and 134 on a Toyota XA60 with a OnePlus 12 Global. Build 134 advanced through PIN submission and received the car's Wi-Fi parameters, then Android rejected the network request with `SecurityException`. The user reports that XiaoDroidLink connects to an XA60; that is useful evidence for choosing the protocol, not a successful end-to-end FT test.
+Receiver compatibility depends on its protocol revision and Android device; source implementation alone does not prove field compatibility. Building the APK and passing protocol tests do not establish compatibility with a particular vehicle. A tester tried FT builds 133 and 134 on a Toyota XA60 with a OnePlus 12 Global. Build 134 advanced through PIN submission and received the car's Wi-Fi parameters, then Android rejected the network request with `SecurityException`. The user reports that XiaoDroidLink connects to an XA60; that is useful evidence for choosing the protocol, not a successful end-to-end FT test.
 
 ## Backend selection and isolation
 

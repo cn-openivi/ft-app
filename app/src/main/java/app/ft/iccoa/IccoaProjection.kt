@@ -513,8 +513,13 @@ class IccoaProjection(
         launchMirror(intent, pkg)
     }
 
-    override fun launchApp(pkg: String) = onMain {
-        context.packageManager.getLaunchIntentForPackage(pkg)?.let { launchMirror(it, pkg) }
+    override fun launchApp(pkg: String, activity: String?) = onMain {
+        // Keep saved package tiles unchanged; drawer entries are component-exact.
+        val intent = if (activity == null) context.packageManager.getLaunchIntentForPackage(pkg)
+            else Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                .setComponent(ComponentName(pkg, activity))
+        if (intent == null) DiagLog.w("ICCOA", "no launcher for $pkg")
+        else launchMirror(intent, pkg)
     }
 
     private fun launchMirror(intent: Intent, pkg: String) {

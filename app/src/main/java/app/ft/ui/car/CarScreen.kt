@@ -995,7 +995,7 @@ private fun AppDrawer(gridState: LazyGridState, pad: PaddingValues, onClose: () 
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(list, key = { it.pkg }) { app -> AppCell(app, px, onClose) }
+            items(list, key = { it.componentKey }) { app -> AppCell(app, px, onClose) }
         }
     }
 }
@@ -1007,7 +1007,7 @@ private fun AppCell(app: AppCatalog.App, px: Int, onClose: () -> Unit) {
         if (value == null) value = AppCatalog.icon(context, app, px)
     }
     Surface(
-        onClick = { onClose(); CarControls.launchApp(app.pkg) },
+        onClick = { onClose(); CarControls.launchApp(app.pkg, app.activity) },
         shape = RoundedCornerShape(22.dp),
         color = LocalCarCard.current,
         contentColor = Color.White,
