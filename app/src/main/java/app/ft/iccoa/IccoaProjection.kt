@@ -419,8 +419,23 @@ class IccoaProjection(
             CarTouchCalibration.cancel()
             return@onMain
         }
+        val aa = AaHeadUnitService.current
+        // ICCOA UIBC already supplies Android keycodes; do not apply CarLife's
+        // OEM 15/16 mapping to arbitrary ICCOA keyboard input.
+        if (app.ft.aa.AaSteeringMediaKeys.routeToAa(
+                code = code,
+                aaVisible = state.value.aaOverlay,
+                aaConnected = aa != null,
+                aaPlaying = AaHeadUnitService.music.value.playing,
+                ftPlaying = CarPlayer.playing
+            )) {
+            if (aa?.sendKey(code) == true)
+                DiagLog.i("ICCOA", "steering wheel raw=$code normalized=$code target=AA queued")
+            else DiagLog.w("ICCOA", "steering wheel raw=$code target=AA skipped: input channel unavailable")
+            return@onMain
+        }
         if (state.value.aaOverlay) {
-            AaHeadUnitService.current?.sendKey(code)
+            aa?.sendKey(code)
         } else when (code) {
             3 -> { goHome(); keys.tryEmit(code) }
             4 -> if (state.value.mirroring) navBack() else keys.tryEmit(code)
