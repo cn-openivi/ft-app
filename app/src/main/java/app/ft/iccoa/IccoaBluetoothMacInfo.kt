@@ -69,4 +69,56 @@ internal class IccoaBluetoothIdentityLinkStore(context: Context) {
     fun addPayload(): ByteArray? = if (enabled())
         IccoaBluetoothMacInfo.addHash(prefs.getString("phone_bt_sha256", "") ?: "")
     else null
+
+    private fun receiverPrefix(id: String?): String? =
+        id?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }?.let { "verified_$it." }
+
+    /** Each signed receiver has its own explicit consent and HU-observed phone MAC. */
+    fun configured(receiverId: String): Boolean {
+        val p = receiverPrefix(receiverId) ?: return false
+        return IccoaBluetoothMacInfo.addHash(prefs.getString(p + "phone_bt_sha256", "") ?: "") != null
+    }
+
+    fun enabled(receiverId: String): Boolean {
+        val p = receiverPrefix(receiverId) ?: return false
+        return prefs.getBoolean(p + "enabled", false) && configured(receiverId)
+    }
+
+    fun saveHuObservedPhoneMac(receiverId: String, raw: String): Boolean {
+        val p = receiverPrefix(receiverId) ?: return false
+        val hash = IccoaBluetoothMacInfo.hashHuObservedPhoneMac(raw) ?: return false
+        return prefs.edit().putString(p + "phone_bt_sha256", hash)
+            .putBoolean(p + "enabled", false).commit()
+    }
+
+    fun setEnabled(receiverId: String, value: Boolean): Boolean {
+        val p = receiverPrefix(receiverId) ?: return false
+        if (value && !configured(receiverId)) return false
+        return prefs.edit().putBoolean(p + "enabled", value).commit()
+    }
+
+    fun forget(receiverId: String): Boolean {
+        val p = receiverPrefix(receiverId) ?: return false
+        return prefs.edit().remove(p + "phone_bt_sha256")
+            .putBoolean(p + "enabled", false).commit()
+    }
+
+    /**
+     * Nothing is sent without signed receiver ID. Legacy consent is migrated
+     * once ONLY for the independently verified original PRIMARY public key.
+     * Migration disables the unscoped sender so a later Forget stays forgotten.
+     */
+    fun addPayload(receiverId: String?, verifiedLegacyPrimary: Boolean): ByteArray? {
+        val p = receiverPrefix(receiverId) ?: return null
+        if (!prefs.contains(p + "phone_bt_sha256") && verifiedLegacyPrimary && enabled()) {
+            val legacyHash = prefs.getString("phone_bt_sha256", "") ?: ""
+            if (IccoaBluetoothMacInfo.addHash(legacyHash) != null) {
+                if (!prefs.edit().putString(p + "phone_bt_sha256", legacyHash)
+                        .putBoolean(p + "enabled", true)
+                        .putBoolean("enabled", false).commit()) return null
+            }
+        }
+        if (!prefs.getBoolean(p + "enabled", false)) return null
+        return IccoaBluetoothMacInfo.addHash(prefs.getString(p + "phone_bt_sha256", "") ?: "")
+    }
 }
