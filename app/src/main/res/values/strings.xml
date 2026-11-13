@@ -564,4 +564,8 @@
     <string name="home_sound_settings">Open sound settings</string>
     <string name="home_iccoa_show_target_devices">Only CarLink / ICCOA devices</string>
     <string name="home_iccoa_show_all_devices">Show all Bluetooth devices</string>
+    <string name="wireless_pair_background_error">Android blocked pairing in the background. Open FT again and try pairing while FT is visible.</string>
+    <string name="wireless_pair_expired_error">The pairing code or port has changed. Open a new code in Android Settings and try again.</string>
+    <string name="wireless_pair_wrong_code_error">Pairing failed. Verify the current six-digit code and try again without switching apps.</string>
+    <string name="wireless_pair_unsupported">Wireless debugging pairing requires Android 11 or later.</string>
 </resources>

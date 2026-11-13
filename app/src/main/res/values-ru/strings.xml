@@ -562,4 +562,8 @@
     <string name="home_sound_settings">Открыть настройки звука</string>
     <string name="home_iccoa_show_target_devices">Только CarLink / ICCOA</string>
     <string name="home_iccoa_show_all_devices">Показать все Bluetooth-устройства</string>
+    <string name="wireless_pair_background_error">Android заблокировал фоновую настройку. Вернитесь в FT и повторите сопряжение.</string>
+    <string name="wireless_pair_expired_error">Код или порт сопряжения изменился. Откройте новый код в настройках Android и повторите.</string>
+    <string name="wireless_pair_wrong_code_error">Сопряжение не удалось. Проверьте актуальные шесть цифр и повторите, не переключая приложения.</string>
+    <string name="wireless_pair_unsupported">Для сопряжения через беспроводную отладку требуется Android 11 или новее.</string>
 </resources>
