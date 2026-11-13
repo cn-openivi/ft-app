@@ -65,6 +65,9 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/*.version", "META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/versions/9/OSGI-INF/MANIFEST.MF")
+        // BouncyCastle 1.85 puts duplicate license/notice resources in several jars.
+        // Keep the same proven FT182 packaging behavior without changing Java/Kotlin code.
+        resources.pickFirsts += setOf("META-INF/LICENSE.md", "META-INF/NOTICE.md")
     }
 }
 
