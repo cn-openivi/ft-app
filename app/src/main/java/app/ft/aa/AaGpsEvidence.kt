@@ -63,6 +63,9 @@ internal object AaGpsEvidence {
     fun summary(): String = latest()?.reportLine() ?: "no Android Auto GPS session recorded"
 
     internal class Recorder(private val id: Long) {
+        fun snapshot(): AaGpsEvidenceSnapshot? = latestState.get()?.takeIf { it.sessionId == id }
+        fun summary(): String = snapshot()?.reportLine() ?: "older session superseded"
+
         private fun change(update: (AaGpsEvidenceSnapshot) -> AaGpsEvidenceSnapshot) {
             while (true) {
                 val old = latestState.get() ?: return

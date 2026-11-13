@@ -32,11 +32,14 @@ class AaSession(
     private val prefs: Prefs,
     private val scope: CoroutineScope,
     private val decoder: AaVideoDecoder,
+    developerSelfMode: Boolean,
     private val onClosed: (String) -> Unit
 ) {
     enum class Phase { CONNECTED, VERSIONED, HANDSHAKING, AUTHENTICATED, DISCOVERED, STREAMING }
 
     private val tag = "AA"
+    // Passive, per-session instrumentation. This cannot change AA GPS policy.
+    private val gpsEvidence = AaGpsEvidence.begin(developerSelfMode)
     private val crypto = AaCrypto(context)
     private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
@@ -73,6 +76,9 @@ class AaSession(
         cleanup = { reason ->
             stopCarSensorStreams()
             sensorChannelOpened = false
+            gpsEvidence.channelClosed()
+            gpsEvidence.finish()
+            DiagLog.i(tag, "AA vehicle GPS evidence at shutdown: ${gpsEvidence.summary()}")
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
             DiagLog.i(tag, "AA actual audio arrival at shutdown: ${audioRouteAudit.summary()}")
             sensorSubscriptions.reset()
@@ -142,12 +148,18 @@ class AaSession(
     }
 
     private fun sendPlain(channel: Int, id: Int, body: ByteArray, control: Boolean) = send(channel, id, body, false, control)
-    private fun sendEnc(channel: Int, id: Int, body: ByteArray, control: Boolean = false) = send(channel, id, body, true, control)
+    private fun sendEnc(
+        channel: Int, id: Int, body: ByteArray, control: Boolean = false,
+        afterWrite: (() -> Unit)? = null
+    ) = send(channel, id, body, true, control, afterWrite)
 
-    private fun send(channel: Int, id: Int, body: ByteArray, encrypted: Boolean, control: Boolean) {
+    private fun send(
+        channel: Int, id: Int, body: ByteArray, encrypted: Boolean, control: Boolean,
+        afterWrite: (() -> Unit)? = null
+    ) {
         if (!lifecycle.running) return
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            OFF_MAIN.execute { send(channel, id, body, encrypted, control) }
+            OFF_MAIN.execute { send(channel, id, body, encrypted, control, afterWrite) }
             return
         }
         val payload = ByteArray(2 + body.size)
@@ -168,6 +180,11 @@ class AaSession(
         if (failure != null) {
             if (lifecycle.running) DiagLog.e(tag, "write failed", failure)
             close("write ${failure.javaClass.simpleName}: ${failure.message}")
+        } else {
+            // Socket flush proves that FT wrote to the transport, never that
+            // the Android Auto app consumed or chose these coordinates.
+            runCatching { afterWrite?.invoke() }
+                .onFailure { DiagLog.w(tag, "post-write GPS audit failed") }
         }
     }
 
@@ -263,6 +280,11 @@ class AaSession(
                 val gpsFreshAtDiscovery = oemFixAtDiscovery?.source == "ICCOA" &&
                     oemFixAtDiscovery.coordinatesUnit == "ANDROID_LOCATION_WGS84" &&
                     oemFixAtDiscovery.positionFresh()
+                gpsEvidence.discovery(
+                    offered = AaProtocol.SENSOR_LOCATION in advertised,
+                    characterization = sensorConfig?.int(2) ?: 0,
+                    freshFix = gpsFreshAtDiscovery
+                )
                 DiagLog.i(tag, "AA SENSOR descriptor types=$advertised " +
                     "locationDeclared=${AaProtocol.SENSOR_LOCATION in advertised} " +
                     "locationCharacterization=${sensorConfig?.int(2) ?: 0} " +
@@ -278,8 +300,12 @@ class AaSession(
                             DiagLog.i(tag, "AA sensor subscription audit after 12s: " +
                                 "sensorChannelOpened=$sensorChannelOpened " +
                                 "requests=${sensorSubscriptions.summary()}")
-                            if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION))
-                                DiagLog.w(tag, "AA phone did not request car LOCATION; cannot forward absent subscription")
+                            if (!sensorChannelOpened) {
+                                DiagLog.w(tag, "AA SENSOR channel not opened; no conclusion about LOCATION policy")
+                            } else if (!sensorSubscriptions.has(AaProtocol.SENSOR_LOCATION)) {
+                                DiagLog.w(tag, "AA SENSOR channel opened but phone did not request LOCATION")
+                            }
+                            DiagLog.i(tag, "AA GPS evidence: ${gpsEvidence.summary()}")
                             if (!sensorSubscriptions.has(AaProtocol.SENSOR_GEAR))
                                 DiagLog.w(tag, "AA phone did not request GEAR; " +
                                     "park override and OEM gear cannot affect apps without subscription")
@@ -298,6 +324,7 @@ class AaSession(
                         DiagLog.i(tag, "AA SENSOR reopened; previous subscriptions invalidated")
                     }
                     sensorChannelOpened = true
+                    gpsEvidence.channelOpened()
                 }
                 openChannels += channel
                 DiagLog.i(tag, "channel open ${AaProtocol.channelName(channel)} (service $sid)")
@@ -325,6 +352,7 @@ class AaSession(
                 openChannels -= channel
                 if (channel == AaProtocol.CH_SENSOR) {
                     sensorChannelOpened = false
+                    gpsEvidence.channelClosed()
                     DiagLog.i(tag, "AA SENSOR channel closed: stopping GPS and gear subscriptions; " +
                         "last requests=${sensorSubscriptions.summary()}")
                     stopCarSensorStreams()
@@ -452,6 +480,7 @@ class AaSession(
                             AaCarGear.sensorError(3))
                     }
                     AaProtocol.SENSOR_LOCATION -> {
+                        gpsEvidence.locationRequested()
                         val requestedIntervalMs = ProtoReader(body).long(2, 1_000L)
                         DiagLog.i(tag, "AA phone requested car LOCATION " +
                             "refreshIntervalMs=$requestedIntervalMs")
@@ -483,7 +512,6 @@ class AaSession(
         carGpsJob = scope.launch(Dispatchers.IO) {
             val gate = AaLocationFeedPolicy(
                 sessionCharacterization, System.currentTimeMillis())
-            var sent = 0L
             // FT alone selects RAW or verified FUSED. Early AA capability
             // negotiation must never starve the already subscribed receiver
             // when FT gains independently verified sensor fusion later.
@@ -498,12 +526,15 @@ class AaSession(
                         position.raw?.let { if (!gate.fusedOnly) gate.raw(it, nowWall) else null }
                 }
                 if (packet != null) {
+                    gpsEvidence.eventSubmitted()
                     sendEnc(AaProtocol.CH_SENSOR,
-                        AaProtocol.SENSOR_EVENT_INDICATION, packet)
-                    sent++
-                    if (sent == 1L || sent % 100L == 0L)
-                        DiagLog.i(tag,
-                            "AA LOCATION from FT source=${position.source} count=$sent")
+                        AaProtocol.SENSOR_EVENT_INDICATION, packet, afterWrite = {
+                            gpsEvidence.socketWriteFlushed()
+                            val written = gpsEvidence.snapshot()?.eventsFlushed ?: 0L
+                            if (written == 1L || written % 100L == 0L)
+                                DiagLog.i(tag, "AA LOCATION socket flushed count=$written; " +
+                                    "source=${position.source} phoneConsumed=UNKNOWN")
+                        })
                 }
             }
         }
