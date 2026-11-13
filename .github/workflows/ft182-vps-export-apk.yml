@@ -10,7 +10,7 @@ permissions:
   contents: write
 concurrency:
   group: ft182-vps-export-apk
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   export-owner-signed:
     runs-on: [self-hosted, linux]
@@ -151,13 +151,18 @@ jobs:
            release=gh("GET",api+"/releases/tags/"+tag)
           except urllib.error.HTTPError as e:
            if e.code!=404:raise
-           note=(root/"docs/releases/FT182.ru.md").read_text("utf-8") if (root/"docs/releases/FT182.ru.md").exists() else "Подписанная тестовая сборка FT182. Полевые проверки на ГУ ещё не выполнены."
-           note+="\n\nИсточник: "+pin+"\nSHA-256 APK: "+sha+"\nПодпись владельца: "+os.environ["FT182_CERT_PIN"]+"\n"
-           release=gh("POST",api+"/releases",{"tag_name":tag,"target_commitish":pin,"name":"FT182 — управление Android Auto и упрощённая настройка телефона","body":note,"draft":True,"prerelease":True})
+           existing=gh("GET",api+"/releases?per_page=60")
+           release=next((item for item in existing if item.get("tag_name")==tag),None)
+           if release is None:
+            note=(root/"docs/releases/FT182.ru.md").read_text("utf-8") if (root/"docs/releases/FT182.ru.md").exists() else "Подписанная тестовая сборка FT182. Полевые проверки на ГУ ещё не выполнены."
+            note+="\n\nИсточник: "+pin+"\nSHA-256 APK: "+sha+"\nПодпись владельца: "+os.environ["FT182_CERT_PIN"]+"\n"
+            release=gh("POST",api+"/releases",{"tag_name":tag,"target_commitish":pin,"name":"FT182 — управление Android Auto и упрощённая настройка телефона","body":note,"draft":True,"prerelease":True})
+           else:
+            print("FT182_EXISTING_DRAFT_REUSED="+str(release["id"]),flush=True)
           assert release["tag_name"]==tag and release["target_commitish"]==pin
           asset_name=apk.name
           def find_asset():
-           reread=gh("GET",api+"/releases/tags/"+tag)
+           reread=gh("GET",api+"/releases/"+str(release["id"]))
            return reread,next((a for a in reread.get("assets",[]) if a["name"]==asset_name and a.get("state")=="uploaded"),None)
           release,asset=find_asset()
           if asset is None:
