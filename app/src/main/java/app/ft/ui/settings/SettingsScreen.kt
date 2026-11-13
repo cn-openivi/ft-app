@@ -299,11 +299,16 @@ private fun PageContent(page: SettingsPage) {
                 BluetoothCallsSetting()
                 IccoaBluetoothIdentityLinkSetting()
                 val iccoa by IccoaService.state.collectAsStateWithLifecycle()
+                val screen by CarControls.state.collectAsStateWithLifecycle()
                 var calibrationEnabled by remember { mutableStateOf(p.mirrorUseCalibration) }
                 BoolSetting(stringResource(R.string.mirror_use_calibration_title), calibrationEnabled,
                     detail = stringResource(R.string.mirror_use_calibration_about)) {
                     calibrationEnabled = it
                     p.mirrorUseCalibration = it
+                    if (!it) {
+                        CarTouchCalibration.cancel()
+                        MirrorTouchCalibration.cancel()
+                    }
                 }
                 if (calibrationEnabled) {
                     val carCalibration by CarTouchCalibration.state.collectAsStateWithLifecycle()
@@ -311,7 +316,9 @@ private fun PageContent(page: SettingsPage) {
                     Text(stringResource(R.string.mirror_use_calibration_about), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onClick = { IccoaService.calibrateTouch() },
-                            enabled = iccoa.connected && !CarControls.state.value.aaOverlay) {
+                            enabled = iccoa.connected &&
+                                screen.phase == CarControls.Phase.PROJECTING &&
+                                !screen.aaOverlay && !screen.mirroring) {
                             Text(if (carCalibration.step in 1..4)
                                 stringResource(R.string.home_touch_calibration_step, carCalibration.step)
                                 else stringResource(R.string.home_touch_start))
@@ -324,7 +331,7 @@ private fun PageContent(page: SettingsPage) {
                     Text(stringResource(R.string.iccoa_mirror_calibration_about), style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onClick = { IccoaService.calibrateMirrorTouch() },
-                            enabled = iccoa.connected) {
+                            enabled = iccoa.connected && screen.mirroring) {
                             Text(if (mirrorCalibration.step in 1..4)
                                 stringResource(R.string.iccoa_mirror_calibration_step, mirrorCalibration.step)
                                 else stringResource(R.string.iccoa_mirror_calibration_start))

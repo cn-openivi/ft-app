@@ -248,7 +248,8 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
             }
         }
         // Explicit radio states before connection; cable/USB mode does not need them.
-        if (!connected && (iccoa || !cable) && (!radios.wifi || (radios.nearby && !radios.bluetooth))) item {
+        if (!connected && (iccoa || (!car.usb && linkMode == 1)) &&
+            (!radios.wifi || (radios.nearby && !radios.bluetooth))) item {
             Section(stringResource(R.string.mirror_radios_off_title)) {
                 if (!radios.wifi) {
                     Text(stringResource(R.string.mirror_wifi_off_body))
