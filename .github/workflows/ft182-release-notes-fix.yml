@@ -1,0 +1,71 @@
+name: FT182 correct Russian release notes (metadata only)
+on:
+  push:
+    branches: [openivi/ft182-supercast-ux-source-20261113]
+    paths: ['.github/workflows/ft182-release-notes-fix.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: ft182-release-notes-metadata-only
+  cancel-in-progress: false
+jobs:
+  repair-existing-draft:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 12
+    steps:
+      - name: Read approved source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate RU notes and repair only the existing release description
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft182-supercast-ux-source-20261113'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 6b837efcab4e212754f13aeb5f60d1dd533fd7e8 "$GITHUB_SHA"
+          python3 tools/release_notes/validate.py --tag xa60-ft182-6b837efc --file docs/releases/FT182.ru.md
+          python3 - <<'PY'
+          import json, os, pathlib, urllib.error, urllib.request
+          repo="cn-openivi/ft-app"
+          tag="xa60-ft182-6b837efc"
+          source="6b837efcab4e212754f13aeb5f60d1dd533fd7e8"
+          rid=444401467
+          title="FT182 — управление Android Auto и упрощённая настройка"
+          expected=pathlib.Path("docs/releases/FT182.ru.md").read_text(encoding="utf-8")
+          token=os.environ["GH_TOKEN"]
+          assert token, "GitHub release-edit permission missing"
+          base=f"https://api.github.com/repos/{repo}/releases/{rid}"
+          headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json",
+                   "X-GitHub-Api-Version":"2022-11-28","User-Agent":"OpenIVI-FT182-RU-Notes"}
+          def request(method,data=None):
+              h=headers.copy()
+              raw=None if data is None else json.dumps(data,ensure_ascii=False).encode("utf-8")
+              if raw is not None:h["Content-Type"]="application/json"
+              with urllib.request.urlopen(urllib.request.Request(base,data=raw,headers=h,method=method),timeout=40) as r:
+                  return json.load(r)
+          before=request("GET")
+          assert before["id"]==rid and before["tag_name"]==tag, "Wrong release; refusing write"
+          assert before["target_commitish"]==source, "Source identity mismatch; refusing write"
+          assert before["draft"] is True and before["prerelease"] is True, "Expected original FT182 draft"
+          assert before.get("assets",[])==[], "Unexpected artifacts; refuse metadata mutation"
+          old=before.get("body") or ""
+          if old!=expected or before.get("name")!=title:
+              assert old.startswith("FT182, versionCode 182, подписано ключом владельца."), "Concurrent release description change; refuse overwrite"
+              assert "2e6922019dc6b0c31c008532d93e48cc72b4b8d8c03fc4b1ce28f1fa18c35641" in old, "Unexpected original release body"
+              request("PATCH",{"name":title,"body":expected})
+          after=request("GET")
+          assert after["body"]==expected and after["name"]==title, "Readback mismatch"
+          assert after["draft"]==before["draft"] and after["prerelease"]==before["prerelease"], "Release lifecycle changed"
+          assert after["tag_name"]==tag and after["target_commitish"]==source
+          assert after.get("assets",[])==before.get("assets",[]), "Release assets changed"
+          print("FT182_RELEASE_NOTES_RU_READBACK=PASS")
+          print("FT182_RELEASE_ID="+str(rid))
+          print("FT182_LIFECYCLE_AND_ASSETS_UNCHANGED=PASS")
+          PY
