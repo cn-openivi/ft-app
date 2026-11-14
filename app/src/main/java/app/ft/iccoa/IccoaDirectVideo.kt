@@ -37,10 +37,32 @@ internal class IccoaDirectVideo(
     private var frameAtMs = 0L
     private var activatedAtMs = 0L
     private var lastKeyRequestMs = 0L
+    @Volatile private var receiverPaused = false
+    private var observedGopDrops = 0L
+    private var gopLostAtMs = 0L
+    private var directKeyWritesAtLoss = 0L
     private val watchdog = object : Runnable {
         override fun run() {
             if (closed || !active) return
             val now = SystemClock.elapsedRealtime()
+            if (receiverPaused) {
+                // OEM CONTROL5 / RTSP PAUSE is an ordinary transport suspension.
+                // Keep the AA bitstream route; PLAY must re-seed with a new IDR.
+                main.postDelayed(this, WATCH_MS)
+                return
+            }
+            val drops = output.directGopDropCount()
+            if (drops > observedGopDrops) {
+                observedGopDrops = drops
+                gopLostAtMs = now
+                directKeyWritesAtLoss = output.directKeyWritesAtGopLoss()
+                DiagLog.w("ICCOA", "DIRECT_VIDEO_GOP_WAIT generation=$drops " +
+                    "baselineKeyWrites=$directKeyWritesAtLoss")
+            }
+            if (gopLostAtMs > 0L && output.writtenDirectKeyFrames() > directKeyWritesAtLoss) {
+                DiagLog.i("ICCOA", "DIRECT_VIDEO_GOP_RECOVERED elapsedMs=${now - gopLostAtMs}")
+                gopLostAtMs = 0L
+            }
             if (firstKeyAtMs == 0L && output.writtenDirectKeyFrames() > keyWritesAtActivate) {
                 firstKeyAtMs = now
                 DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
@@ -50,7 +72,15 @@ internal class IccoaDirectVideo(
                     fallback("Android Auto video session ended")
                 firstKeyAtMs == 0L && now - activatedAtMs >= START_TIMEOUT_MS ->
                     fallback("Initial AA H.264 IDR was not written to RTP")
+                gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RECOVERY_TIMEOUT_MS ->
+                    fallback("Direct RTP GOP did not recover with an IDR in ${GOP_RECOVERY_TIMEOUT_MS}ms")
                 else -> {
+                    // AA can keep emitting P frames even while all of them are
+                    // rejected by the RTP queue. Input activity is not RTP liveness.
+                    if (gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RETRY_AFTER_MS &&
+                        now - lastKeyRequestMs >= KEY_REQUEST_COOLDOWN_MS)
+                        requestKeyframe()
+
                     // A static AA screen may legally produce no new access units.
                     // Probe a fresh picture without declaring that silence is a crash.
                     // RTSP/RTP transport failure has its own independent close path.
@@ -112,6 +142,7 @@ internal class IccoaDirectVideo(
 
     override fun onFrame(source: AaSession, frame: ByteArray, timestamp: Long): Boolean {
         if (!sourceValid(source) || source !== this.source || failed || frame.isEmpty()) return false
+        if (receiverPaused) return active // No queued P frames while Toyota hides WFD.
         val csd = compatibleConfig ?: return false
         val key = IccoaDirectAvc.isIdr(frame)
         if (active) {
@@ -153,6 +184,9 @@ internal class IccoaDirectVideo(
         output.configure(retained.config)
         synchronized(clock) { clock.reset() }
         firstKeyAtMs = 0L
+        observedGopDrops = output.directGopDropCount()
+        gopLostAtMs = 0L
+        receiverPaused = false
         keyWritesAtActivate = output.writtenDirectKeyFrames()
         frameAtMs = 0L
         activatedAtMs = SystemClock.elapsedRealtime()
@@ -178,6 +212,7 @@ internal class IccoaDirectVideo(
         if (lastKeyRequestMs > 0 && now - lastKeyRequestMs < KEY_REQUEST_COOLDOWN_MS) return true
         lastKeyRequestMs = now
         session.askForAFreshPicture()
+        DiagLog.i("ICCOA", "DIRECT_VIDEO_IDR_REQUESTED mode=AA_VIDEO_FOCUS")
         return true
     }
 
@@ -192,8 +227,30 @@ internal class IccoaDirectVideo(
         if (next != plan && !closed && !failed) fallback("Receiver changed WFD video format")
     }
 
+    /** The OEM may PAUSE for only a few seconds while changing its surface. */
     fun paused() {
-        if (active || pending) fallback("Receiver paused ICCOA video", resumeTransport = false)
+        if (!active && !pending) return
+        pending = false
+        receiverPaused = true
+        DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_PAUSED route_retained=true")
+    }
+
+    /** Call immediately before WFD PLAY resumes the RTP queue. */
+    fun resumed() {
+        if (!receiverPaused) return
+        receiverPaused = false
+        if (active) {
+            // A PAUSE clears RTP dependencies: request an IDR, never resume on P frames.
+            synchronized(clock) { clock.reset() }
+            observedGopDrops = output.directGopDropCount()
+            gopLostAtMs = 0L
+            keyWritesAtActivate = output.writtenDirectKeyFrames()
+            firstKeyAtMs = 0L
+            frameAtMs = 0L
+            activatedAtMs = SystemClock.elapsedRealtime()
+            lastKeyRequestMs = 0L
+            DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true")
+        }
     }
 
     fun disconnected() {
@@ -211,6 +268,8 @@ internal class IccoaDirectVideo(
         failed = true // no re-entry until the next ICCOA connection
         pending = false
         active = false
+        receiverPaused = false
+        gopLostAtMs = 0L
         main.removeCallbacks(watchdog)
         val beforeRecovery = output.writtenCompositedFrames()
         if (projection.directVideoActive) {
@@ -253,6 +312,8 @@ internal class IccoaDirectVideo(
         failed = true
         active = false
         pending = false
+        receiverPaused = false
+        gopLostAtMs = 0L
         main.removeCallbacks(watchdog)
         if (AaH264Tap.listener === this) AaH264Tap.listener = null
         compatibleConfig = null
@@ -263,6 +324,8 @@ internal class IccoaDirectVideo(
         private const val WATCH_MS = 1_000L
         private const val START_TIMEOUT_MS = 5_000L
         private const val IDLE_PROBE_MS = 30_000L
+        private const val GOP_RETRY_AFTER_MS = 2_500L
+        private const val GOP_RECOVERY_TIMEOUT_MS = 6_000L
         private const val KEY_REQUEST_COOLDOWN_MS = 2_500L
     }
 }
