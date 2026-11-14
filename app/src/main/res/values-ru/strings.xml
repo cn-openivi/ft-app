@@ -47,8 +47,8 @@
     <string name="aa_help_4_body">FT подключится к нему сам. После перезагрузки телефона или обновления Android Auto повторите шаги 1, 3 и 4.</string>
     <string name="aa_match_car">Использовать размер экрана автомобиля</string>
     <string name="aa_quality_tier">Качество видео Android Auto</string>
-    <string name="aa_quality_tier_info">Авто выбирает совместимый режим после согласования с подключённым приёмником, независимо от марки ГУ или телефона. Подтверждённые режимы AA: 480p, 720p и 1080p. Режимы 2K DCI, 1440p и 4K добавлены как перспективные цели качества. Для Direct H.264 требуется совпадение с разрешением приёмника.</string>
-    <string name="aa_high_tier_pending">Экспериментальный профиль: пока FT передаёт Android Auto запрос не выше 1080p, поскольку поддержка более высоких режимов самим AA не подтверждена. Выбранный профиль сохраняется, фактическое разрешение видно в диагностике. Неподдерживаемый режим не отправляем.</string>
+    <string name="aa_quality_tier_info">Авто использует видеорежим, согласованный с подключённым приёмником. SD, HD и Full HD поддерживаются текущим протоколом AA. QHD и UHD пока экспериментальные цели качества, реальный запрос AA ограничен Full HD.</string>
+    <string name="aa_high_tier_pending">Выбран экспериментальный QHD/UHD. Пока фактическое видео Android Auto ограничено Full HD (1080p), до проверки поддержки высокого разрешения протоколом AA. Выбор сохраняется.</string>
     <string name="aa_controls_left">Разместить элементы управления слева</string>
     <string name="aa_compact_return_button">Компактная кнопка FT</string>
     <string name="aa_compact_return_button_body">Небольшая тёмная круглая кнопка возврата поверх Android Auto. При выключении используется прежний вид.</string>
@@ -671,4 +671,9 @@
     <string name="ft186_bt_id_queued">Идентификатор Classic Bluetooth телефона поставлен в очередь Toyota; подтверждения ГУ пока нет.</string>
     <string name="ft186_bt_id_failed">Не удалось поставить идентификатор Bluetooth телефона в очередь Toyota.</string>
     <string name="ft186_bt_id_unavailable">Classic Bluetooth-идентификатор телефона недоступен или функция ГУ не поддерживается.</string>
+    <string name="aa_quality_sd">SD</string>
+    <string name="aa_quality_hd">HD</string>
+    <string name="aa_quality_full_hd">Full HD</string>
+    <string name="aa_quality_qhd">QHD</string>
+    <string name="aa_quality_uhd">UHD</string>
 </resources>
