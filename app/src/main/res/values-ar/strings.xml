@@ -125,7 +125,7 @@
     <string name="picture_floor_label">الحد الأدنى للجودة</string>
     <string name="picture_floor_note">يُبقي كل صورة كاملة صغيرة بما يكفي لتستقبلها السيارة، فتعود الشاشة بعد أن تعرض السيارة شاشاتها الخاصة. يفعل Baidu هذا على أحدث الهواتف. الأرقام الأصغر أوضح وأكبر حجمًا، و«معطّل» يرسل ما يصنعه الهاتف كما هو.</string>
     <string name="picture_min_fps">أدنى معدل إطارات مقبول، و0 يعني بلا حد أدنى</string>
-    <string name="picture_density">وضوح التطبيقات على شاشة السيارة</string>
+    <string name="picture_density">حجم واجهة FT</string>
     <string name="picture_save_power">توفير طاقة مرمّز الفيديو</string>
     <string name="picture_save_power_body">يعمل مرمّز الفيديو في الهاتف بمعدل إطارات الصورة بدلًا من سرعته القصوى. قد يبقى الهاتف أبرد في الرحلات الطويلة، لكن شاشة السيارة قد تستجيب للمس متأخرة قليلًا.</string>
     <string name="picture_at_defaults">الإعدادات الافتراضية مطبّقة بالفعل</string>
@@ -493,7 +493,7 @@
     <string name="adv_iccoa_channel_map">ICCOA source configuration: control 57219, audio 57229, sensor 57239, other lanes 57249/57259, RTSP 7236, UIBC 4321. The receiver negotiates the RTP destination port.</string>
     <string name="guidance_iccoa_title">Navigation audio over ICCOA</string>
     <string name="guidance_iccoa_body">ICCOA streams capturable audio through a shared projection audio channel. The separate CarLife TTS channel and its mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
-    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 160 dpi.</string>
+    <string name="picture_density_shared">ستة أحجام للواجهة. تتناسب الأزرار والنصوص مع أبعاد العرض، وليس مع قيمة DPI ثابتة. إعدادات Android Auto منفصلة.</string>
     <string name="picture_iccoa_direct_codec">Direct mode forwards the original Android Auto H.264 video without video re-encoding. The source controls bitrate and frame rate. If incompatible, FT restores its normal 8 Mbps video encoder. Test while parked.</string>
     <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
     <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>
@@ -681,4 +681,10 @@
     <string name="aa_quality_full_hd">Full HD</string>
     <string name="aa_quality_qhd">QHD</string>
     <string name="aa_quality_uhd">UHD</string>
+    <string name="ft_zoom_very_small">صغير جدًا</string>
+    <string name="ft_zoom_small">صغير</string>
+    <string name="ft_zoom_normal">عادي</string>
+    <string name="ft_zoom_large">كبير</string>
+    <string name="ft_zoom_very_large">كبير جدًا</string>
+    <string name="ft_zoom_maximum">أقصى حجم</string>
 </resources>
