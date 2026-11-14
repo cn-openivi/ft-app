@@ -25,16 +25,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import app.ft.FTApp
 import app.ft.R
 import app.ft.core.BluetoothCalls
 import app.ft.core.BluetoothCallsState
 import app.ft.core.BluetoothCallsStatus
+import app.ft.core.BluetoothMediaState
+import app.ft.iccoa.IccoaCarBluetoothMatch
+import app.ft.iccoa.IccoaCarBluetoothRoleResolver
+import app.ft.iccoa.IccoaService
 import app.ft.ui.home.Fixes
 
 @Composable
 fun BluetoothCallsSetting(prominent: Boolean = false, projectionConnected: Boolean = false) {
     val context = LocalContext.current
     var state by remember { mutableStateOf(BluetoothCallsState()) }
+    var media by remember { mutableStateOf(BluetoothMediaState()) }
+    val iccoaSession by IccoaService.state.collectAsState()
     var monitor by remember { mutableStateOf<BluetoothCalls?>(null) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) Fixes.open(context, Fixes.appSettings(context))
@@ -45,6 +52,7 @@ fun BluetoothCallsSetting(prominent: Boolean = false, projectionConnected: Boole
         monitor = current
         current.start()
         state = current.state.value
+        media = current.mediaState.value
         onPauseOrDispose {
             current.close()
             if (monitor === current) monitor = null
@@ -53,6 +61,15 @@ fun BluetoothCallsSetting(prominent: Boolean = false, projectionConnected: Boole
     LaunchedEffect(monitor) {
         monitor?.state?.collect { state = it }
     }
+    LaunchedEffect(monitor) {
+        monitor?.mediaState?.collect { media = it }
+    }
+    val roleMatch = IccoaCarBluetoothRoleResolver.resolve(
+        if (projectionConnected) iccoaSession.verifiedReceiverId else null,
+        FTApp.instance.prefs.carBtAddress,
+        state,
+        media
+    )
     val disconnected = state.status == BluetoothCallsStatus.DISCONNECTED || state.status == BluetoothCallsStatus.OFF
     val attention = disconnected || state.status == BluetoothCallsStatus.PERMISSION_REQUIRED || state.status == BluetoothCallsStatus.UNAVAILABLE
     val content: @Composable (Modifier) -> Unit = { modifier ->
@@ -78,6 +95,37 @@ fun BluetoothCallsSetting(prominent: Boolean = false, projectionConnected: Boole
                 disconnected -> R.string.bluetooth_calls_connect_help
                 else -> R.string.bluetooth_calls_about
             }), style = MaterialTheme.typography.bodySmall)
+            // A2DP and HFP are distinct Android profiles. Never label an unrelated
+            // headset as the HFP phone for an authenticated car projection.
+            Text(when (media.status) {
+                BluetoothCallsStatus.CONNECTED -> stringResource(
+                    R.string.ft186_bt_media_connected,
+                    media.peers.joinToString { it.name }.ifBlank {
+                        stringResource(R.string.ft186_bt_unknown_device)
+                    })
+                BluetoothCallsStatus.DISCONNECTED -> stringResource(R.string.ft186_bt_media_disconnected)
+                BluetoothCallsStatus.OFF -> stringResource(R.string.ft186_bt_media_off)
+                BluetoothCallsStatus.PERMISSION_REQUIRED -> stringResource(R.string.ft186_bt_media_permission)
+                BluetoothCallsStatus.CHECKING, BluetoothCallsStatus.UNAVAILABLE ->
+                    stringResource(R.string.ft186_bt_media_unknown)
+            }, style = MaterialTheme.typography.bodySmall)
+            if (projectionConnected) {
+                Text(stringResource(when (roleMatch.match) {
+                    IccoaCarBluetoothMatch.PROJECTION_UNVERIFIED -> R.string.ft186_bt_link_projection_unknown
+                    IccoaCarBluetoothMatch.CAR_ADDRESS_UNKNOWN -> R.string.ft186_bt_link_car_unknown
+                    IccoaCarBluetoothMatch.NO_PROFILE -> R.string.ft186_bt_link_no_profile
+                    IccoaCarBluetoothMatch.HFP_ONLY -> R.string.ft186_bt_link_hfp
+                    IccoaCarBluetoothMatch.MEDIA_ONLY -> R.string.ft186_bt_link_media
+                    IccoaCarBluetoothMatch.HFP_AND_MEDIA -> R.string.ft186_bt_link_both
+                }), style = MaterialTheme.typography.bodySmall)
+                if (roleMatch.otherCallsDevice || roleMatch.otherMediaDevice) {
+                    Text(stringResource(R.string.ft186_bt_link_other_device),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+                Text(stringResource(R.string.ft186_bt_link_not_oem_ack),
+                    style = MaterialTheme.typography.bodySmall)
+            }
             FilledTonalButton(onClick = {
                 if (state.status == BluetoothCallsStatus.PERMISSION_REQUIRED && Build.VERSION.SDK_INT >= 31) {
                     permission.launch(Manifest.permission.BLUETOOTH_CONNECT)
