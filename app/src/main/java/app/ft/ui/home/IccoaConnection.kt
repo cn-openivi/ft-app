@@ -145,7 +145,8 @@ internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnection
                         val key = app.ft.iccoa.IccoaTrustedCarKey(context).clear()
                         val car = app.ft.iccoa.IccoaRememberedCar(context).clear()
                         app.ft.iccoa.IccoaTrustedPin(context).clear()
-                        app.ft.core.DiagLog.i("ICCOA", "Owner explicit trust reset key=$key car=$car")
+                        val touchProfile = app.ft.projection.IccoaTouchWelcome.forget(context)
+                        app.ft.core.DiagLog.i("ICCOA", "Owner trust reset key=$key car=$car touchProfile=$touchProfile")
                         forgetConfirmation = false
                     }) { Text("Удалить сопряжение") }
                     TextButton(onClick = { forgetConfirmation = false }) { Text("Отмена") }
