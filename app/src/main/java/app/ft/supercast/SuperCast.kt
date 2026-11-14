@@ -52,7 +52,10 @@ object SuperCast {
             when (event?.getString("event")) {
                 "phone-touch" -> app.ft.core.MirrorPanelSaver.onPhysicalTouch(FTApp.instance)
                 "phone-touch-monitor-ready" -> physicalTouchMonitorActive = true
-                "phone-touch-monitor-unavailable" -> physicalTouchMonitorActive = false
+                "phone-touch-monitor-unavailable" -> {
+                    physicalTouchMonitorActive = false
+                    app.ft.core.MirrorPanelSaver.monitorUnavailable(FTApp.instance)
+                }
                 else -> DiagLog.i(TAG, "helper event: ${event?.getString("event")}")
             }
         }
