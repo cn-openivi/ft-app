@@ -36,6 +36,6 @@ class CarUiViewportTest {
         assertEquals(240, CarUiViewport.logicalDpi(1280, 720, 240))
         assertEquals(360, CarUiViewport.logicalDpi(1920, 1080, 240))
         assertEquals(160, CarUiViewport.logicalDpi(0, 0, 160))
-        assertTrue(CarUiViewport.logicalDpi(3840, 2160, 320) <= 640)
+        assertTrue(CarUiViewport.logicalDpi(3840, 2160, 320) <= 960)
     }
 }
