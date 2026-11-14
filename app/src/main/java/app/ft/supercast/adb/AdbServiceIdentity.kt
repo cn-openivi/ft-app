@@ -7,13 +7,14 @@ package app.ft.supercast.adb
  */
 internal object AdbServiceIdentity {
     fun isValidGuid(guid: String): Boolean =
-        guid.length in 8..128 &&
+        guid.length in 12..128 && guid.startsWith("adb-") &&
             guid.all { it in 'a'..'z' || it in 'A'..'Z' ||
                 it in '0'..'9' || it == '-' || it == '_' || it == '.' || it == ':' }
 
     fun matchesConnect(serviceName: String, pairedGuid: String): Boolean {
         if (!isValidGuid(pairedGuid)) return false
-        val prefix = "adb-" + pairedGuid
-        return serviceName == prefix || serviceName.startsWith(prefix + "-")
+        // AOSP daemon/mdns.cpp registers ReadDeviceGuid() AS service name.
+        // That GUID already contains the "adb-" prefix; never prepend it again.
+        return serviceName == pairedGuid || serviceName.startsWith(pairedGuid + "-")
     }
 }
