@@ -673,4 +673,12 @@
     <string name="ft186_bt_id_queued">Phone Classic Bluetooth identity queued to Toyota; no OEM acknowledgement verified.</string>
     <string name="ft186_bt_id_failed">Phone Bluetooth identity could not be queued to Toyota.</string>
     <string name="ft186_bt_id_unavailable">Phone Classic Bluetooth identity unavailable or OEM extension unsupported.</string>
+    <string name="aa_quality_tier">جۆرێ ڤیدیۆیێ Android Auto</string>
+    <string name="aa_quality_tier_info">دۆخێ خۆکار قەبارەی ڤیدیۆیێ ل گۆری وەرگری دهەلبژێریت. SD و HD و Full HD کار دکەن. QHD و UHD هێشتا تاقیکرنەن؛ نوکە تا Full HD سنووردارە.</string>
+    <string name="aa_high_tier_pending">QHD و UHD هێشتا د تاقیکرنێ دانە. Android Auto نوکە تا Full HD (1080p) بکار دئینیت، لێ هەلبژاردنا تە دهێتە پاراستن.</string>
+    <string name="aa_quality_sd">SD</string>
+    <string name="aa_quality_hd">HD</string>
+    <string name="aa_quality_full_hd">Full HD</string>
+    <string name="aa_quality_qhd">QHD</string>
+    <string name="aa_quality_uhd">UHD</string>
 </resources>
