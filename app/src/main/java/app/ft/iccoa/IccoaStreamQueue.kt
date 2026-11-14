@@ -28,13 +28,15 @@ internal class IccoaStreamQueue {
         signal()
     }
 
-    @Synchronized fun resume(nowUs: Long) {
-        if (!paused) return
+    /** True only for a real paused -> playing transition, not duplicate PLAY. */
+    @Synchronized fun resume(nowUs: Long): Boolean {
+        if (!paused) return false
         clear()
         minimumPts = nowUs
         needsKey = true
         paused = false
         signal()
+        return true
     }
 
     /** True asks the encoder for an IDR after dropping a broken GOP. */
