@@ -7,19 +7,18 @@ import kotlin.math.roundToInt
  * of the negotiated video pixel resolution. This is a logical layout density,
  * NOT a claim about the panel's physical PPI.
  *
- * 1280x720 is only the reference coordinate canvas, not a forced codec mode.
- * For the same aspect ratio, doubling both pixel dimensions doubles the
- * effective pixels per dp and leaves the apparent size unchanged.
- *
- * Legacy carDensity 160 is a neutral 100% zoom adjustment, while an explicitly
- * saved 240 remains a 150% user zoom. AA DPI and its H.264 path are independent.
+ * Restore the upstream 480dp-high virtual viewport density. At 1280x720,
+ * 160 stored user scale means NORMAL 100% and 240 effective display DPI,
+ * rather than physically rendering 160dpi and shrinking all FT controls.
+ * The viewport pixel size is negotiated; no codec resolution is forced.
+ * AA DPI, ICCOA transport, and touch geometry remain independent.
  */
 /**
  * Six explicitly named relative visual zoom levels.
  *
  * Storage retains the legacy carDensity integer for seamless migrations, but
  * it is no longer presented as physical DPI. 160 means exactly 100% of the
- * baseline layout size, normalized by current virtual display dimensions.
+ * original 480dp-height layout size, normalized by current viewport dimensions.
  */
 internal enum class FtUiScaleStep(val storedRelativeScale: Int, val percent: Int) {
     VERY_SMALL(112, 70),
@@ -42,15 +41,18 @@ internal object CarUiViewport {
 
     fun logicalDpi(widthPx: Int, heightPx: Int, legacyUiScale: Int = NEUTRAL_UI_SCALE): Int {
         val adjusted = legacyUiScale.takeIf { it > 0 } ?: NEUTRAL_UI_SCALE
-        if (widthPx <= 0 || heightPx <= 0) return adjusted.coerceIn(80, 640)
+        if (widthPx <= 0 || heightPx <= 0) return adjusted.coerceIn(80, 1280)
 
-        val portrait = heightPx > widthPx
-        val referenceWidth = if (portrait) REFERENCE_HEIGHT else REFERENCE_WIDTH
-        val referenceHeight = if (portrait) REFERENCE_WIDTH else REFERENCE_HEIGHT
-        val fitScale = minOf(widthPx / referenceWidth, heightPx / referenceHeight)
+        // Mykola's original effective density was based on a 480dp high
+        // virtual display, not on the stored 160 preference as an absolute DPI.
+        // Use the shorter viewport side for equal sizing in either orientation.
+        // The relative FT preset is a multiplier: 160 == original 100% size.
+        val viewportHeightPx = minOf(widthPx, heightPx)
+        val originalScale = viewportHeightPx / 480f
 
-        // This remains a densityDpi value only because Android's virtual
-        // DisplayManager API expresses logical viewport scale in that unit.
-        return (adjusted * fitScale).roundToInt().coerceIn(80, 960)
+        // Android requires a logical densityDpi for its VirtualDisplay API.
+        // 1280x720 at the NORMAL (160) preset must create a 240dpi display,
+        // as it did upstream. The cap keeps all six tiers proportional at UHD.
+        return (adjusted * originalScale).roundToInt().coerceIn(80, 1280)
     }
 }
