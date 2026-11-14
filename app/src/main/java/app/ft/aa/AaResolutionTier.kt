@@ -9,8 +9,8 @@ package app.ft.aa
  * runtime implementations still reject them. Never advertise unknown wire
  * values or mismatch AA H.264 raster and input/touch coordinates.
  *
- * 2K DCI (2048x1080) differs from 1440p/QHD (2560x1440). There is no
- * independently verified AA 2K-DCI video-resolution wire enum.
+ * The UI uses conventional quality names: SD, HD, Full HD, QHD, UHD.
+ * Higher modes remain quality requests until their AA wire path is verified.
  */
 internal enum class AaResolutionTier(
     val width: Int,
@@ -21,7 +21,6 @@ internal enum class AaResolutionTier(
     P480(800, 480, true),
     P720(1280, 720, true),
     P1080(1920, 1080, true),
-    P2K_DCI(2048, 1080, false),
     P1440(2560, 1440, false),
     P4K_UHD(3840, 2160, false);
 
