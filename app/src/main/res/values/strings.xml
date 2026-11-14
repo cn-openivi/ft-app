@@ -48,8 +48,8 @@
     <string name="aa_help_4_body">FT connects to it by itself. After the phone restarts or Android Auto updates, do steps 1, 3 and 4 again.</string>
     <string name="aa_match_car">Draw at the car\'s own size</string>
     <string name="aa_quality_tier">Android Auto video quality</string>
-    <string name="aa_quality_tier_info">Auto selects the supported video mode after negotiating with the connected receiver, regardless of car or phone brand. Verified AA modes are 480p, 720p, 1080p; 2K DCI, 1440p and 4K are forward-compatible quality targets. Direct H.264 requires matching receiver and AA raster.</string>
-    <string name="aa_high_tier_pending">Experimental target: this version currently advertises at most 1080p to Android Auto because higher-resolution runtime support is not verified. Your higher quality choice is remembered; the actual negotiated resolution is shown in video diagnostics. No unsupported video mode is sent.</string>
+    <string name="aa_quality_tier_info">Auto uses the video mode negotiated with the connected receiver. SD, HD and Full HD are verified AA protocol modes. QHD and UHD are experimental targets; this build currently advertises at most Full HD to Android Auto.</string>
+    <string name="aa_high_tier_pending">Experimental QHD/UHD requested. Actual Android Auto video is capped to Full HD (1080p) until a higher AA video mode is independently verified. The requested tier is saved.</string>
     <string name="aa_controls_left">Put its controls on the left</string>
     <string name="aa_compact_return_button">Compact FT button</string>
     <string name="aa_compact_return_button_body">Use a small dark round return button over Android Auto. Off keeps the original button.</string>
@@ -673,4 +673,9 @@
     <string name="ft186_bt_id_queued">Phone Classic Bluetooth identity queued to Toyota; no OEM acknowledgement verified.</string>
     <string name="ft186_bt_id_failed">Phone Bluetooth identity could not be queued to Toyota.</string>
     <string name="ft186_bt_id_unavailable">Phone Classic Bluetooth identity unavailable or OEM extension unsupported.</string>
+    <string name="aa_quality_sd">SD</string>
+    <string name="aa_quality_hd">HD</string>
+    <string name="aa_quality_full_hd">Full HD</string>
+    <string name="aa_quality_qhd">QHD</string>
+    <string name="aa_quality_uhd">UHD</string>
 </resources>
