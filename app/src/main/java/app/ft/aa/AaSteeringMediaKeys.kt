@@ -3,7 +3,10 @@ package app.ft.aa
 /**
  * Routing policy for media keys received over CarLife or ICCOA.
  * Android Auto owns a media key while its screen is shown, or while its
- * playback service reports playing and FT's own player is not playing.
+ * session is connected and FT's own player is not playing.
+ *
+ * Do not require AA playback metadata: some AA music providers do not publish
+ * playback status reliably, even when media keys must still target the phone.
  *
  * A routing decision does not prove the car sends steering-wheel events:
  * the transport must actually deliver them to FT.
@@ -31,8 +34,7 @@ internal object AaSteeringMediaKeys {
         code: Int,
         aaVisible: Boolean,
         aaConnected: Boolean,
-        aaPlaying: Boolean,
         ftPlaying: Boolean
     ): Boolean = isMedia(code) &&
-        (aaVisible || (aaConnected && aaPlaying && !ftPlaying))
+        (aaVisible || (aaConnected && !ftPlaying))
 }
