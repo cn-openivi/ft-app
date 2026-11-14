@@ -6,7 +6,46 @@ package app.ft.iccoa
  * to the existing FT composition pipeline.
  */
 internal object IccoaDirectAvc {
-    data class Sps(val width: Int, val height: Int, val profileIdc: Int, val levelIdc: Int)
+    /** width/height are DECODER-VISIBLE pixels after H.264 frame cropping.
+     * codedWidth/codedHeight describe the actual macroblock raster. They must
+     * not be confused with AA service-discovery content margins.
+     */
+    data class Sps(
+        val width: Int,
+        val height: Int,
+        val profileIdc: Int,
+        val levelIdc: Int,
+        val codedWidth: Int = width,
+        val codedHeight: Int = height,
+        val cropLeftPx: Int = 0,
+        val cropRightPx: Int = 0,
+        val cropTopPx: Int = 0,
+        val cropBottomPx: Int = 0
+    )
+
+    /** Bounded, privacy-safe diagnostic; no raw video/config bytes are logged. */
+    fun compatibilityReason(
+        sps: Sps?,
+        configPresent: Boolean,
+        streamWidth: Int, streamHeight: Int, fps: Int,
+        aaWidth: Int, aaHeight: Int
+    ): String? = when {
+        !configPresent -> "SPS/PPS missing or invalid"
+        sps == null -> "AVC SPS unreadable or unsupported"
+        sps.width != streamWidth || sps.height != streamHeight ->
+            "visible SPS ${sps.width}x${sps.height} differs from WFD ${streamWidth}x${streamHeight}; " +
+                "coded ${sps.codedWidth}x${sps.codedHeight}, " +
+                "crop L${sps.cropLeftPx} R${sps.cropRightPx} " +
+                "T${sps.cropTopPx} B${sps.cropBottomPx}; AA content ${aaWidth}x${aaHeight}"
+        sps.profileIdc !in setOf(66, 77, 100) -> "unsupported AVC profile ${sps.profileIdc}"
+        sps.levelIdc !in 10..42 -> "unsupported AVC level ${sps.levelIdc}"
+        fps !in 1..30 -> "WFD fps $fps unsupported for direct"
+        streamWidth !in 320..1920 || streamHeight !in 240..1080 ->
+            "WFD raster ${streamWidth}x${streamHeight} out of direct bounds"
+        app.ft.aa.AaProtocol.standardSize(aaWidth, aaHeight) != (streamWidth to streamHeight) ->
+            "AA coded configuration from content ${aaWidth}x${aaHeight} disagrees with WFD ${streamWidth}x${streamHeight}"
+        else -> null
+    }
 
     /** Ensure the ICCOA TS muxer receives Annex B SPS/PPS even if AA used avcC. */
     fun normalizedConfiguration(csd: ByteArray): ByteArray? {
@@ -25,11 +64,8 @@ internal object IccoaDirectAvc {
     fun compatible(
         sps: Sps?, streamWidth: Int, streamHeight: Int, fps: Int,
         aaWidth: Int, aaHeight: Int
-    ): Boolean = sps != null &&
-        sps.width == streamWidth && sps.height == streamHeight &&
-        sps.profileIdc in setOf(66, 77, 100) && sps.levelIdc in 10..42 &&
-        fps in 1..30 && streamWidth in 320..1920 && streamHeight in 240..1080 &&
-        app.ft.aa.AaProtocol.standardSize(aaWidth, aaHeight) == (streamWidth to streamHeight)
+    ): Boolean = compatibilityReason(sps, sps != null,
+        streamWidth, streamHeight, fps, aaWidth, aaHeight) == null
 
     /** Inspect only NAL headers: copying full IDR frames here would defeat passthrough. */
     fun isIdr(accessUnit: ByteArray): Boolean {
@@ -139,11 +175,18 @@ internal object IccoaDirectAvc {
         val chromaArray = if (separateColourPlane) 0 else chroma
         val cropUnitX = if (chromaArray in 1..2) 2 else 1
         val cropUnitY = (if (chromaArray == 1) 2 else 1) * (if (frameOnly) 1 else 2)
-        val width = mbsWide * 16 - (cropLeft + cropRight) * cropUnitX
-        val height = mapUnitsHigh * 16 * (if (frameOnly) 1 else 2) -
-            (cropTop + cropBottom) * cropUnitY
-        require(frameOnly && width in 320..4096 && height in 240..2160)
-        Sps(width, height, profile, level)
+        val codedWidth = mbsWide * 16
+        val codedHeight = mapUnitsHigh * 16 * (if (frameOnly) 1 else 2)
+        val cropLeftPx = cropLeft * cropUnitX
+        val cropRightPx = cropRight * cropUnitX
+        val cropTopPx = cropTop * cropUnitY
+        val cropBottomPx = cropBottom * cropUnitY
+        val width = codedWidth - cropLeftPx - cropRightPx
+        val height = codedHeight - cropTopPx - cropBottomPx
+        require(frameOnly && width in 320..4096 && height in 240..2160 &&
+            codedWidth in 320..4096 && codedHeight in 240..2176)
+        Sps(width, height, profile, level, codedWidth, codedHeight,
+            cropLeftPx, cropRightPx, cropTopPx, cropBottomPx)
     }.getOrNull()
 
     /**

@@ -79,19 +79,24 @@ internal class IccoaDirectVideo(
         this.source = source
         val sps = IccoaDirectAvc.sps(csd)
         val normalized = IccoaDirectAvc.normalizedConfiguration(csd)
-        val supported = normalized != null && IccoaDirectAvc.compatible(
-            sps, plan.streamWidth, plan.streamHeight, plan.fps, aaWidth, aaHeight
+        val rejection = IccoaDirectAvc.compatibilityReason(
+            sps, normalized != null,
+            plan.streamWidth, plan.streamHeight, plan.fps, aaWidth, aaHeight
         )
+        val supported = rejection == null
         val previous = compatibleConfig
         compatibleConfig = if (supported) normalized else null
         if (active && (!supported || (previous != null && !previous.contentEquals(normalized))))
             main.post { fallback("AA video SPS changed or is unsupported") }
         if (!supported) {
-            DiagLog.i("ICCOA", "DIRECT_VIDEO declined: AA AVC SPS incompatible with selected WFD raster")
+            DiagLog.i("ICCOA", "DIRECT_VIDEO declined: ${rejection ?: "unknown incompatibility"}")
             onStatus("H.264 direct unavailable for this stream; normal FT video remains active")
-            onModeChanged(false, "AA H.264 SPS incompatible with the negotiated WFD raster")
+            onModeChanged(false, rejection ?: "AA video does not match WFD")
         } else {
-            DiagLog.i("ICCOA", "DIRECT_VIDEO candidate " + sps!!.width + "x" + sps.height +
+            DiagLog.i("ICCOA", "DIRECT_VIDEO candidate visible=" + sps!!.width + "x" + sps.height +
+                " coded=" + sps.codedWidth + "x" + sps.codedHeight +
+                " crop=" + sps.cropLeftPx + "," + sps.cropRightPx +
+                "," + sps.cropTopPx + "," + sps.cropBottomPx +
                 " AVC profile=" + sps.profileIdc + " level=" + sps.levelIdc)
         }
     }

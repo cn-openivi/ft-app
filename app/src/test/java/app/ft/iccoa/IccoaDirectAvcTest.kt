@@ -6,7 +6,7 @@ import java.io.ByteArrayOutputStream
 
 class IccoaDirectAvcTest {
     /** Deterministic AVC Baseline Level 4.0 SPS fixture, no MediaCodec dependency. */
-    private fun sps1080(): ByteArray {
+    private fun sps1080(cropBottom: Int = 4): ByteArray {
         class Bits {
             val bits = ArrayList<Int>()
             fun put(value: Int, width: Int) { for (i in width - 1 downTo 0) bits.add(value ushr i and 1) }
@@ -41,7 +41,7 @@ class IccoaDirectAvcTest {
         b.put(1, 1)  // frame_mbs_only
         b.put(1, 1)  // direct_8x8
         b.put(1, 1)  // cropping present
-        b.ue(0); b.ue(0); b.ue(0); b.ue(4) // crop bottom 8 -> 1080
+        b.ue(0); b.ue(0); b.ue(0); b.ue(cropBottom) // units of 2 luma pixels
         b.put(0, 1)  // no VUI
         return byteArrayOf(0x67.toByte()) + b.bytes()
     }
@@ -59,10 +59,31 @@ class IccoaDirectAvcTest {
         val format = IccoaDirectAvc.sps(annex(sps1080(), byteArrayOf(0x68, 0)))!!
         assertEquals(1920, format.width)
         assertEquals(1080, format.height)
+        assertEquals(1088, format.codedHeight)
+        assertEquals(8, format.cropBottomPx)
         assertEquals(66, format.profileIdc)
         assertEquals(40, format.levelIdc)
         assertNull(IccoaDirectAvc.sps(byteArrayOf(0, 0, 0, 1, 0x67)))
         assertNull(IccoaDirectAvc.sps(byteArrayOf()))
+    }
+
+    @Test fun distinguishes1088CodedRasterFrom1008VisibleCropAndExplainsRejection() {
+        // This is a synthetic fixture, NOT a claim about the live Samsung SPS.
+        val sps = IccoaDirectAvc.sps(annex(sps1080(cropBottom = 40),
+            byteArrayOf(0x68, 0)))!!
+        assertEquals(1920, sps.codedWidth)
+        assertEquals(1088, sps.codedHeight)
+        assertEquals(1008, sps.height)
+        assertEquals(80, sps.cropBottomPx)
+        assertFalse(IccoaDirectAvc.compatible(sps, 1920, 1080, 30, 1920, 1008))
+        val reason = IccoaDirectAvc.compatibilityReason(sps, true,
+            1920, 1080, 30, 1920, 1008)!!
+        assertTrue(reason.contains("visible SPS 1920x1008"))
+        assertTrue(reason.contains("WFD 1920x1080"))
+        assertTrue(reason.contains("coded 1920x1088"))
+        assertNull(IccoaDirectAvc.compatibilityReason(
+            IccoaDirectAvc.sps(annex(sps1080(), byteArrayOf(0x68, 0))),
+            true, 1920, 1080, 30, 1920, 1008))
     }
 
     @Test fun acceptsAvccLengthPrefixSpsAndDistinguishesIdrFromPFrame() {
