@@ -244,6 +244,8 @@ internal class IccoaMediaTransport(
     private fun input(socket: Socket) {
         socket.soTimeout = 0
         var lastTouch: CarTouch? = null
+        var undimensionedSpace = IccoaInputCoordinateSpace.Mode.UNKNOWN
+        var lastVideoGeometry = ""
         val gesture = IccoaInputGesture {
             lastTouch?.let { onTouch(it.copy(action = CarTouch.CANCEL)) }
             DiagLog.i("ICCOA", "UIBC closed; cancelled active gesture without synthetic UP")
@@ -253,17 +255,44 @@ internal class IccoaMediaTransport(
                 val video = videoConfig ?: return@IccoaInputJson
                 val nativeTouch = IccoaInputEvent.touch(event, video) ?: return@IccoaInputJson
                 val plan = IccoaVideoPlan.from(video)
+                // Coordinate packet units are ambiguous when UIBC omits source
+                // dimensions. Keep the chosen mode only for the current raster
+                // and socket; it must not leak to another receiver or WFD mode.
+                val geometryKey = "${video.width}x${video.height}:" +
+                    "${plan.streamWidth}x${plan.streamHeight}:${plan.preserveAspect}"
+                if (geometryKey != lastVideoGeometry) {
+                    lastVideoGeometry = geometryKey
+                    undimensionedSpace = IccoaInputCoordinateSpace.Mode.UNKNOWN
+                }
+                val dimensionsMissing = event.optInt("width", 0) <= 0 &&
+                    event.optInt("height", 0) <= 0
+                if (dimensionsMissing &&
+                    undimensionedSpace == IccoaInputCoordinateSpace.Mode.UNKNOWN &&
+                    nativeTouch.action == CarTouch.DOWN &&
+                    app.ft.projection.IccoaTouchWelcome.state.value.phase ==
+                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
+                    undimensionedSpace = IccoaInputCoordinateSpace.inferFromWelcome(
+                        nativeTouch.x, nativeTouch.y, plan)
+                    DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
+                        "${undimensionedSpace.name}; dimensions_missing=true")
+                }
                 // Match FrameGate's actual letterbox (rather than stretching X/Y).
                 // CarDisplay uses the exact inverse of this same geometry.
                 val geometry = app.ft.projection.TouchVideoGeometry(
                     plan.contentWidth, plan.contentHeight, plan.streamWidth, plan.streamHeight,
                     plan.preserveAspect
                 )
-                fun toStream(x: Int, y: Int): Pair<Int, Int> = if (x < 0 || y < 0) -1 to -1
-                else geometry.toStream(
-                    (x.toLong() * plan.contentWidth / video.width).toInt(),
-                    (y.toLong() * plan.contentHeight / video.height).toInt()
-                )
+                fun toStream(x: Int, y: Int): Pair<Int, Int> {
+                    if (x < 0 || y < 0) return -1 to -1
+                    if (dimensionsMissing &&
+                        undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM)
+                        return x.coerceIn(0, plan.streamWidth - 1) to
+                            y.coerceIn(0, plan.streamHeight - 1)
+                    return geometry.toStream(
+                        (x.toLong() * plan.contentWidth / video.width).toInt(),
+                        (y.toLong() * plan.contentHeight / video.height).toInt()
+                    )
+                }
                 val (x, y) = toStream(nativeTouch.x, nativeTouch.y)
                 val (x2, y2) = toStream(nativeTouch.x2, nativeTouch.y2)
                 val touch = nativeTouch.copy(x = x, y = y, x2 = x2, y2 = y2)
