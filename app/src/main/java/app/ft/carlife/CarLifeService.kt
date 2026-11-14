@@ -1907,7 +1907,6 @@ class CarLifeService : Service() {
                 code = mapped,
                 aaVisible = st.aaOverlay,
                 aaConnected = aa != null,
-                aaPlaying = AaHeadUnitService.music.value.playing,
                 ftPlaying = CarPlayer.playing
             )) {
             if (aa?.sendKey(mapped) == true) {
