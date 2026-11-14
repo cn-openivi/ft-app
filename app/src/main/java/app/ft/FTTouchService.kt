@@ -56,7 +56,10 @@ class FTTouchService : AccessibilityService() {
             (event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_START ||
              event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_END) &&
             (Build.VERSION.SDK_INT < 33 || event.displayId == Display.DEFAULT_DISPLAY) &&
-            !app.ft.supercast.SuperCast.physicalTouchMonitorActive &&
+            // Accessibility remains an independent recovery path even if the
+            // shell helper claims readiness but stops producing touch events.
+            // MirrorPanelSaver coalesces duplicate events and only reads touch
+            // interaction, never the contents or position of the gesture.
             (lastInjectedAt == Long.MIN_VALUE || SystemClock.uptimeMillis() - lastInjectedAt > 1_000L)) {
             // Fallback only. It neither consumes touches nor reads screen content.
             app.ft.core.MirrorPanelSaver.onPhysicalTouch(this)
