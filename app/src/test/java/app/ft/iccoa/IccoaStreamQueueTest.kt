@@ -134,12 +134,33 @@ class IccoaStreamQueueTest {
         assertFalse(queue.poll()!!.key)
     }
 
-    @Test fun duplicatePlayDoesNotDiscardQueuedMedia() {
+    @Test fun duplicatePlayDoesNotDiscardQueuedMediaOrRequireAnotherIdr() {
         val queue = IccoaStreamQueue()
-        queue.resume(100)
+        assertTrue(queue.resume(100))
         queue.video(bytes, true, 101)
-        queue.resume(200)
+        assertFalse(queue.resume(200))
+        queue.video(bytes, false, 102)
         assertEquals(101L, queue.poll()!!.pts)
+        assertEquals(102L, queue.poll()!!.pts)
+    }
+
+    @Test fun directAfterOemPauseResumesOnlyAtANewKeyframe() {
+        val queue = IccoaStreamQueue()
+        assertTrue(queue.resume(100))
+        val idr = byteArrayOf(0, 0, 0, 1, 0x65)
+        val pFrame = byteArrayOf(0, 0, 0, 1, 0x61)
+        queue.video(idr, true, 101, direct = true)
+        val previouslyQueued = queue.poll()!!
+        queue.pause()
+        assertFalse(queue.current(previouslyQueued))
+        assertTrue(queue.resume(200))
+        assertFalse(queue.video(pFrame, false, 201, direct = true))
+        assertNull(queue.poll())
+        assertFalse(queue.video(idr, true, 202, direct = true))
+        assertFalse(queue.video(pFrame, false, 203, direct = true))
+        assertTrue(queue.poll()!!.key)
+        assertFalse(queue.poll()!!.key)
+        assertFalse(queue.resume(250))
     }
 
     @Test fun pcmClockDoesNotRewindForBurstOrOldCaptureTimes() {
