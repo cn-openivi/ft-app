@@ -42,6 +42,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 
+/** CONTROL method22 reports a transport queue result, never an OEM Bluetooth-profile ACK. */
+enum class IccoaBtIdentityDelivery { NOT_ATTEMPTED, QUEUED, SEND_FAILED, IDENTITY_UNAVAILABLE }
+
 data class IccoaState(
     val running: Boolean = false,
     val discovery: IccoaDiscoveryState = IccoaDiscoveryState(),
@@ -52,7 +55,8 @@ data class IccoaState(
     /** Actual video path, never inferred from the user-selected preference. */
     val effectiveVideoMode: Int = 0,
     val videoFallbackReason: String? = null,
-    val verifiedReceiverId: String? = null
+    val verifiedReceiverId: String? = null,
+    val btIdentityDelivery: IccoaBtIdentityDelivery = IccoaBtIdentityDelivery.NOT_ATTEMPTED
 )
 
 /** Independent ICCOA connection, control and WFD lifecycle. */
@@ -574,10 +578,15 @@ class IccoaService : Service() {
                     val payload = bluetoothIdentityLink.addPayload(receiverId,
                         connection.verifiedLegacyPrimary)
                     if (payload != null) {
-                        // True means queued for this authenticated CONTROL lane, NOT an OEM mapping ACK.
+                        // Transport queue result only. OEM binding and Bluetooth HFP/A2DP
+                        // must be checked separately; a queued packet is not an ACK.
                         val queued = connection.sendControl(IccoaBluetoothMacInfo.CONTROL_METHOD, payload)
+                        _state.update { it.copy(btIdentityDelivery =
+                            if (queued) IccoaBtIdentityDelivery.QUEUED
+                            else IccoaBtIdentityDelivery.SEND_FAILED) }
                         DiagLog.i("ICCOA", "BT identity auto-association method22 queued=$queued; OEM mapping/HFP status UNKNOWN")
                     } else {
+                        _state.update { it.copy(btIdentityDelivery = IccoaBtIdentityDelivery.IDENTITY_UNAVAILABLE) }
                         // No synthetic MAC, no repeated permission prompt and no unverified OEM extension.
                         DiagLog.i("ICCOA", "BT identity auto-association skipped: phone Classic MAC unknown or OEM receiver unsupported")
                     }
@@ -767,7 +776,8 @@ class IccoaService : Service() {
         directVideo = null
         connectionVideoMode = 0
         _state.update { it.copy(effectiveVideoMode = 0, videoFallbackReason = null,
-            verifiedReceiverId = null) }
+            verifiedReceiverId = null,
+            btIdentityDelivery = IccoaBtIdentityDelivery.NOT_ATTEMPTED) }
         main.removeCallbacks(connectionTimeout)
         main.removeCallbacks(audioStateRetry)
         main.removeCallbacks(requestConfig)
