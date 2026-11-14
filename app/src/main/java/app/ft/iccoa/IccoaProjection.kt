@@ -444,7 +444,6 @@ class IccoaProjection(
                 code = code,
                 aaVisible = state.value.aaOverlay,
                 aaConnected = aa != null,
-                aaPlaying = AaHeadUnitService.music.value.playing,
                 ftPlaying = CarPlayer.playing
             )) {
             if (aa?.sendKey(code) == true)
