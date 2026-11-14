@@ -60,11 +60,23 @@ internal object IccoaTouchWelcome {
             DiagLog.i("ICCOA", "First-touch center check accepted; saved=$stored")
             TouchResult(consumed = true, completed = stored)
         } else {
-            _state.value = State(Phase.FOUR_POINTS)
-            CarTouchCalibration.begin(width, height)
-            DiagLog.i("ICCOA", "First-touch center mismatch: entering four-point calibration")
+            // An off-center first sample is NOT proof that touch geometry is
+            // wrong. The OEM may omit UIBC coordinate units or a user may
+            // simply miss. Never force a four-point wizard automatically.
+            DiagLog.w("ICCOA",
+                "First-touch center check mismatched; retry enabled, " +
+                "phone-side four-point calibration remains optional")
             TouchResult(consumed = true)
         }
+    }
+
+    /** Explicit phone-side fallback only; never triggered by a single wrong tap. */
+    fun requestFourPoints(width: Int, height: Int): Boolean {
+        if (_state.value.phase != Phase.CHECK) return false
+        _state.value = State(Phase.FOUR_POINTS)
+        CarTouchCalibration.begin(width, height)
+        DiagLog.i("ICCOA", "Owner requested optional four-point touch correction from phone")
+        return true
     }
 
     /** Existing four-point engine already stores the receiver-scoped quad. */
