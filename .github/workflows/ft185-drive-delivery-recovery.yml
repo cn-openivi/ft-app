@@ -1,0 +1,144 @@
+name: FT185 verified signed APK Drive delivery recovery (no rebuild)
+on:
+  push:
+    branches:
+      - openivi/ft185-drive-delivery-recovery-20261114
+    paths:
+      - '.github/workflows/ft185-drive-delivery-recovery.yml'
+
+permissions:
+  contents: read
+
+# Stop the old stuck rclone job BEFORE any new attempt. No second signing.
+concurrency:
+  group: ft185-xa60-owner-signed-one-shot-release
+  cancel-in-progress: true
+
+jobs:
+  deliver-existing-signed-asset:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 36
+    env:
+      SOURCE_PIN: a3ea7c35d94e4c217cbe58308c6ee3975c52a4d2
+      SIGNED_WORKFLOW_SHA: 9b7abdad0c9e0804f419fcfee658f9bd342c0e0d
+      CERT_PIN: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+      APK_SHA_PIN: 5721de6f5b353567433166ed1e193aa90ad9d78199f11ba93559ecf88f5e3a96
+      APK_NAME: FT185_XA60_OWNER_SIGNED_a3ea7c35.apk
+      TAG_NAME: xa60-ft185-a3ea7c35
+    steps:
+      - name: Checkout approved recovery workflow only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify prior committed signed asset and source CI (no signing)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft185-drive-delivery-recovery-20261114"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json,os,urllib.request
+          base='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                   'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
+          def read(uri):
+              with urllib.request.urlopen(urllib.request.Request(uri,headers=headers),timeout=25) as resp:
+                  return json.load(resp)
+          ci=read(base+'/actions/runs/43582915844')
+          assert ci['status']=='completed' and ci['conclusion']=='success'
+          assert ci['head_sha']==os.environ['SOURCE_PIN']
+          assert ci['head_branch']=='openivi/ft185-video-default-gps-build-20261114'
+          signed=read(base+'/actions/runs/43583092142')
+          assert signed['head_sha']==os.environ['SIGNED_WORKFLOW_SHA']
+          rel=read(base+'/releases/tags/'+os.environ['TAG_NAME'])
+          assert not rel['draft'] and rel['prerelease']
+          assert rel['tag_name']==os.environ['TAG_NAME']
+          assert rel['target_commitish']==os.environ['SOURCE_PIN']
+          assets=[a for a in rel['assets'] if a['name']==os.environ['APK_NAME'] and a['state']=='uploaded']
+          assert len(assets)==1 and assets[0].get('digest')=='sha256:'+os.environ['APK_SHA_PIN']
+          assert assets[0]['size']>40_000_000
+          print('FT185_EXISTING_SIGNED_GITHUB_ASSET_VERIFIED=PASS',flush=True)
+          PY
+      - name: Download exact prior signed APK from GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verified
+          url="https://github.com/cn-openivi/ft-app/releases/download/$TAG_NAME/$APK_NAME"
+          curl --fail --location --show-error --silent --connect-timeout 15 \
+               --max-time 300 --retry 2 --retry-delay 4 \
+               --output "verified/$APK_NAME" "$url"
+          echo "$APK_SHA_PIN  verified/$APK_NAME" | sha256sum -c -
+          test "$(stat -c%s "verified/$APK_NAME")" -eq 40982161
+          unzip -t "verified/$APK_NAME" >/dev/null
+      - name: JDK 17 for independent APK signature verification
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK signing verification utilities
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Readback pinned signing certificate and version without keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          "$BT/aapt" dump badging "verified/$APK_NAME" > verified/apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='185'" verified/apk-badging.txt
+          ! grep -q '^application-debuggable' verified/apk-badging.txt
+          "$BT/apksigner" verify --verbose --print-certs "verified/$APK_NAME" > verified/apksigner.txt
+          grep -iq "$CERT_PIN" verified/apksigner.txt
+          echo "$APK_SHA_PIN  $APK_NAME" > verified/SHA256SUMS
+          printf 'SOURCE_SHA=%s\nSIGNED_WORKFLOW_SHA=%s\nAPP_ID=app.ft.xa60\nVERSION_CODE=185\nOWNER_CERT_SHA256=%s\nAPK_SHA256=%s\nFIELD=NOT_TESTED\nEXISTING_GITHUB_ASSET=YES\nREBUILT_OR_RESIGNED=NO\n' \
+            "$SOURCE_PIN" "$SIGNED_WORKFLOW_SHA" "$CERT_PIN" "$APK_SHA_PIN" > verified/PROVENANCE.txt
+          echo "FT185_RECOVERED_OWNER_CERT_AND_SHA256=PASS"
+      - name: Recover verified Drive delivery with bounded rclone requests
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          opts=(--tpslimit 0.5 --tpslimit-burst 1 \
+                --drive-pacer-min-sleep 2s --drive-pacer-burst 1 \
+                --retries 2 --retries-sleep 5s --low-level-retries 2 \
+                --timeout 40s --contimeout 15s)
+          copy_or_verify() {
+            local source="$1" remote_name="$2" maxsec="$3"
+            local listing expected received
+            expected="$(sha256sum "$source" | cut -d' ' -f1)"
+            # Never repeat a committed upload. Distinguish absent from inaccessible.
+            listing="$(timeout -k 10s 90s rclone lsf openivi-drive: \
+              --max-depth 1 --files-only --include "$remote_name" "${opts[@]}")"
+            if printf '%s\n' "$listing" | grep -Fxq "$remote_name"; then
+              echo "Existing Drive object; verify instead of reupload: $remote_name"
+            else
+              echo "Missing Drive object; bounded one-time upload: $remote_name"
+              timeout -k 10s "$maxsec" rclone copyto "$source" \
+                "openivi-drive:$remote_name" "${opts[@]}"
+            fi
+            received="$(timeout -k 10s "$maxsec" rclone cat \
+              "openivi-drive:$remote_name" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+            test "$expected" = "$received" || {
+              echo "Drive byte digest mismatch for $remote_name" >&2
+              exit 1
+            }
+            echo "DRIVE_BYTE_READBACK_PASS name=$remote_name SHA256=$received"
+          }
+          copy_or_verify "verified/$APK_NAME" "$APK_NAME" 420s
+          for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
+            copy_or_verify "verified/$name" "FT185_a3ea7c35_$name" 120s
+          done
+          echo "FT185_DRIVE_RECOVERY_TERMINAL=PASS"
+          echo "FT185_DRIVE_SIGNED_APK=openivi-drive:$APK_NAME"
+          printf '### FT185 signed delivery recovered\n\n- APK: %s\n- SHA-256: %s\n- GitHub release and Drive: verified\n- No recompilation or signing performed\n' \
+            "$APK_NAME" "$APK_SHA_PIN" >> "$GITHUB_STEP_SUMMARY"
+      - name: Remove temporary copy of APK
+        if: always()
+        shell: bash
+        run: |
+          rm -f "verified/$APK_NAME"
