@@ -33,6 +33,7 @@ import app.ft.projection.CarDisplay
 import app.ft.projection.CarTouch
 import app.ft.projection.CarTouchZones
 import app.ft.projection.CarTouchCalibration
+import app.ft.projection.IccoaTouchWelcome
 import app.ft.projection.MirrorSink
 import app.ft.projection.MirrorTouchMap
 import app.ft.projection.MirrorTouchBounds
@@ -171,6 +172,7 @@ class IccoaProjection(
                 MirrorSink.onGone = surfaceGone
                 displayManager.registerDisplayListener(rotationListener, main)
             }
+            if (firstStart) IccoaTouchWelcome.begin(context, plan.contentWidth, plan.contentHeight)
             // Reconfigure only our encoded display. Keep the single-use projection grant,
             // its audio/mirror capture and the Android Auto session across PLAY/resume.
             display.start(plan, onConfig, { _, _ -> }, onTimedFrame,
@@ -181,7 +183,7 @@ class IccoaProjection(
                 width = plan.streamWidth, height = plan.streamHeight, fps = plan.fps
             ) }
             startCapturedAudio()
-            if (firstStart && app.prefs.aaAutoStart) startAa()
+            if (firstStart && app.prefs.aaAutoStart && !IccoaTouchWelcome.awaiting) startAa()
         } catch (t: Throwable) {
             projectionFailed(t, epoch)
         }
@@ -297,10 +299,20 @@ class IccoaProjection(
             return@onMain
         }
         val (initialX, y) = display.toContent(raw.x, raw.y)
+        val welcome = IccoaTouchWelcome.consume(context, raw.action,
+            initialX, y, display.width, display.height)
+        if (welcome.consumed) {
+            if (welcome.completed && app.prefs.aaAutoStart) startAa()
+            return@onMain
+        }
         val second = if (raw.x2 >= 0 && raw.y2 >= 0) display.toContent(raw.x2, raw.y2) else -1 to -1
         // FT owns its UI hit testing. AA and phone mirror have independent touch mapping.
         val isFtUi = !state.value.aaOverlay && !state.value.mirroring
-        if (isFtUi && CarTouchCalibration.consume(context, raw.action, initialX, y)) return@onMain
+        if (isFtUi && CarTouchCalibration.consume(context, raw.action, initialX, y)) {
+            if (IccoaTouchWelcome.completeFour(context, display.width, display.height) &&
+                app.prefs.aaAutoStart) startAa()
+            return@onMain
+        }
         // Apply the stored HU X/Y calibration before routing FT, mirror and AA touch.
         val applyCalibration = app.prefs.mirrorUseCalibration
         val (mappedX, mappedY) = if (applyCalibration)
@@ -605,7 +617,7 @@ class IccoaProjection(
     }
 
     override fun startAa() = onMain {
-        if (!active) return@onMain
+        if (!active || IccoaTouchWelcome.awaiting) return@onMain
         cancelAaGestureOnRouteChange()
         if (runCatching { context.packageManager.getPackageInfo(app.prefs.aaPackage, 0) }.isFailure) return@onMain
         hideMirror()
@@ -715,6 +727,7 @@ class IccoaProjection(
 
     fun stop() = onMain { stopInternal() }
     private fun stopInternal() {
+        IccoaTouchWelcome.cancel()
         displayEpoch++
         directVideoActive = false
         directPlan = null
