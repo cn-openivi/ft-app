@@ -858,7 +858,7 @@ private fun CarLifePictureSettings() {
     var zoomIndex by remember(rev) { mutableIntStateOf(
         app.ft.projection.FtUiScaleStep.fromLegacy(p.carDensity).ordinal
     ) }
-    PickSetting(stringResource(R.string.picture_density), ftZoomOptions(), zoomIndex, rev) { index ->
+    PickSetting(stringResource(R.string.picture_density), ftZoomOptions(), zoomIndex) { index ->
         zoomIndex = index
         p.carDensity = ftZoom[index].storedRelativeScale
     }
