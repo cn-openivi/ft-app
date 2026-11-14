@@ -33,6 +33,7 @@ import app.ft.core.VehicleMotionTelemetry
 import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
 import app.ft.projection.IccoaCalibrationScope
+import app.ft.projection.IccoaTouchWelcome
 import app.ft.projection.CarTouchCalibration
 import app.ft.projection.MirrorTouchCalibration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -720,6 +721,7 @@ class IccoaService : Service() {
     }
 
     private fun endConnection() {
+        IccoaTouchWelcome.cancel()
         IccoaCalibrationScope.clear()
         CarTouchCalibration.cancel()
         MirrorTouchCalibration.cancel()
