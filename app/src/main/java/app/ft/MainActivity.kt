@@ -1,5 +1,6 @@
 package app.ft
 
+import app.ft.core.MirrorPanelSaver
 import app.ft.core.LocalModernPhoneUi
 import androidx.compose.ui.unit.sp
 import app.ft.ui.components.FitText
@@ -199,8 +200,8 @@ class MainActivity : ComponentActivity() {
      */
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
-            app.ft.core.MirrorPanelSaver.isActive) {
-            app.ft.core.MirrorPanelSaver.onPhysicalTouch(this)
+            MirrorPanelSaver.isActive) {
+            MirrorPanelSaver.onPhysicalTouch(this)
         }
         return super.dispatchTouchEvent(event)
     }
