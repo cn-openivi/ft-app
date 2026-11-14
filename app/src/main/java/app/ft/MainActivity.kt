@@ -194,6 +194,17 @@ class MainActivity : ComponentActivity() {
             .onFailure { DiagLog.e("AaSetup", "no file picker available", it) }
     }
 
+    /** Phone-local touch also restores brightness if Accessibility events are delayed.
+     *  This callback is only for the phone Activity, never the mirrored HU.
+     */
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
+            app.ft.core.MirrorPanelSaver.isActive) {
+            app.ft.core.MirrorPanelSaver.onPhysicalTouch(this)
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
     override fun onDestroy() {
         runCatching { unregisterReceiver(installResult) }
         super.onDestroy()
