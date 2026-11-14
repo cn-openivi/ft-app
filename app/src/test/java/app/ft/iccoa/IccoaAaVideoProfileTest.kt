@@ -22,10 +22,24 @@ class IccoaAaVideoProfileTest {
         assertEquals(1f, layout.scaleY, 0f)
     }
 
-    @Test fun directUses720pWhenWfdActuallySelected720p() {
-        val profile = IccoaAaVideoProfile.choose(hu(1280, 720), true, false, 1920, 1008)
+    @Test fun directUses720pWhenWfdAndManualAaAreBoth720p() {
+        val profile = IccoaAaVideoProfile.choose(hu(1280, 720), true, false, 1280, 720)
         assertEquals(1280 to 720, profile.width to profile.height)
         assertTrue(profile.directStandard)
+        assertFalse(profile.applyToPrefs)
+    }
+
+    @Test fun manualPhoneResolutionDoesNotGetForcedToWfd1080p() {
+        val profile = IccoaAaVideoProfile.choose(hu(), true, false, 1280, 720)
+        assertEquals(1280 to 720, profile.width to profile.height)
+        assertFalse(profile.directStandard)
+        assertFalse(profile.applyToPrefs)
+        assertEquals("WFD_NONSTANDARD_MANUAL_FALLBACK", profile.reason)
+    }
+
+    @Test fun unsupportedProtocolTierCannotBePassedDirectly() {
+        val profile = IccoaAaVideoProfile.choose(hu(2560, 1440), true, true, 2560, 1440)
+        assertFalse(profile.directStandard)
     }
 
     @Test fun nonstandardWfdAndUnsupportedFpsRemainSafeCompositedFallbacks() {
