@@ -14,6 +14,27 @@ import kotlin.math.roundToInt
  * Legacy carDensity 160 is a neutral 100% zoom adjustment, while an explicitly
  * saved 240 remains a 150% user zoom. AA DPI and its H.264 path are independent.
  */
+/**
+ * Six explicitly named relative visual zoom levels.
+ *
+ * Storage retains the legacy carDensity integer for seamless migrations, but
+ * it is no longer presented as physical DPI. 160 means exactly 100% of the
+ * baseline layout size, normalized by current virtual display dimensions.
+ */
+internal enum class FtUiScaleStep(val storedRelativeScale: Int, val percent: Int) {
+    VERY_SMALL(112, 70),
+    SMALL(136, 85),
+    NORMAL(160, 100),
+    LARGE(184, 115),
+    VERY_LARGE(216, 135),
+    EXTRA_LARGE(256, 160);
+
+    companion object {
+        fun fromLegacy(value: Int): FtUiScaleStep =
+            entries.minByOrNull { kotlin.math.abs(it.storedRelativeScale - value) } ?: NORMAL
+    }
+}
+
 internal object CarUiViewport {
     const val REFERENCE_WIDTH = 1280f
     const val REFERENCE_HEIGHT = 720f
