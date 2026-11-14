@@ -29,6 +29,7 @@ internal class IccoaMediaTransport(
     private val closed = AtomicBoolean(false)
     private val rtpPacketCount = AtomicLong(0)
     private val rtpVideoFrames = AtomicLong(0)
+    private val rtpCompositedFrames = AtomicLong(0)
     private val rtpAudioFrames = AtomicLong(0)
     private val rtpKeyFrames = AtomicLong(0)
     private val rtpDirectKeyFrames = AtomicLong(0)
@@ -156,6 +157,7 @@ internal class IccoaMediaTransport(
     }
 
     fun writtenVideoFrames(): Long = rtpVideoFrames.get()
+    fun writtenCompositedFrames(): Long = rtpCompositedFrames.get()
     fun writtenKeyFrames(): Long = rtpKeyFrames.get()
     fun writtenDirectKeyFrames(): Long = rtpDirectKeyFrames.get()
 
@@ -191,6 +193,9 @@ internal class IccoaMediaTransport(
                 maxWriteMs = maxOf(maxWriteMs, elapsedMs)
                 if (frame.video) {
                     rtpVideoFrames.incrementAndGet()
+                    // A late Direct packet can never certify normal recovery.
+                    if (!frame.direct && queue.current(frame))
+                        rtpCompositedFrames.incrementAndGet()
                     if (frame.key) {
                         if (rtpKeyFrames.incrementAndGet() == 1L)
                             DiagLog.i("ICCOA", "RTP FIRST_KEY_FRAME_WRITTEN packets=${rtpPacketCount.get()} bytes=${frame.data.size}")

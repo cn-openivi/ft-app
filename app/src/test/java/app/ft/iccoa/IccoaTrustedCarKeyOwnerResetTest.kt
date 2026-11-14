@@ -20,7 +20,7 @@ class IccoaTrustedCarKeyOwnerResetTest {
         val hash = "a".repeat(64)
         `when`(context.getSharedPreferences("iccoa-trusted-quick-v1", Context.MODE_PRIVATE))
             .thenReturn(prefs)
-        `when`(prefs.all).thenReturn(mapOf("car_auth_pk" to "sealed",
+        `when`(prefs.all).thenReturn(hashMapOf("car_auth_pk" to "sealed",
             "car_auth_pk_$hash" to "sealed2", "unrelated" to "retain"))
         `when`(prefs.edit()).thenReturn(editor)
         `when`(editor.remove(anyString())).thenReturn(editor)
@@ -39,7 +39,7 @@ class IccoaTrustedCarKeyOwnerResetTest {
         val editor = mock(SharedPreferences.Editor::class.java)
         `when`(context.getSharedPreferences("iccoa-trusted-quick-v1", Context.MODE_PRIVATE))
             .thenReturn(prefs)
-        `when`(prefs.all).thenReturn(mapOf("car_auth_pk" to "value"))
+        `when`(prefs.all).thenReturn(hashMapOf("car_auth_pk" to "value"))
         `when`(prefs.edit()).thenReturn(editor)
         `when`(editor.remove(anyString())).thenReturn(editor)
         `when`(editor.commit()).thenReturn(false)

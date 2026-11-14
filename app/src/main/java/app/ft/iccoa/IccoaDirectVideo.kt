@@ -212,7 +212,7 @@ internal class IccoaDirectVideo(
         pending = false
         active = false
         main.removeCallbacks(watchdog)
-        val beforeRecovery = output.writtenVideoFrames()
+        val beforeRecovery = output.writtenCompositedFrames()
         if (projection.directVideoActive) {
             output.pause()
             output.selectDirectFrames(false)
@@ -221,7 +221,7 @@ internal class IccoaDirectVideo(
         }
         if (resumeTransport) watchCompositedRecovery(beforeRecovery)
         onModeChanged(false, reason)
-        onStatus("ICCOA direct video: " + reason + "; normal FT video restored")
+        onStatus("ICCOA direct video: " + reason + "; normal FT video restarting; RTP check pending")
         DiagLog.w("ICCOA", "DIRECT_VIDEO fallback: " + reason)
     }
 
@@ -229,14 +229,15 @@ internal class IccoaDirectVideo(
     private fun watchCompositedRecovery(baseline: Long) {
         main.postDelayed({
             if (!closed && failed && !projection.directVideoActive) {
-                if (output.writtenVideoFrames() > baseline) {
+                if (output.writtenCompositedFrames() > baseline) {
                     DiagLog.i("ICCOA", "COMPOSITED_RECOVERY_RTP_VIDEO_WRITTEN")
+                    onStatus("Normal FT video: composited RTP frames written")
                 } else {
                     DiagLog.w("ICCOA", "COMPOSITED_RECOVERY_NO_RTP_VIDEO_3S; requesting FT IDR")
                     projection.requestKeyFrame()
                     main.postDelayed({
                         if (!closed && failed && !projection.directVideoActive) {
-                            if (output.writtenVideoFrames() > baseline)
+                            if (output.writtenCompositedFrames() > baseline)
                                 DiagLog.i("ICCOA", "COMPOSITED_RECOVERY_RTP_VIDEO_WRITTEN_AFTER_IDR")
                             else DiagLog.w("ICCOA", "COMPOSITED_RECOVERY_NO_RTP_VIDEO_6S")
                         }
