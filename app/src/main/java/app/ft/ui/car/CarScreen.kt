@@ -131,6 +131,8 @@ import app.ft.media.CarPlayer
 import app.ft.media.MediaLibrary
 import app.ft.projection.CarTouchZones
 import app.ft.projection.CarTouchCalibration
+import app.ft.projection.IccoaTouchWelcome
+import app.ft.projection.IccoaWelcomeTarget
 import app.ft.projection.MirrorSink
 import app.ft.projection.MirrorTouchViewport
 import app.ft.projection.MirrorTouchCalibration
@@ -183,6 +185,7 @@ private fun CarRoot(style: CarStyle) {
     val state by CarControls.state.collectAsState()
     val aa by AaHeadUnitService.state.collectAsState()
     val touchCal by CarTouchCalibration.state.collectAsState()
+    val welcome by IccoaTouchWelcome.state.collectAsState()
     val alternative by PhoneStyle.modern.collectAsState()
     var view by remember { mutableStateOf(CarView.LAUNCHER) }
     var nowPlaying by remember { mutableStateOf(false) }
@@ -361,6 +364,38 @@ private fun CarRoot(style: CarStyle) {
                     if (state.notice != 0) Text(stringResource(state.notice), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
                 }
             }
+            if (!state.aaOverlay && !state.mirroring &&
+                welcome.phase == IccoaTouchWelcome.Phase.CHECK) {
+                // Displayed OK is visual: the real received UIBC x/y is checked
+                // before Compose hit-testing, so misaligned touches are detected.
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.58f))) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.Center).offset(y = (-180).dp)
+                            .fillMaxWidth(0.72f),
+                        shape = RoundedCornerShape(22.dp),
+                        color = Color(0xFF172033), contentColor = Color.White
+                    ) {
+                        Column(Modifier.padding(horizontal = 26.dp, vertical = 18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(stringResource(R.string.iccoa_touch_welcome_title),
+                                style = MaterialTheme.typography.headlineSmall)
+                            Text(stringResource(R.string.iccoa_touch_welcome_body),
+                                style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Canvas(Modifier.fillMaxSize()) {
+                        drawCircle(
+                            color = Color(0xFF53E5BB),
+                            radius = size.minDimension * IccoaWelcomeTarget.RADIUS_FRACTION,
+                            center = Offset(size.width / 2f, size.height / 2f)
+                        )
+                    }
+                    Text(stringResource(R.string.iccoa_touch_welcome_button),
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color(0xFF07190F),
+                        modifier = Modifier.align(Alignment.Center))
+                }
+            }
             if (!state.aaOverlay && !state.mirroring && touchCal.step in 1..4) {
                 Box(Modifier.fillMaxSize().background(Color(0xFF0B1220))) {
                     val targetX = if (touchCal.step == 1 || touchCal.step == 3) .15f else .85f
@@ -373,7 +408,9 @@ private fun CarRoot(style: CarStyle) {
                         )
                     }
                     Text(
-                        "Касание ${touchCal.step}/4: нажмите точно в центр зелёного круга",
+                        if (welcome.phase == IccoaTouchWelcome.Phase.FOUR_POINTS)
+                            stringResource(R.string.iccoa_touch_welcome_mismatch, touchCal.step)
+                        else stringResource(R.string.home_touch_calibration_step, touchCal.step),
                         color = Color.White,
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.align(Alignment.TopCenter).padding(top = 36.dp)
