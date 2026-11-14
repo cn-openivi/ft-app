@@ -96,7 +96,11 @@ class PinnedTlsPacketTransport private constructor(
                             object : TlsAuthentication {
                                 override fun notifyServerCertificate(serverCertificate: TlsServerCertificate) {
                                     val presented = serverCertificate.certificate.getCertificateAt(0).encoded
-                                    val digest = PeerCertificatePin.connectPublicKeySha256(presented)
+                                    val digest = try {
+                                        PeerCertificatePin.connectPublicKeySha256(presented)
+                                    } catch (e: Exception) {
+                                        throw java.security.cert.CertificateException("Invalid ADB connect TLS certificate", e)
+                                    }
                                     if (trustedConnectKeySha256 != null &&
                                         !java.security.MessageDigest.isEqual(digest, trustedConnectKeySha256)) {
                                         throw java.security.cert.CertificateException("ADB connect peer public key changed")
