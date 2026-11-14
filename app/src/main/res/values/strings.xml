@@ -684,4 +684,5 @@
     <string name="ft_zoom_large">Large</string>
     <string name="ft_zoom_very_large">Very large</string>
     <string name="ft_zoom_maximum">Maximum</string>
+    <string name="iccoa_touch_center_failed">Coordinate check FAILED. The touch was outside OK. FT will not mark it verified or force calibration. Please include this diagnostic in the field report.</string>
 </resources>
