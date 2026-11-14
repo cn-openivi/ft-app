@@ -41,7 +41,7 @@ internal class IccoaDirectVideo(
         override fun run() {
             if (closed || !active) return
             val now = SystemClock.elapsedRealtime()
-            if (firstKeyAtMs == 0L && output.writtenKeyFrames() > keyWritesAtActivate) {
+            if (firstKeyAtMs == 0L && output.writtenDirectKeyFrames() > keyWritesAtActivate) {
                 firstKeyAtMs = now
                 DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
             }
@@ -117,7 +117,7 @@ internal class IccoaDirectVideo(
         if (active) {
             // Bounded enqueue never blocks AA AV_MEDIA_ACK on an RTP write.
             val pts = synchronized(clock) { clock.next(timestamp) }
-            output.frame(frame, key, pts)
+            output.directFrame(frame, key, pts)
             frameAtMs = SystemClock.elapsedRealtime()
             return true
         }
@@ -149,17 +149,18 @@ internal class IccoaDirectVideo(
             return
         }
         output.pause() // discard composited GOP and AAC from previous RTP epoch
+        output.selectDirectFrames(true)
         output.configure(retained.config)
         synchronized(clock) { clock.reset() }
         firstKeyAtMs = 0L
-        keyWritesAtActivate = output.writtenKeyFrames()
+        keyWritesAtActivate = output.writtenDirectKeyFrames()
         frameAtMs = 0L
         activatedAtMs = SystemClock.elapsedRealtime()
         // Do not request a SECOND AA IDR before the retained first one is in
         // the queue: otherwise the two keyframes could arrive out of order.
         output.resume(requestNewKeyframe = false)
         val pts = synchronized(clock) { clock.next(retained.timestamp) }
-        output.frame(retained.bytes, true, pts)
+        output.directFrame(retained.bytes, true, pts)
         frameAtMs = SystemClock.elapsedRealtime()
         active = true
         onModeChanged(true, null)
@@ -214,6 +215,7 @@ internal class IccoaDirectVideo(
         val beforeRecovery = output.writtenVideoFrames()
         if (projection.directVideoActive) {
             output.pause()
+            output.selectDirectFrames(false)
             projection.resumeCompositedVideo(plan, output::configure, output::frame)
             if (resumeTransport) output.resume()
         }
@@ -245,6 +247,7 @@ internal class IccoaDirectVideo(
     }
 
     fun close() {
+        output.selectDirectFrames(false)
         closed = true
         failed = true
         active = false

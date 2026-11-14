@@ -103,6 +103,21 @@ class IccoaStreamQueueTest {
         }
     }
 
+    @Test fun directIdrIsTaggedAndStaleCompositedFramesCanBeDistinguished() {
+        val queue = IccoaStreamQueue()
+        queue.resume(0)
+        queue.video(bytes, true, 1)
+        queue.pause()
+        queue.resume(100)
+        queue.video(byteArrayOf(0, 0, 0, 1, 0x65), true, 101, direct = true)
+        val key = queue.poll()!!
+        assertTrue(key.key)
+        assertTrue(key.direct)
+        assertTrue(queue.current(key))
+        queue.pause()
+        assertFalse(queue.current(key))
+    }
+
     @Test fun retainedFirstIdrHandoffSeedsTheNewEpochBeforePFrames() {
         val queue = IccoaStreamQueue()
         val idr = byteArrayOf(0, 0, 0, 1, 0x65)

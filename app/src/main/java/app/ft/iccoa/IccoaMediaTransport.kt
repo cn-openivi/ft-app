@@ -31,6 +31,8 @@ internal class IccoaMediaTransport(
     private val rtpVideoFrames = AtomicLong(0)
     private val rtpAudioFrames = AtomicLong(0)
     private val rtpKeyFrames = AtomicLong(0)
+    private val rtpDirectKeyFrames = AtomicLong(0)
+    @Volatile private var directFramesEnabled = false
     private val executor = Executors.newCachedThreadPool { Thread(it, "ICCOA-media") }
     private val watchdog = Executors.newSingleThreadScheduledExecutor { Thread(it, "ICCOA-RTP-watch") }
     private val queue = IccoaStreamQueue()
@@ -120,9 +122,20 @@ internal class IccoaMediaTransport(
 
     /** Takes ownership of a fresh encoded array from SurfaceEncoder. */
     fun frame(data: ByteArray, key: Boolean, ptsUs: Long) {
-        if (closed.get() || muxer == null) return
+        if (closed.get() || muxer == null || directFramesEnabled) return
         if (queue.video(data, key, ptsUs)) {
             DiagLog.i("ICCOA", "RTP queue overflow; dropping GOP and requesting keyframe")
+            onKeyframe()
+        }
+    }
+
+    /** Keep the old FT encoder and AA direct producer in separate queue epochs. */
+    fun selectDirectFrames(enable: Boolean) { directFramesEnabled = enable }
+
+    fun directFrame(data: ByteArray, key: Boolean, ptsUs: Long) {
+        if (closed.get() || muxer == null || !directFramesEnabled) return
+        if (queue.video(data, key, ptsUs, direct = true)) {
+            DiagLog.w("ICCOA", "DIRECT_VIDEO RTP queue dropped an incomplete GOP")
             onKeyframe()
         }
     }
@@ -144,6 +157,7 @@ internal class IccoaMediaTransport(
 
     fun writtenVideoFrames(): Long = rtpVideoFrames.get()
     fun writtenKeyFrames(): Long = rtpKeyFrames.get()
+    fun writtenDirectKeyFrames(): Long = rtpDirectKeyFrames.get()
 
     private fun output() {
         var sentFirstFrame = false
@@ -177,8 +191,16 @@ internal class IccoaMediaTransport(
                 maxWriteMs = maxOf(maxWriteMs, elapsedMs)
                 if (frame.video) {
                     rtpVideoFrames.incrementAndGet()
-                    if (frame.key && rtpKeyFrames.incrementAndGet() == 1L)
-                        DiagLog.i("ICCOA", "RTP FIRST_KEY_FRAME_WRITTEN packets=${rtpPacketCount.get()} bytes=${frame.data.size}")
+                    if (frame.key) {
+                        if (rtpKeyFrames.incrementAndGet() == 1L)
+                            DiagLog.i("ICCOA", "RTP FIRST_KEY_FRAME_WRITTEN packets=${rtpPacketCount.get()} bytes=${frame.data.size}")
+                        // A late old FT-compositor IDR must NOT satisfy the
+                        // Direct readiness proof, even if it completed post-pause.
+                        if (frame.direct) {
+                            rtpDirectKeyFrames.incrementAndGet()
+                            DiagLog.i("ICCOA", "DIRECT_VIDEO_RTP_KEY_WRITTEN packets=${rtpPacketCount.get()}")
+                        }
+                    }
                     videoFrames++
                     videoBytes += frame.data.size
                     maxVideoAgeMs = maxOf(maxVideoAgeMs, (finished / 1000 - frame.pts) / 1000)

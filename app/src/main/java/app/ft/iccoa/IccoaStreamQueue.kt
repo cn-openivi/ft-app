@@ -8,7 +8,8 @@ import java.util.concurrent.TimeUnit
  * Enqueue transfers ownership of the encoded array; producers must not modify or reuse it.
  */
 internal class IccoaStreamQueue {
-    data class Frame(val data: ByteArray, val pts: Long, val video: Boolean, val key: Boolean = false, val epoch: Long = 0)
+    data class Frame(val data: ByteArray, val pts: Long, val video: Boolean,
+        val key: Boolean = false, val epoch: Long = 0, val direct: Boolean = false)
     private val frames = ArrayDeque<Frame>()
     private var videoCount = 0
     private var audioCount = 0
@@ -37,7 +38,8 @@ internal class IccoaStreamQueue {
     }
 
     /** True asks the encoder for an IDR after dropping a broken GOP. */
-    @Synchronized fun video(data: ByteArray, key: Boolean, pts: Long): Boolean {
+    @Synchronized fun video(data: ByteArray, key: Boolean, pts: Long,
+                            direct: Boolean = false): Boolean {
         if (paused || pts < minimumPts || data.isEmpty() || data.size > 4 * 1024 * 1024) return false
         if (needsKey && !key) return false
         if (videoCount >= 8) {
@@ -48,7 +50,7 @@ internal class IccoaStreamQueue {
             if (!key) return true
         }
         if (key) needsKey = false
-        frames.addLast(Frame(data, pts, true, key, epoch))
+        frames.addLast(Frame(data, pts, true, key, epoch, direct))
         videoCount++
         signal()
         return false
