@@ -33,6 +33,8 @@ internal class IccoaMediaTransport(
     private val rtpAudioFrames = AtomicLong(0)
     private val rtpKeyFrames = AtomicLong(0)
     private val rtpDirectKeyFrames = AtomicLong(0)
+    private val directGopDrops = AtomicLong(0)
+    private val directKeyWritesAtLoss = AtomicLong(0)
     @Volatile private var directFramesEnabled = false
     private val executor = Executors.newCachedThreadPool { Thread(it, "ICCOA-media") }
     private val watchdog = Executors.newSingleThreadScheduledExecutor { Thread(it, "ICCOA-RTP-watch") }
@@ -93,7 +95,8 @@ internal class IccoaMediaTransport(
 
     private fun play(config: IccoaVideoConfig) {
         videoConfig = config
-        if (muxer != null) { onPlay(config); onKeyframe(); return }
+        // onPlay resumes the queue and requests one IDR; do not double-request.
+        if (muxer != null) { onPlay(config); return }
         val socket = Socket()
         synchronized(this) {
             if (closed.get()) { socket.close(); return }
@@ -136,7 +139,10 @@ internal class IccoaMediaTransport(
     fun directFrame(data: ByteArray, key: Boolean, ptsUs: Long) {
         if (closed.get() || muxer == null || !directFramesEnabled) return
         if (queue.video(data, key, ptsUs, direct = true)) {
-            DiagLog.w("ICCOA", "DIRECT_VIDEO RTP queue dropped an incomplete GOP")
+            // Snapshot the key-write baseline BEFORE publishing the loss generation.
+            directKeyWritesAtLoss.set(rtpDirectKeyFrames.get())
+            val generation = directGopDrops.incrementAndGet()
+            DiagLog.w("ICCOA", "DIRECT_VIDEO_GOP_GAP generation=$generation; requesting fresh IDR")
             onKeyframe()
         }
     }
@@ -150,16 +156,17 @@ internal class IccoaMediaTransport(
     fun pause() { queue.pause() }
     fun resume(requestNewKeyframe: Boolean = true) {
         if (closed.get()) return
-        queue.resume(System.nanoTime() / 1000)
-        // When Direct has a retained IDR, queue IT before requesting another.
-        // Normal composited recovery retains its original IDR request.
-        if (requestNewKeyframe) onKeyframe()
+        val resumed = queue.resume(System.nanoTime() / 1000)
+        // A duplicate CONTROL4/PLAY is not permission to flood AA focus with IDRs.
+        if (resumed && requestNewKeyframe) onKeyframe()
     }
 
     fun writtenVideoFrames(): Long = rtpVideoFrames.get()
     fun writtenCompositedFrames(): Long = rtpCompositedFrames.get()
     fun writtenKeyFrames(): Long = rtpKeyFrames.get()
     fun writtenDirectKeyFrames(): Long = rtpDirectKeyFrames.get()
+    fun directGopDropCount(): Long = directGopDrops.get()
+    fun directKeyWritesAtGopLoss(): Long = directKeyWritesAtLoss.get()
 
     private fun output() {
         var sentFirstFrame = false
