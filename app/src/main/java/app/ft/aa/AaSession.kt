@@ -533,9 +533,12 @@ class AaSession(
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputTouch(System.nanoTime(), x, y, aaAction))
     }
 
-    fun sendKey(keycode: Int) {
-        if (_phase.value < Phase.DISCOVERED || AaProtocol.CH_INPUT !in openChannels) return
+    /** True means both input events were queued, not acknowledged by the AA phone. */
+    fun sendKey(keycode: Int): Boolean {
+        if (!lifecycle.running || _phase.value < Phase.DISCOVERED ||
+            AaProtocol.CH_INPUT !in openChannels) return false
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputKey(System.nanoTime(), keycode, true))
         sendEnc(AaProtocol.CH_INPUT, AaProtocol.INPUT_EVENT_INDICATION, AaMessages.inputKey(System.nanoTime(), keycode, false))
+        return true
     }
 }

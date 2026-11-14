@@ -17,6 +17,7 @@ import app.ft.FTApp
 import app.ft.FTTouchService
 import app.ft.MainActivity
 import app.ft.aa.AaHeadUnitService
+import app.ft.aa.AaSteeringMediaKeys
 import app.ft.aa.AaSession
 import app.ft.aa.AaTouchViewport
 import app.ft.core.CarAssistantPanel
@@ -246,8 +247,24 @@ class IccoaProjection(
         }
         if (code == 84 || code == 219 || code == 231) {
             voiceAssistant.press()
-        } else if (state.value.aaOverlay) {
-            AaHeadUnitService.current?.sendKey(code)
+            return@onMain
+        }
+        // ICCOA UIBC keys are Android keycodes; do not apply CarLife OEM mapping.
+        val aa = AaHeadUnitService.current
+        if (AaSteeringMediaKeys.routeToAa(
+                code = code,
+                aaVisible = state.value.aaOverlay,
+                aaConnected = aa != null && AaHeadUnitService.state.value.connected,
+                aaPlaying = AaHeadUnitService.music.value.playing,
+                ftPlaying = CarPlayer.playing
+            )) {
+            if (aa?.sendKey(code) == true)
+                DiagLog.i("ICCOA", "steering wheel key=$code routed to AA input queue")
+            else DiagLog.w("ICCOA", "steering wheel key=$code AA input channel unavailable")
+            return@onMain
+        }
+        if (state.value.aaOverlay) {
+            aa?.sendKey(code)
         } else when (code) {
             3 -> { goHome(); keys.tryEmit(code) }
             4 -> if (state.value.mirroring) navBack() else keys.tryEmit(code)
