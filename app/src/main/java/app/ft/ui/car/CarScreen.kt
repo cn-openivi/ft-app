@@ -897,13 +897,13 @@ private fun Tile(modifier: Modifier, spec: TileSpec, onClick: () -> Unit) {
         Column(Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.SpaceBetween) {
             Box(
                 Modifier
-                    .size(56.dp)
+                    .size(72.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(if (spec.app != null) Color.Transparent else MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 if (spec.app != null) Image(spec.app, contentDescription = null, modifier = Modifier.fillMaxSize())
-                else Icon(spec.icon ?: CarIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(30.dp))
+                else Icon(spec.icon ?: CarIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(44.dp))
             }
             FitText(spec.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 2, smallest = 15.sp)
         }
@@ -1114,7 +1114,7 @@ private fun PhoneKey(icon: ImageVector, label: String, onClick: () -> Unit) {
 private fun AppDrawer(gridState: LazyGridState, pad: PaddingValues, onClose: () -> Unit) {
     val context = LocalContext.current
     val apps by AppCatalog.apps.collectAsState()
-    val px = with(LocalDensity.current) { 44.dp.roundToPx() }
+    val px = with(LocalDensity.current) { 72.dp.roundToPx() }
     LaunchedEffect(Unit) {
         AppCatalog.refresh(context)
         AppCatalog.apps.value?.let { AppCatalog.warm(context, it.take(30), px) }
@@ -1130,7 +1130,9 @@ private fun AppDrawer(gridState: LazyGridState, pad: PaddingValues, onClose: () 
             return@Column
         }
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
+            // A minimum normalized visual width: same proportions at 720p/4K.
+            // Extra-wide HU viewports may add a column instead of shrinking tiles.
+            columns = GridCells.Adaptive(220.dp),
             state = gridState,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1151,13 +1153,13 @@ private fun AppCell(app: AppCatalog.App, px: Int, onClose: () -> Unit) {
         shape = RoundedCornerShape(22.dp),
         color = LocalCarCard.current,
         contentColor = Color.White,
-        modifier = Modifier.height(120.dp)
+        modifier = Modifier.height(164.dp)
     ) {
         Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.SpaceBetween) {
             val i = icon
-            if (i != null) Image(i, contentDescription = null, modifier = Modifier.size(44.dp))
-            else Icon(CarIcons.Apps, contentDescription = null, modifier = Modifier.size(44.dp))
-            Text(app.label, style = MaterialTheme.typography.titleMedium.ownDirection(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (i != null) Image(i, contentDescription = null, modifier = Modifier.size(72.dp))
+            else Icon(CarIcons.Apps, contentDescription = null, modifier = Modifier.size(72.dp))
+            Text(app.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
