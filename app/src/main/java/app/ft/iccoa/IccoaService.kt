@@ -521,7 +521,7 @@ class IccoaService : Service() {
                     val transport = IccoaMediaTransport(network, peer,
                         decryptInput = { session?.decryptInput(it) ?: error("Session ended") },
                         onPlay = { config -> current { play(config) } },
-                        onPause = { current { pauseProjection() } },
+                        onPause = { current { pauseProjection("RTSP_PAUSE") } },
                         onKeyframe = { current {
                             if (directVideo?.requestKeyframe() != true) projection?.requestKeyFrame()
                         } },
@@ -667,6 +667,7 @@ class IccoaService : Service() {
             navigationSend.run()
         }
         main.removeCallbacks(connectionTimeout)
+        directVideo?.resumed()
         output.resume()
         audioPlayerState.play()
         flushAudioState()
@@ -706,8 +707,11 @@ class IccoaService : Service() {
                         DiagLog.i("ICCOA", "OEM SENSOR GetPortRequest answered with bound listener 57239")
                 }
             }
-            4 -> lastVideoConfig?.let(::play)
-            5, 41 -> pauseProjection()
+            4 -> lastVideoConfig?.let {
+                DiagLog.i("ICCOA", "ICCOA_VIDEO_CONTROL_RESUME method=4")
+                play(it)
+            }
+            5, 41 -> pauseProjection("CONTROL_$method")
             16 -> projection?.key(84) // Same AA voice/search key as the CarLife voice button.
             23 -> connectionFailed("The car disconnected", retryableTransportFailure = true)
             25 -> runCatching { IccoaCarConfig.describe(body) }
@@ -717,8 +721,9 @@ class IccoaService : Service() {
         }
     }
 
-    private fun pauseProjection() {
-        // The car can hide its projection surface without ending capture or Android Auto.
+    private fun pauseProjection(origin: String) {
+        // OEM PAUSE does not imply a decoder failure. Keep Direct route intact.
+        DiagLog.i("ICCOA", "ICCOA_VIDEO_PAUSE origin=$origin direct=${directVideo?.active == true}")
         directVideo?.paused()
         media?.pause()
         audioPlayerState.pause()
