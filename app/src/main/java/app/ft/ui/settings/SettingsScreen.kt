@@ -715,8 +715,10 @@ private fun IccoaPictureSettings() {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    IntSetting(stringResource(R.string.picture_density), prefs.carDensity, min = 80, max = 640) {
-        prefs.carDensity = it
+    // Legacy storage is a relative zoom factor: 160 = 100%, not fixed display DPI.
+    IntSetting(stringResource(R.string.picture_density),
+        (prefs.carDensity * 100 + 80) / 160, min = 50, max = 400) {
+        prefs.carDensity = (it * 160 + 50) / 100
     }
     BoolSetting(
         stringResource(R.string.picture_save_power),
@@ -782,7 +784,10 @@ private fun CarLifePictureSettings() {
         about = stringResource(R.string.picture_floor_note)
     ) { index -> floor = FLOOR_CHOICES[index].first; p.videoQpFloor = floor }
     IntSetting(stringResource(R.string.picture_min_fps), p.videoMinFps, rev, min = 0, max = 60) { p.videoMinFps = it }
-    IntSetting(stringResource(R.string.picture_density), p.carDensity, rev, min = 80, max = 640) { p.carDensity = it }
+    IntSetting(stringResource(R.string.picture_density),
+        (p.carDensity * 100 + 80) / 160, rev, min = 50, max = 400) {
+        p.carDensity = (it * 160 + 50) / 100
+    }
     key(rev) {
         BoolSetting(stringResource(R.string.picture_save_power), savePower, stringResource(R.string.picture_save_power_body)) { savePower = it; p.encoderSavePower = it }
     }
