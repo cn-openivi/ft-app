@@ -646,4 +646,8 @@
     <string name="mirror_dim_phone_about">Коснитесь экрана телефона — яркость временно восстановится. Через 30 секунд без касаний телефона экран снова затемнится. Требуется разрешение «Изменение системных настроек». После зеркалирования исходные параметры восстановятся.</string>
     <string name="mirror_landscape_title">Зафиксировать приложения альбомно</string>
     <string name="mirror_landscape_about">Необязательно. Рабочий стол вертикальный. Требуются изменение системных настроек и служба касаний.</string>
+    <string name="iccoa_touch_welcome_title">Добро пожаловать!</string>
+    <string name="iccoa_touch_welcome_body">Нажмите зелёную круглую кнопку «ОК». Если касание определится неправильно, настроим экран за четыре касания.</string>
+    <string name="iccoa_touch_welcome_button">ОК</string>
+    <string name="iccoa_touch_welcome_mismatch">Касание не совпало с кнопкой. Настроим экран. Нажмите точно в центр зелёного круга: точка %1$d из 4.</string>
 </resources>
