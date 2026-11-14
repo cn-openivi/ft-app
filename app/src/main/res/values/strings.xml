@@ -48,7 +48,8 @@
     <string name="aa_help_4_body">FT connects to it by itself. After the phone restarts or Android Auto updates, do steps 1, 3 and 4 again.</string>
     <string name="aa_match_car">Draw at the car\'s own size</string>
     <string name="aa_quality_tier">Android Auto video quality</string>
-    <string name="aa_quality_tier_info">Auto selects the receiver-compatible AA/WFD mode. Manual 480p, 720p or 1080p changes the requested AA size at the next connection. Direct H.264 requires an exact WFD match; if the car offers another mode, FT keeps the safe composed-video fallback.</string>
+    <string name="aa_quality_tier_info">Auto selects the supported video mode after negotiating with the connected receiver, regardless of car or phone brand. Verified AA modes are 480p, 720p, 1080p; 2K DCI, 1440p and 4K are forward-compatible quality targets. Direct H.264 requires matching receiver and AA raster.</string>
+    <string name="aa_high_tier_pending">Experimental target: this version currently advertises at most 1080p to Android Auto because higher-resolution runtime support is not verified. Your higher quality choice is remembered; the actual negotiated resolution is shown in video diagnostics. No unsupported video mode is sent.</string>
     <string name="aa_controls_left">Put its controls on the left</string>
     <string name="aa_compact_return_button">Compact FT button</string>
     <string name="aa_compact_return_button_body">Use a small dark round return button over Android Auto. Off keeps the original button.</string>
