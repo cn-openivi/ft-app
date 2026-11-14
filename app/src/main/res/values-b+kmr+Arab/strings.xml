@@ -125,7 +125,7 @@
     <string name="picture_floor_label">کێمترین کوالیتی</string>
     <string name="picture_floor_note">هەر وێنەیەکێ تەمام هندی بچووک دهێلیت کو ترومبێل بشێت وەرگریت، دا کو شاشە بزڤریت پشتی ترومبێل شاشێن خۆ نیشان ددەت. Baidu ئەڤە ل سەر نووترین مۆبایلان دکەت. ژمارێن کێمتر زەلالتر و مەزنترن، «گرتی» هەر تشتێ مۆبایل چێدکەت دهنێریت.</string>
     <string name="picture_min_fps">کێمترین رێژەیا فرەیمان یا دهێتە وەرگرتن، 0 ب واتا بێ سنوور</string>
-    <string name="picture_density">زەلالیا ئەپان ل سەر شاشەیا ترومبێلێ</string>
+    <string name="picture_density">قەبارەیا ڕووکارێ FT</string>
     <string name="picture_save_power">بهێلە ئینکۆدەرێ ڤیدیۆیێ وزەیێ پاشەکەفت بکەت</string>
     <string name="picture_save_power_body">ئینکۆدەرێ ڤیدیۆیێ یێ مۆبایلی ب رێژەیا فرەیمێن وێنەی کار دکەت، نە ب هەمی لەزا خوە. بەلکی مۆبایل د رێکێن درێژ دا کێمتر گەرم ببیت، بەلێ شاشەیا ترومبێلێ دێ پیچەکێ درەنگتر بەرسڤا دەست لێدانێ دەت.</string>
     <string name="picture_at_defaults">هەر ل سەر رێکخستنێن بنەرەتی یە</string>
@@ -493,7 +493,7 @@
     <string name="adv_iccoa_channel_map">ICCOA source configuration: control 57219, audio 57229, sensor 57239, other lanes 57249/57259, RTSP 7236, UIBC 4321. The receiver negotiates the RTP destination port.</string>
     <string name="guidance_iccoa_title">Navigation audio over ICCOA</string>
     <string name="guidance_iccoa_body">ICCOA streams capturable audio through a shared projection audio channel. The separate CarLife TTS channel and its mixing modes do not apply. Android may prevent capture of navigation prompts from some apps.</string>
-    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 160 dpi.</string>
+    <string name="picture_density_shared">شەش قەبارە بۆ دوگمە و نڤیسینێ، ل گۆری شاشەیێ و نە DPI یا جێگیر. Android Auto جودایە.</string>
     <string name="picture_iccoa_direct_codec">Direct mode forwards the original Android Auto H.264 video without video re-encoding. The source controls bitrate and frame rate. If incompatible, FT restores its normal 8 Mbps video encoder. Test while parked.</string>
     <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
     <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>
@@ -681,4 +681,10 @@
     <string name="aa_quality_full_hd">Full HD</string>
     <string name="aa_quality_qhd">QHD</string>
     <string name="aa_quality_uhd">UHD</string>
+    <string name="ft_zoom_very_small">گەلەک بچووک</string>
+    <string name="ft_zoom_small">بچووک</string>
+    <string name="ft_zoom_normal">ئاسایی</string>
+    <string name="ft_zoom_large">مەزن</string>
+    <string name="ft_zoom_very_large">گەلەک مەزن</string>
+    <string name="ft_zoom_maximum">مەزنترین</string>
 </resources>
