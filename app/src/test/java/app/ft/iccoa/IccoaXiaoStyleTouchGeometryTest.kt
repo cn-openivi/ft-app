@@ -41,9 +41,8 @@ class IccoaXiaoStyleTouchGeometryTest {
                 .put("width", 2421).put("height", 1272)
                 .put("x0", x * 2421.0 / 2422.0).put("y0", y)
             val touch = IccoaInputEvent.touch(json, native)!!
-            val (cx, cy) = raster.toContent(*raster.toStream(touch.x, touch.y).let {
-                arrayOf(it.first, it.second)
-            })
+            val (sx, sy) = raster.toStream(touch.x, touch.y)
+            val (cx, cy) = raster.toContent(sx, sy)
             assertTrue("x expected=$x mapped=$cx", abs(cx - x) <= 3)
             assertTrue("y expected=$y mapped=$cy", abs(cy - y) <= 3)
         }
