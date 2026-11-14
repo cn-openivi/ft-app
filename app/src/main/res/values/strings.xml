@@ -522,7 +522,7 @@
     <string name="wireless_pair_in_progress">Pairing securely…</string>
     <string name="wireless_pair_connecting">Connecting and verifying phone apps…</string>
     <string name="wireless_pair_success">Phone apps are ready</string>
-    <string name="wireless_pair_failed">Pairing failed. Open a new code in Settings and retry.</string>
+    <string name="wireless_pair_failed">Wireless debugging setup failed. Check the step shown above; a new code is only needed if pairing itself failed.</string>
     <string name="wireless_pair_button">Open developer settings for pairing</string>
     <string name="wireless_pair_auto_hint">FT can read the code once using its already-enabled Accessibility service. Otherwise enter it directly in the notification. No split screen needed.</string>
     <string name="wireless_pair_notifications">Enable FT notifications to enter the code while Settings stays open</string>
@@ -530,7 +530,8 @@
     <string name="wireless_pair_error">Reason: %1$s</string>
     <string name="wireless_pair_no_auth">Wireless debugging not connected yet; open Pair with code in Android Settings</string>
     <string name="wireless_pair_debugging_off">Wireless debugging is off or its connection port is not being advertised. Open Android Wireless debugging.</string>
-    <string name="wireless_pair_tls_mismatch">The saved ADB identity could not authenticate this TLS endpoint. Pair again; do not use a plain-text fallback.</string>
+    <string name="wireless_pair_tls_mismatch">The ADB connect server key changed or could not be trusted. Open a new pairing code only if you explicitly want to authorize this device again. Plain TCP is not a fix.</string>
+    <string name="wireless_pair_connect_failed">Pairing was accepted, but the encrypted ADB connection failed. Check Wireless debugging and retry Connect; do not request a new code yet.</string>
     <string name="wireless_pair_helper_failed">Paired, but the phone helper did not connect to FT. Review the detailed log before retrying.</string>
     <string name="wireless_pair_hide_expert">Hide advanced ways</string>
     <string name="wireless_pair_show_expert">Advanced setup</string>
@@ -568,7 +569,7 @@
     <string name="home_iccoa_show_all_devices">Show all Bluetooth devices</string>
     <string name="wireless_pair_background_error">Android blocked pairing in the background. Open FT again and try pairing while FT is visible.</string>
     <string name="wireless_pair_expired_error">The pairing code or port has changed. Open a new code in Android Settings and try again.</string>
-    <string name="wireless_pair_wrong_code_error">Pairing failed. Verify the current six-digit code and try again without switching apps.</string>
+    <string name="wireless_pair_wrong_code_error">Pairing authorization did not finish. Verify the current six-digit code and keep its window open.</string>
     <string name="wireless_pair_unsupported">Wireless debugging pairing requires Android 11 or later.</string>
     <string name="iccoa_mirror_calibration_title">Car screen mirroring touch calibration</string>
     <string name="iccoa_mirror_calibration_about">Open phone mirroring on the head unit first. Start four points here and touch each circle on the car screen. Portrait and landscape profiles are saved separately.</string>
