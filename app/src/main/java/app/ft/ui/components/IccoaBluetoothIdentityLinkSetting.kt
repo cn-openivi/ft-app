@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import app.ft.R
 import app.ft.iccoa.IccoaBluetoothIdentityLinkStore
 import app.ft.iccoa.IccoaBluetoothMacInfo
+import app.ft.iccoa.IccoaBtIdentityDelivery
 import app.ft.iccoa.IccoaService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
@@ -56,6 +57,12 @@ fun IccoaBluetoothIdentityLinkSetting() {
             else stringResource(R.string.iccoa_bt_link_missing),
             style = MaterialTheme.typography.bodyMedium
         )
+        Text(stringResource(when (session.btIdentityDelivery) {
+            IccoaBtIdentityDelivery.NOT_ATTEMPTED -> R.string.ft186_bt_id_waiting
+            IccoaBtIdentityDelivery.QUEUED -> R.string.ft186_bt_id_queued
+            IccoaBtIdentityDelivery.SEND_FAILED -> R.string.ft186_bt_id_failed
+            IccoaBtIdentityDelivery.IDENTITY_UNAVAILABLE -> R.string.ft186_bt_id_unavailable
+        }), style = MaterialTheme.typography.bodySmall)
         // Automatic receiver-scoped ICCOA identity mapping already runs in IccoaService.
         // Ordinary HFP pairing is managed by Android and never requires the user
         // to type a MAC address. The system may still ask once for pairing approval.
