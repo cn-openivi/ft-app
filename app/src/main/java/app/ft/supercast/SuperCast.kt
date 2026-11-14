@@ -11,6 +11,7 @@ import app.ft.server.IFtServer
 import app.ft.supercast.adb.WirelessAdbDiscovery
 import app.ft.supercast.adb.WirelessAdbEngine
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.security.SecureRandom
@@ -34,6 +35,7 @@ object SuperCast {
     enum class StartReason { NONE, NEED_PAIRING, DEBUGGING_OFF, TLS_REJECTED, CONNECT_FAILED, HELPER_UNREACHABLE, LEGACY_DISABLED }
     private val _startReason = MutableStateFlow(StartReason.NONE)
     val startReason: StateFlow<StartReason> = _startReason
+    private val startLock = java.util.concurrent.locks.ReentrantLock()
 
     val client: IFtClient = object : IFtClient.Stub() {
         override fun onServer(bound: IFtServer?, sent: String?) {
@@ -227,7 +229,7 @@ object SuperCast {
         drop()
     }
 
-    @Synchronized fun start(context: android.content.Context): Boolean {
+    fun start(context: android.content.Context): Boolean = startLock.withLock {
         if (_ready.value && ping()) {
             _startReason.value = StartReason.NONE
             return true
