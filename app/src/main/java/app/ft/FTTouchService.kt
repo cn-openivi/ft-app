@@ -55,7 +55,11 @@ class FTTouchService : AccessibilityService() {
         if (event != null &&
             (event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_START ||
              event.eventType == AccessibilityEvent.TYPE_TOUCH_INTERACTION_END) &&
-            (Build.VERSION.SDK_INT < 33 || event.displayId == Display.DEFAULT_DISPLAY) &&
+            (Build.VERSION.SDK_INT < 33 ||
+             event.displayId == Display.DEFAULT_DISPLAY ||
+             event.displayId == Display.INVALID_DISPLAY) &&
+            // Some Android builds omit a display ID for physical interaction.
+            // Ignore only a positively identified *other* virtual display.
             // Accessibility remains an independent recovery path even if the
             // shell helper claims readiness but stops producing touch events.
             // MirrorPanelSaver coalesces duplicate events and only reads touch
