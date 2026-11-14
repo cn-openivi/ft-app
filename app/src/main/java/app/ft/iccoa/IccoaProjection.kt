@@ -263,8 +263,11 @@ class IccoaProjection(
             DiagLog.w("ICCOA", "FT touch calibration needs active FT launcher/browser projection")
             return@onMain
         }
-        CarTouchCalibration.begin(display.width, display.height)
-        DiagLog.i("ICCOA", "FT touch calibration requested from phone display=${display.width}x${display.height}")
+        if (!IccoaTouchWelcome.requestFourPoints(display.width, display.height)) {
+            CarTouchCalibration.begin(display.width, display.height)
+        }
+        DiagLog.i("ICCOA", "FT touch calibration explicitly requested from phone " +
+            "display=${display.width}x${display.height}")
     }
     fun resetTouchCalibration() = onMain {
         if (!active) return@onMain
