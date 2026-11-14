@@ -650,4 +650,22 @@
     <string name="iccoa_touch_welcome_body">Нажмите зелёную круглую кнопку «ОК». Если касание определится неправильно, настроим экран за четыре касания.</string>
     <string name="iccoa_touch_welcome_button">ОК</string>
     <string name="iccoa_touch_welcome_mismatch">Касание не совпало с кнопкой. Настроим экран. Нажмите точно в центр зелёного круга: точка %1$d из 4.</string>
+    <string name="ft186_bt_unknown_device">Неизвестное устройство</string>
+    <string name="ft186_bt_media_connected">Bluetooth-медиа (A2DP): %1$s</string>
+    <string name="ft186_bt_media_disconnected">Bluetooth-медиа (A2DP): отключено</string>
+    <string name="ft186_bt_media_off">Bluetooth-медиа (A2DP): Bluetooth выключен</string>
+    <string name="ft186_bt_media_permission">Bluetooth-медиа: требуется разрешение</string>
+    <string name="ft186_bt_media_unknown">Bluetooth-медиа (A2DP): состояние не подтверждено</string>
+    <string name="ft186_bt_link_projection_unknown">Идентичность автомобиля в ICCOA пока не подтверждена.</string>
+    <string name="ft186_bt_link_car_unknown">Адрес Classic Bluetooth автомобиля неизвестен. Автоматическая сверка профилей невозможна.</string>
+    <string name="ft186_bt_link_no_profile">Адрес Bluetooth автомобиля известен; подходящие соединения HFP и A2DP отсутствуют.</string>
+    <string name="ft186_bt_link_hfp">Bluetooth автомобиля: звонки HFP подключены; A2DP отдельно или недоступен.</string>
+    <string name="ft186_bt_link_media">Bluetooth автомобиля: медиа A2DP подключено; звонки HFP отдельно или недоступны.</string>
+    <string name="ft186_bt_link_both">Bluetooth автомобиля: звонки HFP и медиа A2DP используют одно сохранённое устройство.</string>
+    <string name="ft186_bt_link_other_device">Один из Bluetooth-профилей подключён к другому устройству; это не автомобиль.</string>
+    <string name="ft186_bt_link_not_oem_ack">Совпадение адресов не доказывает, что Toyota приняла идентификатор и объединила записи в настройках.</string>
+    <string name="ft186_bt_id_waiting">Идентификатор Bluetooth для Toyota: ожидается подтверждённая ICCOA-сессия.</string>
+    <string name="ft186_bt_id_queued">Идентификатор Classic Bluetooth телефона поставлен в очередь Toyota; подтверждения ГУ пока нет.</string>
+    <string name="ft186_bt_id_failed">Не удалось поставить идентификатор Bluetooth телефона в очередь Toyota.</string>
+    <string name="ft186_bt_id_unavailable">Classic Bluetooth-идентификатор телефона недоступен или функция ГУ не поддерживается.</string>
 </resources>
