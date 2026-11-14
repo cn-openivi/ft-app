@@ -2013,7 +2013,6 @@ class CarLifeService : Service() {
     }
 
     private fun onHardKey(key: Int) {
-        val swap = prefs.swapTrackKeys
         // CarLife uses OEM 14/15/16; ICCOA already reports Android keycodes.
         val mapped = if (key == 231 || key == 219) 84
             else AaSteeringMediaKeys.normalize(key, prefs.swapTrackKeys)
