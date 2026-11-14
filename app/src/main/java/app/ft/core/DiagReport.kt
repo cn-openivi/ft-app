@@ -45,6 +45,10 @@ object DiagReport {
             // No coordinates, guessed units, or extra per-frame verbose logs.
             put("dr-path-evidence.txt", app.ft.dr.DrPathEvidence.snapshot()
                 .reportLine(System.currentTimeMillis()))
+            // Dedicated speed-unit evidence. Statistical km/h similarity
+            // is NOT authorization to synthesize a missing OEM yaw/GNSS accuracy.
+            put("dr-input-evidence.txt", app.ft.iccoa.IccoaDrInputBridge.evidence()
+                .reportLine())
             put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
                 "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))

@@ -31,6 +31,7 @@ import app.ft.core.MotionKind
 import app.ft.core.MotionVector
 import app.ft.core.VehicleMotionTelemetry
 import app.ft.dr.DrPathEvidence
+import app.ft.dr.FtDrRuntime
 import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
 import app.ft.projection.IccoaCalibrationScope
@@ -184,7 +185,11 @@ class IccoaService : Service() {
                 else IccoaInertialWire.decodeAcceleration(body)
             val kind = if (gyro) MotionKind.GYROSCOPE else MotionKind.ACCELERATION
             if (decoded != null) {
-                if (gyro) DrPathEvidence.rawGyro() else DrPathEvidence.rawAcceleration()
+                if (gyro) {
+                    DrPathEvidence.rawGyro()
+                    IccoaDrInputBridge.rawGyro(decoded.x, decoded.y, decoded.z,
+                        decoded.deviceTimestampRaw)
+                } else DrPathEvidence.rawAcceleration()
             }
             val counter = VehicleMotionTelemetry.accept(
                 MotionSource.ICCOA, kind,
@@ -214,6 +219,9 @@ class IccoaService : Service() {
             sensorLiveness.onGear(acceptedGear)
             if (acceptedGear) {
                 DrPathEvidence.rawGear()
+                val observed = VehicleTelemetry.current.value
+                IccoaDrInputBridge.rawGear(observed?.gearSpeedRaw, observed?.gearRaw,
+                    android.os.SystemClock.elapsedRealtime())
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
                     VehicleTraceRecorder.gear(
@@ -244,6 +252,8 @@ class IccoaService : Service() {
             // Original raw device timestamp retained in deviceTimestampRaw.
             if (frameReceivedAtMs != null) {
                 DrPathEvidence.rawGps(receivedAtMs)
+                IccoaDrInputBridge.rawGps(fix.speedRaw.takeIf { fix.speedPresent },
+                    android.os.SystemClock.elapsedRealtime())
                 VehicleTelemetry.publish(VehicleLocation(
                 source = "ICCOA", receivedAtMs = receivedAtMs,
                 positionAtMs = frameReceivedAtMs,
@@ -456,6 +466,7 @@ class IccoaService : Service() {
         DiagLog.i("ICCOA", "Quick eligibility remembered=$known manuallySelected=$ownerSelected forcedNormal=$forceCurrentPin eligible=$canTryQuick")
         endConnection()
         DrPathEvidence.beginSession()
+        IccoaDrInputBridge.beginSession(DrPathEvidence.sessionId())
         // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
         // as connecting BEFORE stopping it: otherwise that callback can
         // auto-select the remembered car in the middle of a manual Connect.
@@ -552,6 +563,12 @@ class IccoaService : Service() {
                     }
                     connectionVideoMode = FTApp.instance.prefs.iccoaVideoModeFor(receiverId)
                     IccoaCalibrationScope.activate(receiverId, connection.verifiedLegacyPrimary)
+                    // OEM crypto/CONTROL proved receiver identity, not sensor units.
+                    // Bind per-car EKF calibration; RAW Gear/Gyro/GPS remain unqualified.
+                    val drBound = FtDrRuntime.bindVerifiedVehicle(
+                        this@IccoaService, receiverId, independentlyVerifiedIdentity = true)
+                    if (drBound) IccoaDrInputBridge.bindAuthenticatedReceiver(receiverId)
+                    else DiagLog.w("DR", "Authenticated receiver could not bind EKF calibration")
                     _state.update { it.copy(verifiedReceiverId = receiverId) }
                     lastBluetoothLinkSession = token
                     val payload = bluetoothIdentityLink.addPayload(receiverId,
@@ -729,6 +746,8 @@ class IccoaService : Service() {
     }
 
     private fun endConnection() {
+        IccoaDrInputBridge.endSession()
+        FtDrRuntime.reset()
         DrPathEvidence.endSession()
         IccoaCalibrationScope.clear()
         CarTouchCalibration.cancel()

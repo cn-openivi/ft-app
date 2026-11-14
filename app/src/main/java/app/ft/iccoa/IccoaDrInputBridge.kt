@@ -1,7 +1,6 @@
 package app.ft.iccoa
 
 import app.ft.core.GpsSourceMode
-import app.ft.dr.DrPathEvidence
 import app.ft.dr.FtDrFusionEngine
 import app.ft.dr.FtDrRuntime
 import kotlin.math.abs
