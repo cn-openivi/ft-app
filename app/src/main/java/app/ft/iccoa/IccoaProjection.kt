@@ -107,7 +107,7 @@ class IccoaProjection(
     private var aaVideoProfile: IccoaAaVideoProfile.Selection? = null
 
     /** Set by ICCOA PLAY before projection/AA startup; scope is this WFD session. */
-    fun prepareAaVideoProfile(profile: IccoaAaVideoProfile.Selection) = onMain {
+    internal fun prepareAaVideoProfile(profile: IccoaAaVideoProfile.Selection) = onMain {
         aaVideoProfile = profile
     }
     @Volatile var directVideoActive = false
