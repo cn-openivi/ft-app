@@ -119,7 +119,7 @@
     <string name="quiet_title">Share sound without asking</string>
     <string name="quiet_on_body">FT passes other apps\' sound to the car by itself, with no question on the phone. To turn this off, run:</string>
     <string name="quiet_off_body">Android asks on the phone before FT can pass other apps\' sound to the car. Run this once from a computer with USB debugging on, and it stops asking:</string>
-    <string name="picture_density_shared">FT interface density is shared by CarLife and ICCOA. Changes apply to the next video stream; the default is 160 dpi.</string>
+    <string name="picture_density_shared">FT controls, icons and labels automatically scale to the car screen. Optional zoom is shared by CarLife and ICCOA; 100% is normal. Changes take effect on the next video stream. Android Auto has a separate UI scale.</string>
     <string name="picture_iccoa_direct_codec">Direct mode forwards the original Android Auto H.264 video without video re-encoding. The source controls bitrate and frame rate. If incompatible, FT restores its normal 8 Mbps video encoder. Test while parked.</string>
     <string name="picture_iccoa_video_mode_title">ICCOA video transmission</string>
     <string name="picture_iccoa_video_mode_normal">Normal (FT re-encoding)</string>
@@ -152,7 +152,7 @@
     <string name="picture_floor_label">Quality floor</string>
     <string name="picture_floor_note">Keeps every full picture small enough for the car to take, so the screen comes back after the car shows its own screens. Baidu does this on its newest phones. Lower numbers are sharper and bigger, Off sends whatever the phone makes.</string>
     <string name="picture_min_fps">Lowest frame rate to accept, 0 means no floor</string>
-    <string name="picture_density">Sharpness of apps on the car screen</string>
+    <string name="picture_density">FT interface zoom, %</string>
     <string name="picture_save_power">Smart power saving</string>
     <string name="picture_save_power_body">FT adapts video frame rate during long periods without touch and restores responsiveness on interaction. GPS, audio and touch input are never throttled. Does not control the Android Auto source encoder in H.264 Passthrough. Applies at the next connection.</string>
     <string name="picture_at_defaults">Already at the defaults</string>
