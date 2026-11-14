@@ -1,0 +1,89 @@
+name: FT185 standard AA/WFD source-only verification
+
+# Verified, bounded source-only Android compile/JUnit, no signed/unsigned APK and no release.
+on:
+  push:
+    branches:
+      - openivi/ft185-direct-standard-aa-wfd-20261114
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft185-standard-aa-source-only
+  cancel-in-progress: true
+
+jobs:
+  source-only:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact FT185 source SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Validate exact branch, package and source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft185-direct-standard-aa-wfd-20261114"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 185' app/build.gradle.kts
+          test -f app/src/main/java/app/ft/iccoa/IccoaAaVideoProfile.kt
+          test -f app/src/main/java/app/ft/projection/IccoaTouchWelcome.kt
+          test -f app/src/test/java/app/ft/iccoa/IccoaAaVideoProfileTest.kt
+          test -f app/src/test/java/app/ft/projection/IccoaWelcomeTargetTest.kt
+          echo "FT185_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Compile source and run JVM unit tests (no APK)
+        shell: bash
+        env:
+          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 --console=plain \
+            -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dkotlin.incremental=false \
+            :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest --stacktrace
+      - name: JUnit summary and no-APK gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          paths=sorted(Path("app/build/test-results/testUnsignedTransitUnitTest").glob("TEST-*.xml"))
+          assert paths, "No JUnit XML outputs"
+          suites=[ET.parse(path).getroot() for path in paths]
+          totals={key:sum(int(s.get(key,0)) for s in suites) for key in ("tests","failures","errors","skipped")}
+          print("FT185_JUNIT_TOTALS", totals)
+          assert totals["tests"] > 0 and totals["failures"] == totals["errors"] == 0
+          PY
+          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+            echo "Source-only verification forbids APK output" >&2
+            exit 1
+          fi
+          echo "FT185_SOURCE_ONLY_PASS=$GITHUB_SHA"
+          echo "APK=NOT_ASSEMBLED"
+      - name: Remove only workspace temporary build outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
