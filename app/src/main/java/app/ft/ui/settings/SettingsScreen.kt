@@ -392,7 +392,46 @@ private fun PageContent(page: SettingsPage) {
                 CarStyles.reload()
             }
             Text(stringResource(R.string.aa_show_return_button_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            BoolSetting(stringResource(R.string.aa_match_car), p.aaMatchCar) { p.aaMatchCar = it }
+            val aaTiers = app.ft.aa.AaResolutionTier.entries
+            val savedAaTier = app.ft.aa.AaResolutionTier.fromStored(
+                p.aaMatchCar, p.aaWidth, p.aaHeight)
+            var tierIndex by remember(p) {
+                mutableIntStateOf((savedAaTier ?: app.ft.aa.AaResolutionTier.AUTO).ordinal)
+            }
+            LaunchedEffect(p) {
+                // Old free-form sizes (e.g. 1920x1008) are not selectable AA
+                // codec rasters. Migrate once to receiver-aware AUTO, not a
+                // fake standard preset that would silently defeat Direct.
+                if (savedAaTier == null) {
+                    p.aaWidth = 1280
+                    p.aaHeight = 720
+                    p.aaMatchCar = true
+                    tierIndex = app.ft.aa.AaResolutionTier.AUTO.ordinal
+                }
+            }
+            PickSetting(
+                stringResource(R.string.aa_quality_tier),
+                aaTiers.map { tier ->
+                    Option(if (tier == app.ft.aa.AaResolutionTier.AUTO)
+                        stringResource(R.string.choice_auto) else "${tier.height}p")
+                },
+                tierIndex,
+                about = stringResource(R.string.aa_quality_tier_info)
+            ) { index ->
+                tierIndex = index
+                val choice = aaTiers[index]
+                if (choice == app.ft.aa.AaResolutionTier.AUTO) {
+                    // Auto negotiates with ICCOA; keep a safe AA baseline for
+                    // sessions that start before a WFD receiver is available.
+                    p.aaWidth = 1280
+                    p.aaHeight = 720
+                    p.aaMatchCar = true
+                } else {
+                    p.aaWidth = choice.width
+                    p.aaHeight = choice.height
+                    p.aaMatchCar = false
+                }
+            }
             // Real car GEAR is the non-disableable ICCOA default. Only
             // the optional P override needs a user-facing control.
             BoolSetting(
@@ -402,8 +441,6 @@ private fun PageContent(page: SettingsPage) {
             ) { p.aaForcePark = it }
             BoolSetting(stringResource(R.string.aa_controls_left), p.aaControlsLeft) { p.aaControlsLeft = it }
             IntSetting(stringResource(R.string.aa_port), p.aaPort, min = 1, max = 65535) { p.aaPort = it }
-            IntSetting(stringResource(R.string.aa_width), p.aaWidth, min = 320, max = 4096) { p.aaWidth = it }
-            IntSetting(stringResource(R.string.aa_height), p.aaHeight, min = 320, max = 4096) { p.aaHeight = it }
             var fps by remember { mutableIntStateOf(p.aaFps) }
             PickSetting(
                 stringResource(R.string.aa_fps),
