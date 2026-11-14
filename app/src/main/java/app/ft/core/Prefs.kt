@@ -10,7 +10,7 @@ import app.ft.projection.VideoProfile
 class Prefs(context: Context) {
     private val appContext = context.applicationContext
     companion object {
-        /** Default only; explicitly saved per-user picture DPI is never migrated. */
+        /** Neutral 100% FT UI zoom; keep key/value for existing owner preferences. */
         const val DEFAULT_CAR_DENSITY_DPI = 160
     }
 
