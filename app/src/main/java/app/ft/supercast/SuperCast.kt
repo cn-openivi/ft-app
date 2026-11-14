@@ -292,7 +292,10 @@ object SuperCast {
             _startReason.value = StartReason.NEED_PAIRING
         }
 
-        // Plain TCP :5555 is an EXPLICIT expert fallback.
+        // Never downgrade a paired Android 11+ TLS session to insecure TCP.
+        // Legacy :5555 is an independent explicit expert route only when
+        // there is no authenticated modern pairing to protect.
+        if (WirelessAdbEngine.isPaired(context)) return false
         if (!FTApp.instance.prefs.supercastLegacyAdb) return false
         val legacy = Helper.startWithAdb(context, fresh)
         if (legacy == Helper.Adb.STARTED && waitForHandshake() && ping()) {
