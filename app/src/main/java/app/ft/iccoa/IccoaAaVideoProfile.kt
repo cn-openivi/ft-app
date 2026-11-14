@@ -16,7 +16,11 @@ internal object IccoaAaVideoProfile {
         val reason: String
     )
 
-    private val STANDARD = setOf(1920 to 1080, 1280 to 720, 800 to 480)
+    // Derive the currently implemented AA codec modes from AA protocol support.
+    // This is NOT a phone-specific resolution list. The phone may still select
+    // a lower mode: actual H.264 SPS must be validated before Direct admission.
+    private fun protocolSupports(w: Int, h: Int): Boolean =
+        app.ft.aa.AaProtocol.standardSize(w, h) == (w to h)
 
     fun choose(
         plan: VideoPlan,
@@ -26,8 +30,15 @@ internal object IccoaAaVideoProfile {
         manualHeight: Int
     ): Selection {
         val wfd = plan.streamWidth to plan.streamHeight
-        if (directRequested && plan.fps in 1..30 && wfd in STANDARD) {
-            return Selection(plan.streamWidth, plan.streamHeight, true, true, "DIRECT_STANDARD_WFD")
+        // Auto derives an AA candidate from this car's negotiated WFD mode.
+        // If a user explicitly selected an AA size in FT, respect that choice:
+        // never silently override it to match the car's higher resolution.
+        val manualMatchesWfd = matchCar ||
+            (manualWidth == plan.streamWidth && manualHeight == plan.streamHeight)
+        if (directRequested && plan.fps in 1..30 &&
+            protocolSupports(plan.streamWidth, plan.streamHeight) && manualMatchesWfd) {
+            return Selection(plan.streamWidth, plan.streamHeight, true, matchCar,
+                "DIRECT_STANDARD_WFD")
         }
         if (matchCar) {
             val (width, height) = IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
