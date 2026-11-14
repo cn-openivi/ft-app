@@ -51,6 +51,6 @@ internal object CarUiViewport {
 
         // This remains a densityDpi value only because Android's virtual
         // DisplayManager API expresses logical viewport scale in that unit.
-        return (adjusted * fitScale).roundToInt().coerceIn(80, 640)
+        return (adjusted * fitScale).roundToInt().coerceIn(80, 960)
     }
 }
