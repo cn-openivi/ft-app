@@ -21,6 +21,7 @@ class BluetoothCallsTest {
     private val handler = mock(Handler::class.java)
     private val profile = mock(BluetoothProfile::class.java)
     private lateinit var listener: BluetoothProfile.ServiceListener
+    private lateinit var mediaListener: BluetoothProfile.ServiceListener
     private lateinit var timeout: Runnable
     private var permissionGranted = true
     private val monitor = BluetoothCalls(context, adapter, handler) { permissionGranted }
@@ -30,6 +31,10 @@ class BluetoothCallsTest {
             listener = it.getArgument(1)
             true
         }.`when`(adapter).getProfileProxy(eq(context), any(BluetoothProfile.ServiceListener::class.java), eq(BluetoothProfile.HEADSET))
+        doAnswer {
+            mediaListener = it.getArgument(1)
+            true
+        }.`when`(adapter).getProfileProxy(eq(context), any(BluetoothProfile.ServiceListener::class.java), eq(BluetoothProfile.A2DP))
         doAnswer {
             timeout = it.getArgument(0)
             true
@@ -179,5 +184,38 @@ class BluetoothCallsTest {
         timeout.run()
         assertEquals(before, monitor.state.value)
         verify(adapter).closeProfileProxy(BluetoothProfile.HEADSET, profile)
+    }
+
+    @Test fun a2dpIsAnIndependentLiveProfileNotEvidenceOfHfp() {
+        val car = mock(BluetoothDevice::class.java)
+        `when`(car.name).thenReturn("Toyota")
+        `when`(car.address).thenReturn("AA:BB:CC:DD:EE:FF")
+        val mediaProxy = mock(BluetoothProfile::class.java)
+        `when`(mediaProxy.connectedDevices).thenReturn(listOf(car))
+        connectProfile()
+        mediaListener.onServiceConnected(BluetoothProfile.A2DP, mediaProxy)
+        assertEquals(BluetoothCallsStatus.DISCONNECTED, monitor.state.value.status)
+        assertEquals(BluetoothCallsStatus.CONNECTED, monitor.mediaState.value.status)
+        assertEquals(listOf(BluetoothProfilePeer("AA:BB:CC:DD:EE:FF", "Toyota")),
+            monitor.mediaState.value.peers)
+
+        `when`(profile.connectedDevices).thenReturn(listOf(car))
+        monitor.refresh()
+        assertEquals(BluetoothCallsStatus.CONNECTED, monitor.state.value.status)
+        assertEquals(BluetoothCallsStatus.CONNECTED, monitor.mediaState.value.status)
+        assertEquals(listOf(BluetoothProfilePeer("AA:BB:CC:DD:EE:FF", "Toyota")),
+            monitor.state.value.peers)
+        monitor.close()
+        verify(adapter).closeProfileProxy(BluetoothProfile.A2DP, mediaProxy)
+    }
+
+    @Test fun staleA2dpProxyAfterCloseIsReleasedAndDoesNotChangeMediaState() {
+        monitor.refresh()
+        monitor.close()
+        val before = monitor.mediaState.value
+        val staleProxy = mock(BluetoothProfile::class.java)
+        mediaListener.onServiceConnected(BluetoothProfile.A2DP, staleProxy)
+        assertEquals(before, monitor.mediaState.value)
+        verify(adapter).closeProfileProxy(BluetoothProfile.A2DP, staleProxy)
     }
 }
