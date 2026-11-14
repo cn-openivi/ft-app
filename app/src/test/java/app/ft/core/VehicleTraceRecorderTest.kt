@@ -37,7 +37,10 @@ class VehicleTraceRecorderTest {
             assertEquals("905", records[4][4])
             assertFalse(VehicleTraceRecorder.exportCsv().contains("99.0"))
             assertTrue(VehicleTraceRecorder.exportInfo().contains("max_hz_per_event=10"))
-            assertTrue(VehicleTraceRecorder.exportInfo().contains("units unverified"))
+            assertTrue(VehicleTraceRecorder.exportInfo().contains(
+                "gear_speed_raw=OEM VehicleInfoManager speed floored"))
+            assertTrue(VehicleTraceRecorder.exportInfo().contains(
+                "physical vehicle axes/orientation UNVERIFIED"))
         } finally {
             VehicleTraceRecorder.clear()
         }
