@@ -100,7 +100,7 @@ internal object IccoaTouchWelcome {
         val prefix = key.removeSuffix("welcome")
         val quad = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE)
         val edit = quad.edit()
-        quad.all.keys.filter { it.startsWith(prefix) }.forEach(edit::remove)
+        quad.all.keys.filter { it.startsWith(prefix) }.forEach { edit.remove(it) }
         val q = edit.commit()
         val p = prefs.edit().remove(key).remove(LAST).commit()
         cancel()
