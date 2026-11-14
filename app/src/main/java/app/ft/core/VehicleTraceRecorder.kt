@@ -94,11 +94,11 @@ internal object VehicleTraceRecorder {
         "evicted_oldest_rows=$evicted\n" +
         "phone_wall_ms=Unix epoch milliseconds\n" +
         "phone_elapsed_ns=Android elapsedRealtimeNanos, arrival time\n" +
-        "oem_timestamp_raw=OEM value, scale not established\n" +
-        "gps_speed_raw=OEM floor(Location.getSpeed()), nominal m/s\n" +
-        "gps_heading_raw=OEM floor(Location.getBearing()), nominal degrees\n" +
-        "gear_speed_raw=OEM GearInfo value, units unverified\n" +
-        "x_y_z=OEM raw axes, mapping and units unverified\n" +
+        "oem_timestamp_raw=GPS packet: OEM System.currentTimeMillis at serialization, NOT GNSS fix time; IMU: OEM SensorEvent.timestamp nanoseconds, HU monotonic clock (NOT PHONE clock)\n" +
+        "gps_speed_raw=OEM floor(Location.getSpeed()), metres/second (loss of fractions)\n" +
+        "gps_heading_raw=OEM floor(Location.getBearing()), degrees (loss of fractions)\n" +
+        "gear_speed_raw=OEM VehicleInfoManager speed floored; km/h supported statistically, wire unit NOT independently certified\n" +
+        "x_y_z=OEM Math.floor(Android SensorEvent.values): Gyro source rad/s, Accel m/s2; fractions destroyed, physical vehicle axes/orientation UNVERIFIED\n" +
         "gps_altitude_oem_raw=raw OEM protobuf altitude, blank if field absent; reference datum/accuracy not verified\n" +
         "no interpolation; rows reflect received events only\n"
 
