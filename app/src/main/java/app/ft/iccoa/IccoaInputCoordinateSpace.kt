@@ -1,0 +1,40 @@
+package app.ft.iccoa
+
+import app.ft.projection.IccoaWelcomeTarget
+import app.ft.projection.TouchVideoGeometry
+import app.ft.projection.VideoPlan
+
+/**
+ * UIBC packets can omit coordinate width/height. A receiver may then send
+ * native display pixels OR encoded WFD stream pixels. The two spaces differ
+ * when a wide panel displays a 16:9 H.264 frame.
+ *
+ * Detect only when a single interpretation unambiguously hits the center
+ * target selected by the user. No make/model assumptions, no free calibration
+ * points, and no guessed fallback for unrelated touches.
+ */
+internal object IccoaInputCoordinateSpace {
+    enum class Mode { UNKNOWN, NATIVE_DISPLAY, VIDEO_STREAM }
+
+    fun inferFromWelcome(nativeRawX: Int, nativeRawY: Int, plan: VideoPlan): Mode {
+        val geometry = TouchVideoGeometry(
+            plan.contentWidth, plan.contentHeight, plan.streamWidth,
+            plan.streamHeight, plan.preserveAspect
+        )
+        val native = geometry.toStream(
+            nativeRawX.coerceIn(0, plan.contentWidth - 1),
+            nativeRawY.coerceIn(0, plan.contentHeight - 1)
+        )
+        val stream = nativeRawX.coerceIn(0, plan.streamWidth - 1) to
+            nativeRawY.coerceIn(0, plan.streamHeight - 1)
+        fun hits(point: Pair<Int, Int>): Boolean {
+            val (x, y) = geometry.toContent(point.first, point.second)
+            return IccoaWelcomeTarget.contains(x, y, plan.contentWidth, plan.contentHeight)
+        }
+        return when {
+            hits(native) && !hits(stream) -> Mode.NATIVE_DISPLAY
+            hits(stream) && !hits(native) -> Mode.VIDEO_STREAM
+            else -> Mode.UNKNOWN
+        }
+    }
+}
