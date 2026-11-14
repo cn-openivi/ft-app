@@ -114,7 +114,7 @@
     <string name="quiet_title">Передавать звук без запроса</string>
     <string name="quiet_on_body">FT сам передаёт звук других приложений в автомобиль, без запроса на телефоне. Чтобы отключить это, выполните команду:</string>
     <string name="quiet_off_body">Прежде чем FT передаст звук других приложений в автомобиль, Android запрашивает разрешение на телефоне. Выполните эту команду один раз с компьютера при включённой отладке по USB, и запросов больше не будет:</string>
-    <string name="picture_density_shared">Значки, надписи и кнопки FT автоматически подстраиваются под разрешение экрана. Дополнительный масштаб общий для CarLife и ICCOA: 100% — стандартный размер. Изменения вступают в силу при новом запуске видеопотока. Масштаб Android Auto настраивается отдельно.</string>
+    <string name="picture_density_shared">Шесть размеров от очень мелкого до максимального. Кнопки и текст масштабируются пропорционально области FT, а не по фиксированному DPI. Android Auto настраивается отдельно.</string>
     <string name="picture_iccoa_direct_codec">Прямой режим передаёт исходный H.264 Android Auto без повторного кодирования видео. Битрейт и FPS задаются источником. При несовместимости FT возвращается к штатному кодировщику с целевыми 8 Мбит/с. Испытывать на стоянке.</string>
     <string name="picture_iccoa_video_mode_title">Режим передачи видео ICCOA</string>
     <string name="picture_iccoa_video_mode_normal">Обычный (перекодирование FT)</string>
@@ -147,7 +147,7 @@
     <string name="picture_floor_label">Порог качества</string>
     <string name="picture_floor_note">Ограничивает размер каждого полного кадра, чтобы автомобиль мог его принять и изображение возвращалось после штатных экранов автомобиля. Так делает Baidu на новейших телефонах. Чем меньше число, тем чётче изображение и тяжелее кадр; «Выкл.» — кадры отправляются как есть.</string>
     <string name="picture_min_fps">Минимальная частота кадров, 0 — без ограничения</string>
-    <string name="picture_density">Масштаб интерфейса FT, %</string>
+    <string name="picture_density">Размер интерфейса FT</string>
     <string name="picture_save_power">Умная экономия энергии</string>
     <string name="picture_save_power_body">FT автоматически снижает частоту видеопотока при длительном отсутствии касаний и быстро восстанавливает её при взаимодействии. GPS, звук и обработка касаний не замедляются. Не управляет исходным кодировщиком Android Auto в режиме H.264 Passthrough. Изменение применяется при следующем подключении.</string>
     <string name="picture_at_defaults">Уже установлены значения по умолчанию</string>
@@ -676,4 +676,10 @@
     <string name="aa_quality_full_hd">Full HD</string>
     <string name="aa_quality_qhd">QHD</string>
     <string name="aa_quality_uhd">UHD</string>
+    <string name="ft_zoom_very_small">Очень мелкий</string>
+    <string name="ft_zoom_small">Мелкий</string>
+    <string name="ft_zoom_normal">Обычный</string>
+    <string name="ft_zoom_large">Крупный</string>
+    <string name="ft_zoom_very_large">Очень крупный</string>
+    <string name="ft_zoom_maximum">Максимальный</string>
 </resources>
