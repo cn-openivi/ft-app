@@ -104,6 +104,12 @@ class IccoaProjection(
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
     private var displayPlan: VideoPlan? = null
+    private var aaVideoProfile: IccoaAaVideoProfile.Selection? = null
+
+    /** Set by ICCOA PLAY before projection/AA startup; scope is this WFD session. */
+    fun prepareAaVideoProfile(profile: IccoaAaVideoProfile.Selection) = onMain {
+        aaVideoProfile = profile
+    }
     @Volatile var directVideoActive = false
         private set
     private var directPlan: VideoPlan? = null
@@ -621,12 +627,15 @@ class IccoaProjection(
         cancelAaGestureOnRouteChange()
         if (runCatching { context.packageManager.getPackageInfo(app.prefs.aaPackage, 0) }.isFailure) return@onMain
         hideMirror()
-        if (app.prefs.aaMatchCar) {
-            val (width, height) = IccoaAaSize.fit(display.width, display.height)
-            app.prefs.aaWidth = width
-            app.prefs.aaHeight = height
-            app.prefs.aaFps = state.value.fps
-            DiagLog.i("ICCOA", "AA active size=${width}x$height for car=${display.width}x${display.height}")
+        val selected = aaVideoProfile
+        if (selected?.applyToPrefs == true) {
+            // Direct always requests a standard CEA-sized AA frame; composited
+            // sessions continue to use the existing custom-aspect AA content.
+            app.prefs.aaWidth = selected.width
+            app.prefs.aaHeight = selected.height
+            app.prefs.aaFps = state.value.fps.coerceIn(1, 30)
+            DiagLog.i("ICCOA", "AA SDP ${selected.width}x${selected.height} " +
+                "mode=${selected.reason} HU=${display.width}x${display.height}")
         }
         ownsAa = true
         if (AaHeadUnitService.current == null && !AaHeadUnitService.state.value.listening) {
@@ -734,6 +743,7 @@ class IccoaProjection(
         directAaSize = null
         active = false
         displayPlan = null
+        aaVideoProfile = null
         hideMirror()
         stopAa()
         releaseProjection()

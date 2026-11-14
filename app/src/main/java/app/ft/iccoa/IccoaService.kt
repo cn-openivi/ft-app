@@ -590,16 +590,21 @@ class IccoaService : Service() {
         lastVideoConfig = config
         val plan = IccoaVideoPlan.from(config)
         val output = media ?: return
-        // Read once for this connection. Preference changes apply on the next
-        // car reconnect, never in the middle of an agreed RTSP/WFD session.
+        // WFD video mode is already agreed. Pick EXACT standard AA video dimensions
+        // before launching AA; normal AA may still keep a custom car-shaped viewport.
+        val prefs = FTApp.instance.prefs
+        val aaProfile = IccoaAaVideoProfile.choose(plan, connectionVideoMode == 1,
+            prefs.aaMatchCar, prefs.aaWidth, prefs.aaHeight)
+        projection?.prepareAaVideoProfile(aaProfile)
+        DiagLog.i("ICCOA", "AA/WFD profile ${aaProfile.reason} AA=" +
+            "${aaProfile.width}x${aaProfile.height} WFD=" +
+            "${plan.streamWidth}x${plan.streamHeight}@${plan.fps} " +
+            "HU=${plan.contentWidth}x${plan.contentHeight}; aspect=FIT")
         directVideo?.videoPlanChanged(plan)
-        if (directVideo == null && connectionVideoMode == 1) {
-            val prefs = FTApp.instance.prefs
-            val (aaWidth, aaHeight) = if (prefs.aaMatchCar)
-                IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
-            else prefs.aaWidth to prefs.aaHeight
+        if (directVideo == null && connectionVideoMode == 1 && aaProfile.directStandard) {
             projection?.let { target ->
-                directVideo = IccoaDirectVideo(main, output, target, plan, aaWidth, aaHeight,
+                directVideo = IccoaDirectVideo(main, output, target, plan,
+                    aaProfile.width, aaProfile.height,
                     onStatus = { status ->
                         main.post { if (media === output) _state.update { it.copy(status = status) } }
                     },
@@ -611,6 +616,11 @@ class IccoaService : Service() {
                     }
                 ).also { app.ft.aa.AaH264Tap.listener = it }
             }
+        }
+        if (connectionVideoMode == 1 && !aaProfile.directStandard) {
+            // Never invent a nonstandard H.264 decoder capability or change WFD mid-PLAY.
+            _state.update { it.copy(effectiveVideoMode = 0,
+                videoFallbackReason = "Direct requires matching standard AA/WFD raster; normal video active") }
         }
         DiagLog.i("ICCOA", "video profile ${plan.streamWidth}x${plan.streamHeight}@${plan.fps} CBR ${plan.bitrate / 1000} kbps; receiver asked ${config.fps} fps")
         if (directVideo?.active != true) projection?.start(plan, output::configure, output::frame)
