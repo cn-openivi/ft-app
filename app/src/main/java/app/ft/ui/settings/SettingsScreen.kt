@@ -426,10 +426,11 @@ private fun PageContent(page: SettingsPage) {
                 aaTiers.map { tier ->
                     val label = when (tier) {
                         app.ft.aa.AaResolutionTier.AUTO -> stringResource(R.string.choice_auto)
-                        app.ft.aa.AaResolutionTier.P2K_DCI -> "2K DCI"
-                        app.ft.aa.AaResolutionTier.P1440 -> "1440p / QHD"
-                        app.ft.aa.AaResolutionTier.P4K_UHD -> "4K UHD"
-                        else -> "${tier.height}p"
+                        app.ft.aa.AaResolutionTier.P480 -> stringResource(R.string.aa_quality_sd)
+                        app.ft.aa.AaResolutionTier.P720 -> stringResource(R.string.aa_quality_hd)
+                        app.ft.aa.AaResolutionTier.P1080 -> stringResource(R.string.aa_quality_full_hd)
+                        app.ft.aa.AaResolutionTier.P1440 -> stringResource(R.string.aa_quality_qhd)
+                        app.ft.aa.AaResolutionTier.P4K_UHD -> stringResource(R.string.aa_quality_uhd)
                     }
                     Option(label)
                 },
