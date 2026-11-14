@@ -279,8 +279,15 @@ internal class IccoaMediaTransport(
                 gesture.accept(touch.action)
                 lastTouch = touch
                 onTouch(touch)
-            } else if (event.optInt("keycode") > 0 && event.optInt("action") == 0) {
-                onKey(event.optInt("keycode"))
+            } else if (event.optInt("keycode") > 0) {
+                val code = event.optInt("keycode")
+                val action = event.optInt("action", -1)
+                // Log only known media buttons. Do not record arbitrary keyboard
+                // keycodes, which could reveal typed text or passwords.
+                if (app.ft.aa.AaSteeringMediaKeys.isMedia(code)) {
+                    DiagLog.i("ICCOA", "UIBC_MEDIA_KEY_RX code=$code action=$action")
+                }
+                if (action == 0) onKey(code)
             }
         }
         try {
