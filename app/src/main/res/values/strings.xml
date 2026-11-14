@@ -648,4 +648,8 @@
     <string name="mirror_dim_phone_about">Touch the phone to restore brightness temporarily. It dims again after 30 seconds without phone touches. Requires Modify system settings; the original brightness is restored when mirroring ends.</string>
     <string name="mirror_landscape_title">Lock mirrored apps to landscape</string>
     <string name="mirror_landscape_about">Optional. Phone launcher remains portrait. Requires Modify system settings and FT accessibility service.</string>
+    <string name="iccoa_touch_welcome_title">Welcome! Check your car touchscreen</string>
+    <string name="iccoa_touch_welcome_body">Tap the green OK circle. If it registers elsewhere, FT will guide you through four-point calibration.</string>
+    <string name="iccoa_touch_welcome_button">OK</string>
+    <string name="iccoa_touch_welcome_mismatch">The touch position does not match. Let’s calibrate the screen. Touch the green circle: point %1$d of 4.</string>
 </resources>
