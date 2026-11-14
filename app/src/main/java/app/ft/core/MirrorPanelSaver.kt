@@ -22,7 +22,42 @@ object MirrorPanelSaver {
     private val handler = Handler(Looper.getMainLooper())
     private var pendingDim: Runnable? = null
     private var temporarilyBright = false
+    private var pendingMonitorCheck: Runnable? = null
+    private var suspendedForSession = false
     @get:Synchronized val isActive: Boolean get() = owners.isNotEmpty()
+
+    private fun stopMonitorCheck() {
+        pendingMonitorCheck?.let(handler::removeCallbacks)
+        pendingMonitorCheck = null
+    }
+
+    /** Do not leave a phone at minimum brightness without a proven touch
+     *  wake channel. A working video/capture path is not enough.
+     */
+    @Synchronized private fun restoreIfTouchUnavailable(context: Context) {
+        pendingMonitorCheck = null
+        if (owners.isEmpty()) return
+        if (app.ft.FTTouchService.enabled ||
+            app.ft.supercast.SuperCast.physicalTouchMonitorActive) return
+        DiagLog.w("MirrorPanel",
+            "no working phone touch wake source; restoring brightness and suspending dim")
+        owners.clear()
+        cancelDimTimer()
+        touchWindow.stop()
+        temporarilyBright = false
+        suspendedForSession = true
+        app.ft.supercast.SuperCast.later {
+            app.ft.supercast.SuperCast.monitorPhoneTouches(false)
+        }
+        restore(context.applicationContext)
+    }
+
+    /** The helper may lose /dev/input permission after startup. */
+    @Synchronized fun monitorUnavailable(context: Context) {
+        if (owners.isNotEmpty() && !app.ft.FTTouchService.enabled)
+            restoreIfTouchUnavailable(context)
+    }
+
 
     private fun cancelDimTimer() {
         pendingDim?.let { handler.removeCallbacks(it) }
@@ -87,7 +122,7 @@ object MirrorPanelSaver {
 
     @Synchronized fun begin(context: Context, source: String): Boolean {
         val c = context.applicationContext
-        if (!app.ft.FTApp.instance.prefs.mirrorDimPhone) return false
+        if (!app.ft.FTApp.instance.prefs.mirrorDimPhone || suspendedForSession) return false
         if (!Settings.System.canWrite(c)) {
             DiagLog.w("MirrorPanel", "minimum brightness needs Modify system settings permission")
             return false
@@ -125,7 +160,13 @@ object MirrorPanelSaver {
             cancelDimTimer()
             touchWindow.start()
             temporarilyBright = false
-            app.ft.supercast.SuperCast.later { app.ft.supercast.SuperCast.monitorPhoneTouches(true) }
+            app.ft.supercast.SuperCast.later {
+                app.ft.supercast.SuperCast.monitorPhoneTouches(true)
+            }
+            stopMonitorCheck()
+            val callback = Runnable { restoreIfTouchUnavailable(c) }
+            pendingMonitorCheck = callback
+            handler.postDelayed(callback, 3_500L)
         }
         return true
     }
@@ -133,6 +174,8 @@ object MirrorPanelSaver {
     @Synchronized fun end(context: Context, source: String) {
         owners.remove(source)
         if (owners.isEmpty()) {
+            suspendedForSession = false
+            stopMonitorCheck()
             cancelDimTimer()
             touchWindow.stop()
             temporarilyBright = false
@@ -143,6 +186,7 @@ object MirrorPanelSaver {
 
     private fun restore(context: Context) {
         if (owners.isEmpty()) {
+            stopMonitorCheck()
             cancelDimTimer()
             touchWindow.stop()
             temporarilyBright = false
