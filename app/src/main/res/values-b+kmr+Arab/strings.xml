@@ -687,4 +687,5 @@
     <string name="ft_zoom_large">مەزن</string>
     <string name="ft_zoom_very_large">گەلەک مەزن</string>
     <string name="ft_zoom_maximum">مەزنترین</string>
+    <string name="iccoa_touch_center_failed">پشکنینا شوینا دەستدانێ سەرنەکەت: دەستدان نەکەتە سەر OK. FT ئەنجامێ وەک سەرکەفتی ناژمێریت و ڕێکخستن خۆکار نابیت. ڕاپۆرتێ تاقیکرنێ پارێزە.</string>
 </resources>
