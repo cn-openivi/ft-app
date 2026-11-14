@@ -653,4 +653,24 @@
     <string name="iccoa_touch_welcome_body">Tap the green OK circle. If it registers elsewhere, FT will guide you through four-point calibration.</string>
     <string name="iccoa_touch_welcome_button">OK</string>
     <string name="iccoa_touch_welcome_mismatch">The touch position does not match. Let’s calibrate the screen. Touch the green circle: point %1$d of 4.</string>
+
+    <!-- FT186 Bluetooth diagnostics: English Android-default fallback until reviewed Kurdish wording -->
+    <string name="ft186_bt_unknown_device">Unknown device</string>
+    <string name="ft186_bt_media_connected">Bluetooth media (A2DP): %1$s</string>
+    <string name="ft186_bt_media_disconnected">Bluetooth media (A2DP): disconnected</string>
+    <string name="ft186_bt_media_off">Bluetooth media (A2DP): Bluetooth off</string>
+    <string name="ft186_bt_media_permission">Bluetooth media: permission required</string>
+    <string name="ft186_bt_media_unknown">Bluetooth media (A2DP): status not confirmed</string>
+    <string name="ft186_bt_link_projection_unknown">Car projection identity is not yet authenticated.</string>
+    <string name="ft186_bt_link_car_unknown">Car Classic Bluetooth address is not confirmed. Cannot correlate profiles automatically.</string>
+    <string name="ft186_bt_link_no_profile">Car Classic Bluetooth address known; no matching HFP or A2DP connection.</string>
+    <string name="ft186_bt_link_hfp">Car Bluetooth: HFP calls connected; A2DP media separate or unavailable.</string>
+    <string name="ft186_bt_link_media">Car Bluetooth: A2DP media connected; HFP calls separate or unavailable.</string>
+    <string name="ft186_bt_link_both">Car Bluetooth: HFP calls and A2DP media use the same saved Classic device.</string>
+    <string name="ft186_bt_link_other_device">A Bluetooth profile is connected to another device; not counted as the car.</string>
+    <string name="ft186_bt_link_not_oem_ack">Local address matching does not prove Toyota accepted the identity or merged its settings entry.</string>
+    <string name="ft186_bt_id_waiting">Toyota Bluetooth identity: authenticated session not yet ready.</string>
+    <string name="ft186_bt_id_queued">Phone Classic Bluetooth identity queued to Toyota; no OEM acknowledgement verified.</string>
+    <string name="ft186_bt_id_failed">Phone Bluetooth identity could not be queued to Toyota.</string>
+    <string name="ft186_bt_id_unavailable">Phone Classic Bluetooth identity unavailable or OEM extension unsupported.</string>
 </resources>

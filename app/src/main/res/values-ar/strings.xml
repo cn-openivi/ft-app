@@ -653,4 +653,24 @@
     <string name="iccoa_touch_welcome_body">Tap the green OK circle. If it registers elsewhere, FT will guide you through four-point calibration.</string>
     <string name="iccoa_touch_welcome_button">OK</string>
     <string name="iccoa_touch_welcome_mismatch">The touch position does not match. Let’s calibrate the screen. Touch the green circle: point %1$d of 4.</string>
+
+    <!-- FT186 verified Arabic Bluetooth labels -->
+    <string name="ft186_bt_unknown_device">جهاز غير معروف</string>
+    <string name="ft186_bt_media_connected">وسائط Bluetooth (A2DP): %1$s</string>
+    <string name="ft186_bt_media_disconnected">وسائط Bluetooth (A2DP): غير متصلة</string>
+    <string name="ft186_bt_media_off">وسائط Bluetooth (A2DP): البلوتوث مغلق</string>
+    <string name="ft186_bt_media_permission">وسائط Bluetooth: يلزم منح الإذن</string>
+    <string name="ft186_bt_media_unknown">وسائط Bluetooth (A2DP): الحالة غير مؤكدة</string>
+    <string name="ft186_bt_link_projection_unknown">لم يتم التحقق بعد من هوية السيارة في عرض الهاتف.</string>
+    <string name="ft186_bt_link_car_unknown">عنوان Bluetooth Classic للسيارة غير مؤكد. لا يمكن مطابقة ملفات الاتصال تلقائياً.</string>
+    <string name="ft186_bt_link_no_profile">عنوان Bluetooth Classic للسيارة معروف، لكن لا يوجد اتصال HFP أو A2DP مطابق.</string>
+    <string name="ft186_bt_link_hfp">Bluetooth السيارة: مكالمات HFP متصلة؛ وسائط A2DP منفصلة أو غير متاحة.</string>
+    <string name="ft186_bt_link_media">Bluetooth السيارة: وسائط A2DP متصلة؛ مكالمات HFP منفصلة أو غير متاحة.</string>
+    <string name="ft186_bt_link_both">Bluetooth السيارة: تستخدم مكالمات HFP ووسائط A2DP الجهاز المحفوظ نفسه.</string>
+    <string name="ft186_bt_link_other_device">أحد ملفات Bluetooth متصل بجهاز آخر، ولا يُحسب كاتصال بالسيارة.</string>
+    <string name="ft186_bt_link_not_oem_ack">تطابق العناوين لا يثبت قبول Toyota للهوية أو دمجها في الإعدادات.</string>
+    <string name="ft186_bt_id_waiting">هوية Bluetooth لـ Toyota: جلسة مصادق عليها غير جاهزة بعد.</string>
+    <string name="ft186_bt_id_queued">تمت إضافة هوية Bluetooth Classic للهاتف إلى قائمة Toyota؛ لا يوجد تأكيد من وحدة السيارة.</string>
+    <string name="ft186_bt_id_failed">تعذر إرسال هوية Bluetooth للهاتف إلى Toyota.</string>
+    <string name="ft186_bt_id_unavailable">هوية Bluetooth Classic للهاتف غير متاحة أو ملحق وحدة السيارة غير مدعوم.</string>
 </resources>
