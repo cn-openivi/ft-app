@@ -682,4 +682,5 @@
     <string name="ft_zoom_large">Крупный</string>
     <string name="ft_zoom_very_large">Очень крупный</string>
     <string name="ft_zoom_maximum">Максимальный</string>
+    <string name="iccoa_touch_center_failed">Проверка координат НЕ ПРОЙДЕНА. Касание пришло вне «ОК». FT не считает его правильным и не запускает калибровку автоматически. Сохраните диагностический отчёт.</string>
 </resources>
