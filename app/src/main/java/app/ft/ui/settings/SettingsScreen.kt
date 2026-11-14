@@ -393,44 +393,63 @@ private fun PageContent(page: SettingsPage) {
             }
             Text(stringResource(R.string.aa_show_return_button_about), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val aaTiers = app.ft.aa.AaResolutionTier.entries
-            val savedAaTier = app.ft.aa.AaResolutionTier.fromStored(
+            val legacyTier = app.ft.aa.AaResolutionTier.fromStored(
                 p.aaMatchCar, p.aaWidth, p.aaHeight)
+            val savedAaTier = app.ft.aa.AaResolutionTier.fromSavedKey(
+                p.aaRequestedQualityTier) ?: legacyTier ?: app.ft.aa.AaResolutionTier.AUTO
             var tierIndex by remember(p) {
-                mutableIntStateOf((savedAaTier ?: app.ft.aa.AaResolutionTier.AUTO).ordinal)
+                mutableIntStateOf(savedAaTier.ordinal)
             }
             LaunchedEffect(p) {
-                // Old free-form sizes (e.g. 1920x1008) are not selectable AA
-                // codec rasters. Migrate once to receiver-aware AUTO, not a
-                // fake standard preset that would silently defeat Direct.
-                if (savedAaTier == null) {
-                    p.aaWidth = 1280
-                    p.aaHeight = 720
-                    p.aaMatchCar = true
-                    tierIndex = app.ft.aa.AaResolutionTier.AUTO.ordinal
+                // Preserve the desired quality independently from the effective
+                // AA protocol raster. No device/brand whitelist is consulted.
+                if (p.aaRequestedQualityTier.isEmpty()) {
+                    if (legacyTier == null) {
+                        // Migrate invalid pre-FT187 custom content geometry.
+                        p.aaWidth = 1280
+                        p.aaHeight = 720
+                        p.aaMatchCar = true
+                    }
+                    p.aaRequestedQualityTier = savedAaTier.name
+                }
+                if (savedAaTier.isExperimental) {
+                    // Some phone AA runtimes reject enum modes above 1080p.
+                    // Maintain identical H.264 and input coordinate domains.
+                    val (safeW, safeH) = savedAaTier.effectiveWireSize
+                    p.aaMatchCar = false
+                    p.aaWidth = safeW
+                    p.aaHeight = safeH
                 }
             }
             PickSetting(
                 stringResource(R.string.aa_quality_tier),
                 aaTiers.map { tier ->
-                    Option(if (tier == app.ft.aa.AaResolutionTier.AUTO)
-                        stringResource(R.string.choice_auto) else "${tier.height}p")
+                    val label = when (tier) {
+                        app.ft.aa.AaResolutionTier.AUTO -> stringResource(R.string.choice_auto)
+                        app.ft.aa.AaResolutionTier.P2K_DCI -> "2K DCI"
+                        app.ft.aa.AaResolutionTier.P1440 -> "1440p / QHD"
+                        app.ft.aa.AaResolutionTier.P4K_UHD -> "4K UHD"
+                        else -> "${tier.height}p"
+                    }
+                    Option(label)
                 },
                 tierIndex,
                 about = stringResource(R.string.aa_quality_tier_info)
             ) { index ->
                 tierIndex = index
                 val choice = aaTiers[index]
-                if (choice == app.ft.aa.AaResolutionTier.AUTO) {
-                    // Auto negotiates with ICCOA; keep a safe AA baseline for
-                    // sessions that start before a WFD receiver is available.
-                    p.aaWidth = 1280
-                    p.aaHeight = 720
-                    p.aaMatchCar = true
-                } else {
-                    p.aaWidth = choice.width
-                    p.aaHeight = choice.height
-                    p.aaMatchCar = false
-                }
+                val (effectiveW, effectiveH) = choice.effectiveWireSize
+                p.aaRequestedQualityTier = choice.name
+                p.aaWidth = effectiveW
+                p.aaHeight = effectiveH
+                p.aaMatchCar = choice == app.ft.aa.AaResolutionTier.AUTO
+            }
+            if (aaTiers[tierIndex].isExperimental) {
+                Text(
+                    stringResource(R.string.aa_high_tier_pending),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
             // Real car GEAR is the non-disableable ICCOA default. Only
             // the optional P override needs a user-facing control.
