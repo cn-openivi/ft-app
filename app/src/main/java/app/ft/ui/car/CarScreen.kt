@@ -381,6 +381,11 @@ private fun CarRoot(style: CarStyle) {
                                 style = MaterialTheme.typography.headlineSmall)
                             Text(stringResource(R.string.iccoa_touch_welcome_body),
                                 style = MaterialTheme.typography.bodyMedium)
+                            if (welcome.centerMismatch) {
+                                Text(stringResource(R.string.iccoa_touch_center_failed),
+                                    color = Color(0xFFFF8888),
+                                    style = MaterialTheme.typography.bodyLarge)
+                            }
                         }
                     }
                     Canvas(Modifier.fillMaxSize()) {
