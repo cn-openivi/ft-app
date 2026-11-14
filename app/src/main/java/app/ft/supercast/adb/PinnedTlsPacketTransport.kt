@@ -36,13 +36,12 @@ import org.bouncycastle.asn1.x509.Certificate as ASN1Certificate
 
 /**
  * Adapted from rhythmcache/adb-kt v1.0.6 (Apache-2.0).
- * FT patch: pin exact peer certificate from SPAKE2 pairing; upstream v1.0.6
- * accepts an arbitrary TLS server certificate despite its security comment.
- * ADB TLS transport (Android 11+). Pins the peer certificate learned during
- * pairing rather than accepting anything -- pairing's "accept any cert" is
- * only safe because SPAKE2 authenticates on top of it; this connection has
- * no such secondary layer, so fingerprint match is the only thing standing
- * between this and a MITM.
+ * FT186: the pairing server uses a separate ephemeral TLS certificate from
+ * the adbd connect server. Cross-service DER pinning is invalid. The first
+ * loopback connect after authenticated SPAKE2 pairing validates the server's
+ * self-signed certificate, then its public key is committed ONLY after shell
+ * UID 2000 plus authenticated SuperCast Binder ping. Reconnect enforces the
+ * connect public key pin. No plaintext/insecure fallback.
  *
  * Reuses the exact same AdbPacket/BufferedSource/BufferedSink plumbing as
  * TcpPacketTransport -- the only thing that differs between the two
@@ -59,6 +58,7 @@ class PinnedTlsPacketTransport private constructor(
     private val protocol: TlsProtocol,
     private val source: BufferedSource,
     private val sink: BufferedSink,
+    val connectPublicKeySha256: ByteArray,
 ) : PacketTransport {
     companion object {
         private val secureRandom = SecureRandom()
@@ -68,18 +68,20 @@ class PinnedTlsPacketTransport private constructor(
             host: String,
             port: Int,
             identity: PairingIdentity,
-            expectedPeerSha256: ByteArray,
+            trustedConnectKeySha256: ByteArray?,
         ): PinnedTlsPacketTransport =
             withContext(Dispatchers.IO) {
                 val socket = Socket()
                 socket.connect(InetSocketAddress(host, port), 5_000)
                 socket.soTimeout = 8_000
                 socket.tcpNoDelay = true
+                WirelessAdbEngine.markStage(WirelessAdbEngine.Stage.TCP_CONNECTED)
 
                 val crypto: TlsCrypto = sharedCrypto
                 val (certChain, privKey) = parseIdentity(crypto, identity.certPem, identity.privateKeyPem)
 
                 var capturedContext: TlsClientContext? = null
+                var observedKeySha256: ByteArray? = null
 
                 val client =
                     object : DefaultTlsClient(crypto) {
@@ -93,12 +95,13 @@ class PinnedTlsPacketTransport private constructor(
                         override fun getAuthentication(): TlsAuthentication =
                             object : TlsAuthentication {
                                 override fun notifyServerCertificate(serverCertificate: TlsServerCertificate) {
-                                    // The certificate was captured only after a SPAKE2-authenticated
-                                    // pairing. Fail closed if the TLS peer changes. No trust-all path.
                                     val presented = serverCertificate.certificate.getCertificateAt(0).encoded
-                                    if (!PeerCertificatePin.matches(presented, expectedPeerSha256)) {
-                                        throw java.security.cert.CertificateException("ADB TLS peer differs from paired identity")
+                                    val digest = PeerCertificatePin.connectPublicKeySha256(presented)
+                                    if (trustedConnectKeySha256 != null &&
+                                        !java.security.MessageDigest.isEqual(digest, trustedConnectKeySha256)) {
+                                        throw java.security.cert.CertificateException("ADB connect peer public key changed")
                                     }
+                                    observedKeySha256 = digest
                                 }
 
                                 override fun getClientCredentials(certificateRequest: CertificateRequest): TlsCredentials =
@@ -173,6 +176,7 @@ class PinnedTlsPacketTransport private constructor(
                 clientStls.writeTo(buffer)
                 rawOutput.write(buffer.readByteArray())
                 rawOutput.flush()
+                WirelessAdbEngine.markStage(WirelessAdbEngine.Stage.STLS_ACKNOWLEDGED)
 
                 // here we now proceed with the actual TLS 1.3 handshake over the same upgraded streams.
                 val protocol = TlsClientProtocol(rawInput, rawOutput)
@@ -192,10 +196,12 @@ class PinnedTlsPacketTransport private constructor(
                     throw AdbException.Transport("TLS handshake failed", e)
                 }
 
+                val observed = requireNotNull(observedKeySha256) { "ADB TLS server certificate missing" }
+                WirelessAdbEngine.markStage(WirelessAdbEngine.Stage.TLS_VERIFIED)
                 val source = protocol.inputStream.source().buffer()
                 val sink = protocol.outputStream.sink().buffer()
 
-                PinnedTlsPacketTransport(socket, protocol, source, sink)
+                PinnedTlsPacketTransport(socket, protocol, source, sink, observed.copyOf())
             }
 
         private fun isCertRejectionAlert(desc: Short): Boolean =
