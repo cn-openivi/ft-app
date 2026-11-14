@@ -1,0 +1,94 @@
+name: FT187 Direct GOP and OEM PAUSE source-only check
+
+on:
+  push:
+    branches:
+      - openivi/ft187-direct-gop-pause-20261114
+    paths:
+      - 'app/**'
+      - '.github/workflows/ft187-direct-gop-pause-source-only.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft187-direct-gop-pause-source-only
+  cancel-in-progress: true
+
+jobs:
+  source-compile-unit:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 70
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Source-only and runner safety gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft187-direct-gop-pause-20261114"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 186' app/build.gradle.kts
+          grep -Fq 'DIRECT_VIDEO_GOP_RECOVERED' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
+          grep -Fq 'DIRECT_VIDEO_RECEIVER_RESUMED' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
+          test -f app/src/test/java/app/ft/iccoa/IccoaStreamQueueTest.kt
+          echo "EXACT_FT187_PATCH_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK build-tools 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Compile Kotlin and run unsignedTransit JUnit
+        shell: bash
+        env:
+          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 --console=plain \
+            -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dkotlin.incremental=false \
+            :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest --stacktrace
+      - name: Verify JUnit results; prohibit APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          files=list(Path('app/build/test-results/testUnsignedTransitUnitTest').glob('TEST-*.xml'))
+          assert files, 'JUnit test XML absent'
+          totals={key:sum(int(ET.parse(p).getroot().get(key,0)) for p in files)
+                  for key in ('tests','failures','errors','skipped')}
+          print('FT187_SOURCE_JUNIT_TOTALS='+str(totals))
+          assert totals['tests']>0
+          assert totals['failures']==0 and totals['errors']==0
+          assert any('IccoaStreamQueueTest' in p.name for p in files)
+          PY
+          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
+            echo 'Unexpected APK in source-only check' >&2
+            exit 1
+          fi
+          echo "FT187_SOURCE_ONLY_PASS=$GITHUB_SHA"
+          echo "SIGNED_APK=NOT_BUILT"
+          echo "FIELD=NOT_TESTED"
+      - name: Clean build outputs and retain shared Gradle cache
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
