@@ -47,6 +47,20 @@ class DrPathEvidenceTest {
         assertEquals(0L, result.aaRawWritten)
     }
 
+    @Test fun aaSocketWritesFromOldSessionCannotTaintNewVehicle() {
+        DrPathEvidence.beginSession()
+        val previous = DrPathEvidence.sessionId()
+        DrPathEvidence.beginSession()
+        val current = DrPathEvidence.sessionId()
+        DrPathEvidence.aaLocationWritten(fused = true, expectedSession = previous)
+        assertEquals(0L, DrPathEvidence.snapshot().aaFusedWritten)
+        DrPathEvidence.aaLocationWritten(fused = true, expectedSession = current)
+        assertEquals(1L, DrPathEvidence.snapshot().aaFusedWritten)
+        DrPathEvidence.endSession()
+        DrPathEvidence.aaLocationWritten(fused = false, expectedSession = current)
+        assertEquals(0L, DrPathEvidence.snapshot().aaRawWritten)
+    }
+
     @Test fun onlyNewCarSessionResetsCompletedEvidence() {
         DrPathEvidence.beginSession()
         DrPathEvidence.rawGps(100L)

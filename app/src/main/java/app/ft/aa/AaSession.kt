@@ -510,7 +510,6 @@ class AaSession(
         carGpsJob?.cancel()
         carGpsSubscribed = true
         val sessionCharacterization = locationCharacterizationAtDiscovery
-        val drEvidenceSession = DrPathEvidence.sessionId()
         carGpsJob = scope.launch(Dispatchers.IO) {
             val gate = AaLocationFeedPolicy(
                 sessionCharacterization, System.currentTimeMillis())
@@ -528,6 +527,10 @@ class AaSession(
                         position.raw?.let { if (!gate.fusedOnly) gate.raw(it, nowWall) else null }
                 }
                 if (packet != null) {
+                    // Snapshot the CAR epoch at each actual event: AA may subscribe
+                    // before the car connects; never attribute a late async socket
+                    // callback to a different vehicle/reconnect epoch.
+                    val drEvidenceSession = DrPathEvidence.sessionId()
                     gpsEvidence.eventSubmitted()
                     sendEnc(AaProtocol.CH_SENSOR,
                         AaProtocol.SENSOR_EVENT_INDICATION, packet, afterWrite = {
