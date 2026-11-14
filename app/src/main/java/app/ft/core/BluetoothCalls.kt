@@ -250,11 +250,10 @@ class BluetoothCalls(
                     publishMedia(BluetoothMediaState(BluetoothCallsStatus.OFF))
                 }
                 mediaProfile != null && mediaServiceAvailable -> {
-                    val peers = connectedPeers(mediaProfile!!.connectedDevices)
+                    val devices = mediaProfile!!.connectedDevices
                     publishMedia(BluetoothMediaState(
-                        if (mediaProfile!!.connectedDevices.isEmpty()) BluetoothCallsStatus.DISCONNECTED
-                        else BluetoothCallsStatus.CONNECTED,
-                        peers
+                        if (devices.isEmpty()) BluetoothCallsStatus.DISCONNECTED else BluetoothCallsStatus.CONNECTED,
+                        connectedPeers(devices)
                     ))
                 }
                 mediaRequestRejected -> publishMedia(BluetoothMediaState(BluetoothCallsStatus.UNAVAILABLE))
