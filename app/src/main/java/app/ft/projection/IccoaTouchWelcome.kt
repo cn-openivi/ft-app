@@ -21,10 +21,14 @@ internal object IccoaWelcomeTarget {
     }
 }
 
-/** Dynamic UIBC mapping is primary. Four-point correction only on failed OK hit. */
+/** Displayed center OK verifies mapping; calibration is a separate explicit fallback. */
 internal object IccoaTouchWelcome {
     enum class Phase { NONE, CHECK, FOUR_POINTS }
-    data class State(val phase: Phase = Phase.NONE)
+    data class State(
+        val phase: Phase = Phase.NONE,
+        /** Visible failure of independent center-hit verification, never silent success. */
+        val centerMismatch: Boolean = false
+    )
     data class TouchResult(val consumed: Boolean = false, val completed: Boolean = false)
 
     private const val PREF = "ft-iccoa-touch-welcome"
@@ -60,12 +64,18 @@ internal object IccoaTouchWelcome {
             DiagLog.i("ICCOA", "First-touch center check accepted; saved=$stored")
             TouchResult(consumed = true, completed = stored)
         } else {
-            // An off-center first sample is NOT proof that touch geometry is
-            // wrong. The OEM may omit UIBC coordinate units or a user may
-            // simply miss. Never force a four-point wizard automatically.
+            // The OK target is a VERIFICATION indicator, never just an
+            // onboarding button. A miss means mapping verification FAILED;
+            // do not mark the receiver verified or start calibration.
+            _state.value = State(Phase.CHECK, centerMismatch = true)
+            val errorXPermille = (x.toLong() * 1000L / width - 500L)
+            val errorYPermille = (y.toLong() * 1000L / height - 500L)
+            // Only the known center-check target is logged. This is a bounded
+            // displacement from a public UI marker, not free-form touch history.
             DiagLog.w("ICCOA",
-                "First-touch center check mismatched; retry enabled, " +
-                "phone-side four-point calibration remains optional")
+                "UIBC_CENTER_VALIDATION=FAIL dx_per_mille=${errorXPermille} " +
+                "dy_per_mille=${errorYPermille} center=${width}x${height}; " +
+                "not verified; no automatic calibration")
             TouchResult(consumed = true)
         }
     }
