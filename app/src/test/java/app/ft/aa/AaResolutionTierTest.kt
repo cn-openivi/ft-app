@@ -10,7 +10,6 @@ class AaResolutionTierTest {
             AaResolutionTier.P480,
             AaResolutionTier.P720,
             AaResolutionTier.P1080,
-            AaResolutionTier.P2K_DCI,
             AaResolutionTier.P1440,
             AaResolutionTier.P4K_UHD
         ), AaResolutionTier.entries)
@@ -18,7 +17,6 @@ class AaResolutionTierTest {
         assertEquals(800 to 480, AaResolutionTier.P480.width to AaResolutionTier.P480.height)
         assertEquals(1280 to 720, AaResolutionTier.P720.width to AaResolutionTier.P720.height)
         assertEquals(1920 to 1080, AaResolutionTier.P1080.width to AaResolutionTier.P1080.height)
-        assertEquals(2048 to 1080, AaResolutionTier.P2K_DCI.width to AaResolutionTier.P2K_DCI.height)
         assertEquals(2560 to 1440, AaResolutionTier.P1440.width to AaResolutionTier.P1440.height)
         assertEquals(3840 to 2160, AaResolutionTier.P4K_UHD.width to AaResolutionTier.P4K_UHD.height)
     }
@@ -27,7 +25,6 @@ class AaResolutionTierTest {
         // AA 1440/4K enum entries exist in some APK snapshots, but their
         // runtime resolution mapping is not universally supported.
         for (tier in listOf(
-            AaResolutionTier.P2K_DCI,
             AaResolutionTier.P1440,
             AaResolutionTier.P4K_UHD
         )) {
@@ -62,6 +59,7 @@ class AaResolutionTierTest {
         }
         assertNull(AaResolutionTier.fromSavedKey(""))
         assertNull(AaResolutionTier.fromSavedKey("RAV4_4K"))
-        assertNotEquals(AaResolutionTier.P2K_DCI, AaResolutionTier.P1440)
+        assertEquals(6, AaResolutionTier.entries.size)
+        assertNull(AaResolutionTier.fromSavedKey("P2K_DCI"))
     }
 }
