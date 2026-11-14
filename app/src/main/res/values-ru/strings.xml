@@ -520,7 +520,7 @@
     <string name="wireless_pair_in_progress">Безопасное сопряжение…</string>
     <string name="wireless_pair_connecting">Подключение и проверка приложений…</string>
     <string name="wireless_pair_success">Приложения телефона готовы</string>
-    <string name="wireless_pair_failed">Ошибка сопряжения. Откройте новый код в настройках Android и повторите.</string>
+    <string name="wireless_pair_failed">Не удалось настроить беспроводную отладку. Смотрите конкретный этап ошибки; новый код нужен не всегда.</string>
     <string name="wireless_pair_button">Открыть настройки разработчика</string>
     <string name="wireless_pair_auto_hint">FT может один раз прочитать код через уже разрешённую службу специальных возможностей. Иначе введите код прямо в уведомлении. Разделение экрана не нужно.</string>
     <string name="wireless_pair_notifications">Разрешите уведомления FT, чтобы ввести код, не закрывая настройки Android</string>
@@ -528,7 +528,8 @@
     <string name="wireless_pair_error">Причина: %1$s</string>
     <string name="wireless_pair_no_auth">Беспроводная отладка ещё не подключена. Откройте сопряжение с помощью кода в настройках Android</string>
     <string name="wireless_pair_debugging_off">Беспроводная отладка выключена или порт подключения не обнаружен. Откройте настройки Android.</string>
-    <string name="wireless_pair_tls_mismatch">Сохранённый ключ не прошёл проверку TLS. Выполните сопряжение заново; не используйте незащищённый режим.</string>
+    <string name="wireless_pair_tls_mismatch">Ключ ADB-сервера подключения изменился или не подтверждён. Новый код нужен только для явного повторного сопряжения; не включайте обычный TCP.</string>
+    <string name="wireless_pair_connect_failed">Сопряжение принято, но защищённое ADB-подключение не установлено. Проверьте беспроводную отладку и повторите подключение — новый код пока не нужен.</string>
     <string name="wireless_pair_helper_failed">Телефон сопряжён, но вспомогательный процесс не подключился к FT. Проверьте журнал и повторите.</string>
     <string name="wireless_pair_hide_expert">Скрыть дополнительные способы</string>
     <string name="wireless_pair_show_expert">Дополнительные способы</string>
@@ -566,7 +567,7 @@
     <string name="home_iccoa_show_all_devices">Показать все Bluetooth-устройства</string>
     <string name="wireless_pair_background_error">Android заблокировал фоновую настройку. Вернитесь в FT и повторите сопряжение.</string>
     <string name="wireless_pair_expired_error">Код или порт сопряжения изменился. Откройте новый код в настройках Android и повторите.</string>
-    <string name="wireless_pair_wrong_code_error">Сопряжение не удалось. Проверьте актуальные шесть цифр и повторите, не переключая приложения.</string>
+    <string name="wireless_pair_wrong_code_error">Авторизация сопряжения не завершилась. Проверьте текущий шестизначный код, не закрывая окно Android.</string>
     <string name="wireless_pair_unsupported">Для сопряжения через беспроводную отладку требуется Android 11 или новее.</string>
     <string name="iccoa_mirror_calibration_title">Калибровка касаний зеркалирования на ГУ</string>
     <string name="iccoa_mirror_calibration_about">Сначала откройте зеркалирование телефона на ГУ. Запустите четыре точки и последовательно коснитесь кружков на экране автомобиля. Профили портрет/альбом сохраняются раздельно.</string>
