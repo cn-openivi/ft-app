@@ -241,15 +241,14 @@ class IccoaProjection(
         val plan = directPlan ?: return
         val (aaWidth, aaHeight) = directAaSize ?: return
         val session = AaHeadUnitService.current ?: return
-        val geom = TouchVideoGeometry(
-            plan.contentWidth, plan.contentHeight,
-            plan.streamWidth, plan.streamHeight, plan.preserveAspect
-        )
-        val (contentX, contentY) = geom.toContent(raw.x, raw.y)
-        val (correctedX, correctedY) = CarTouchCalibration.correct(
-            context, contentX, contentY, plan.contentWidth, plan.contentHeight
-        )
-        val (streamX, streamY) = geom.toStream(correctedX, correctedY)
+        // RAW UIBC has already been converted to the negotiated WFD raster.
+        // In Direct mode the original FT letterbox pixels are NOT rendered.
+        // Apply only the HU calibration delta, preserving the full AA edges.
+        val (streamX, streamY) = IccoaDirectTouchMap.correctedStreamPoint(
+            raw.x, raw.y, plan, app.prefs.mirrorUseCalibration
+        ) { x, y, width, height ->
+            CarTouchCalibration.correct(context, x, y, width, height)
+        }
         val left = (plan.streamWidth - aaWidth) / 2
         val top = (plan.streamHeight - aaHeight) / 2
         val bounds = AaViewport(left, top, aaWidth, aaHeight)
