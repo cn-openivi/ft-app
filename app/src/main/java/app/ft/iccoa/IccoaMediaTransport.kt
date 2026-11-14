@@ -255,6 +255,28 @@ internal class IccoaMediaTransport(
                 val video = videoConfig ?: return@IccoaInputJson
                 val nativeTouch = IccoaInputEvent.touch(event, video) ?: return@IccoaInputJson
                 val plan = IccoaVideoPlan.from(video)
+                if (nativeTouch.action == CarTouch.DOWN &&
+                    app.ft.projection.IccoaTouchWelcome.state.value.phase ==
+                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
+                    // This UI is a deliberate CENTER-only test. Report source
+                    // coordinate units without recording arbitrary user taps,
+                    // keyboard input, touched app or absolute touch positions.
+                    // An input source with explicit width=2421 on a 2422 HU
+                    // must not be mistaken for an "omitted dimensions" packet.
+                    val eventW = event.optInt("width", 0).takeIf { it > 0 } ?: video.width
+                    val eventH = event.optInt("height", 0).takeIf { it > 0 } ?: video.height
+                    val rawX = event.optDouble("x0", Double.NaN)
+                    val rawY = event.optDouble("y0", Double.NaN)
+                    if (eventW > 0 && eventH > 0 && rawX.isFinite() && rawY.isFinite()) {
+                        val ux = (rawX * 1_000 / eventW).toInt()
+                        val uy = (rawY * 1_000 / eventH).toInt()
+                        DiagLog.i("ICCOA", "UIBC_CENTER_SOURCE_REPORT " +
+                            "units_per_mille=${ux},${uy} dimensions_explicit=" +
+                            "${event.optInt("width", 0) > 0 && event.optInt("height", 0) > 0} " +
+                            "source=${eventW}x${eventH} content=${plan.contentWidth}x${plan.contentHeight} " +
+                            "stream=${plan.streamWidth}x${plan.streamHeight}")
+                    }
+                }
                 // Coordinate packet units are ambiguous when UIBC omits source
                 // dimensions. Keep the chosen mode only for the current raster
                 // and socket; it must not leak to another receiver or WFD mode.
