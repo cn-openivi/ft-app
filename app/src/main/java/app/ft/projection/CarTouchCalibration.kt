@@ -182,6 +182,14 @@ internal object CarTouchCalibration {
         return true
     }
 
+    /** An inherited/global fallback is not evidence of this verified car's quad. */
+    fun hasVerifiedQuad(context: Context, width: Int, height: Int): Boolean {
+        val key = IccoaCalibrationScope.key("${width}x${height}") ?: return false
+        val text = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE)
+            .getString("${key}_quad4", null) ?: return false
+        return TouchQuad.deserialize(text, width, height) != null
+    }
+
     fun correct(context: Context, x: Int, y: Int, width: Int, height: Int): Pair<Int, Int> {
         val prefs = context.getSharedPreferences("ft-iccoa-touch", Context.MODE_PRIVATE)
         val baseKey = "${width}x${height}"
