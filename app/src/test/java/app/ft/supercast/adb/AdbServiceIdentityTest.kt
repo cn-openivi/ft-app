@@ -6,12 +6,12 @@ import org.junit.Test
 
 class AdbServiceIdentityTest {
     @Test fun onlyAuthenticatedDeviceGuidSelectsConnectService() {
-        val guid = "adb123456789abcd"
+        val guid = "adb-14141FDF600081-QXjCrW"
         assertTrue(AdbServiceIdentity.isValidGuid(guid))
-        assertTrue(AdbServiceIdentity.matchesConnect("adb-$guid", guid))
-        assertTrue(AdbServiceIdentity.matchesConnect("adb-$guid-rAnDoM", guid))
+        assertTrue(AdbServiceIdentity.matchesConnect("$guid", guid))
+        assertTrue(AdbServiceIdentity.matchesConnect("$guid-rAnDoM", guid))
         assertFalse(AdbServiceIdentity.matchesConnect("adb-other-rAnDoM", guid))
-        assertFalse(AdbServiceIdentity.matchesConnect("adb-${guid}evil-rAnDoM", guid))
+        assertFalse(AdbServiceIdentity.matchesConnect("${guid}evil-rAnDoM", guid))
         assertFalse(AdbServiceIdentity.matchesConnect("studio-$guid", guid))
         assertFalse(AdbServiceIdentity.matchesConnect("adb-$guid-rAnDoM", "bad guid"))
     }
