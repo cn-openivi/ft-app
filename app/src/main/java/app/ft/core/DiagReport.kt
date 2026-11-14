@@ -41,6 +41,10 @@ object DiagReport {
             put("report.txt", snapshot(c))
             // Portable field evidence contains only anonymous capability/packet counts.
             put("aa-car-gps-evidence.txt", app.ft.aa.AaGpsEvidence.summary() + "\n")
+            // One provenance-only report for OEM GNSS/IMU/gear -> EKF -> FT -> AA.
+            // No coordinates, guessed units, or extra per-frame verbose logs.
+            put("dr-path-evidence.txt", app.ft.dr.DrPathEvidence.snapshot()
+                .reportLine(System.currentTimeMillis()))
             put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
                 "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))

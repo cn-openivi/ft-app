@@ -9,6 +9,7 @@ import app.ft.core.CarProtocol
 import app.ft.core.VehicleTelemetry
 import app.ft.dr.DrNavigationTelemetry
 import app.ft.dr.FtPositionTelemetry
+import app.ft.dr.DrPathEvidence
 import app.ft.dr.FtNavigationPosition
 import app.ft.core.ProtoReader
 import kotlinx.coroutines.CoroutineScope
@@ -509,6 +510,7 @@ class AaSession(
         carGpsJob?.cancel()
         carGpsSubscribed = true
         val sessionCharacterization = locationCharacterizationAtDiscovery
+        val drEvidenceSession = DrPathEvidence.sessionId()
         carGpsJob = scope.launch(Dispatchers.IO) {
             val gate = AaLocationFeedPolicy(
                 sessionCharacterization, System.currentTimeMillis())
@@ -530,6 +532,9 @@ class AaSession(
                     sendEnc(AaProtocol.CH_SENSOR,
                         AaProtocol.SENSOR_EVENT_INDICATION, packet, afterWrite = {
                             gpsEvidence.socketWriteFlushed()
+                            DrPathEvidence.aaLocationWritten(
+                                position.source == FtNavigationPosition.Source.FUSED,
+                                drEvidenceSession)
                             val written = gpsEvidence.snapshot()?.eventsFlushed ?: 0L
                             if (written == 1L || written % 100L == 0L)
                                 DiagLog.i(tag, "AA LOCATION socket flushed count=$written; " +

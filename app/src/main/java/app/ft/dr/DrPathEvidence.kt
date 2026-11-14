@@ -94,6 +94,7 @@ internal object DrPathEvidence {
         aaFusedWritten = 0L
     }
     @Synchronized fun endSession() { active = false }
+    @Synchronized fun sessionId(): Long = session
     @Synchronized fun rawGps(atMs: Long) {
         rawGps++
         if (atMs > 0L) lastGpsMs = atMs
@@ -109,7 +110,9 @@ internal object DrPathEvidence {
     }
     @Synchronized fun ekfPublished() { ekfPublished++ }
     @Synchronized fun ftFusedPublished() { ftFusedPublished++ }
-    @Synchronized fun aaLocationWritten(fused: Boolean) {
+    @Synchronized fun aaLocationWritten(fused: Boolean, expectedSession: Long = session) {
+        // Network writes from a previous AA/car epoch must not taint a new car.
+        if (!active || expectedSession != session) return
         if (fused) aaFusedWritten++ else aaRawWritten++
     }
     @Synchronized fun snapshot() = DrPathSnapshot(

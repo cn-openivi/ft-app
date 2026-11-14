@@ -105,6 +105,7 @@ internal object DrNavigationTelemetry {
         )
         _current.value = next
         _updates.tryEmit(next)
+        DrPathEvidence.ekfPublished()
         return true
     }
 
