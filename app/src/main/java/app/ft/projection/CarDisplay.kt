@@ -148,16 +148,18 @@ class CarDisplay(private val context: Context) {
         encoder = enc
         if (gate != null) startThermalWatch()
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
-        // Honor the user's video UI density preference for both transports.
-        // CarLife and ICCOA have independent video plans, but the rendered FT
-        // virtual display is shared. Unset prefs default to 240 dpi in FT181.
-        val density = FTApp.instance.prefs.carDensity.coerceIn(120, 640)
+        // FT UI is normalized to its *actual* content viewport so a fixed
+        // icon size occupies the same fraction of a 720p, 1080p or 4K screen.
+        // carDensity is retained only as an opt-in relative UI zoom (160=100%).
+        // Do not change stream resolution, H.264, AA density or touch geometry.
+        val density = CarUiViewport.logicalDpi(width, height, FTApp.instance.prefs.carDensity)
         val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
         val vd = dm.createVirtualDisplay("FT", width, height, density, surface, flags)
         virtualDisplay = vd
         video = plan
         onVideoChanged?.invoke(video)
-        DiagLog.i(tag, "virtual display ${width}x${height} dpi=$density id=${vd.display.displayId}")
+        DiagLog.i(tag, "virtual display ${width}x${height} logicalDpi=$density " +
+            "uiZoomReference=${FTApp.instance.prefs.carDensity} id=${vd.display.displayId}")
         main.post {
             synchronized(this@CarDisplay) {
                 if (virtualDisplay !== vd) return@synchronized
