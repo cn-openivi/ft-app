@@ -9,18 +9,30 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 
-/** An existing FT install must NEVER silently enable the direct H264 test path. */
+/** Direct H264 is default unless the owner previously chose normal composition. */
 class PrefsIccoaVideoModeTest {
-    @Test fun freshAndLegacyInstallKeepsCompositedDefault() {
+    @Test fun directIsDefaultAndExplicitNormalModeIsRespected() {
         val context = mock(Context::class.java)
         val store = mock(SharedPreferences::class.java)
         `when`(context.getSharedPreferences("ft", Context.MODE_PRIVATE)).thenReturn(store)
-        `when`(store.getInt("iccoaVideoMode", 0)).thenReturn(0, 1, -1, 99)
+        `when`(store.getInt("iccoaVideoMode", 1)).thenReturn(1, 0, -1, 99)
         val prefs = Prefs(context)
-        assertEquals(0, prefs.iccoaVideoMode)
         assertEquals(1, prefs.iccoaVideoMode)
         assertEquals(0, prefs.iccoaVideoMode)
+        assertEquals(0, prefs.iccoaVideoMode)
         assertEquals(1, prefs.iccoaVideoMode)
+        verify(store, never()).edit()
+    }
+
+    @Test fun verifiedVehicleExplicitNormalOverridesGlobalDirectDefault() {
+        val context = mock(Context::class.java)
+        val store = mock(SharedPreferences::class.java)
+        `when`(context.getSharedPreferences("ft", Context.MODE_PRIVATE)).thenReturn(store)
+        `when`(store.getInt("iccoaVideoMode", 1)).thenReturn(1)
+        val receiverId = "a".repeat(64)
+        `when`(store.getInt("iccoaVideoMode.receiver.$receiverId", 1)).thenReturn(0)
+        val prefs = Prefs(context)
+        assertEquals(0, prefs.iccoaVideoModeFor(receiverId))
         verify(store, never()).edit()
     }
 

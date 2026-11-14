@@ -1,0 +1,112 @@
+name: FT185 combined video-direct GPS source compile and unsigned APK
+
+on:
+  push:
+    branches:
+      - openivi/ft185-video-default-gps-build-20261114
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ft185-video-default-gps-build
+  cancel-in-progress: true
+
+jobs:
+  compile-test-unsigned:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 70
+    steps:
+      - name: Checkout FT185 exact candidate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify branch and compiled scopes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft185-video-default-gps-build-20261114"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 185' app/build.gradle.kts
+          grep -Fq 'int("iccoaVideoMode", 1)' app/src/main/java/app/ft/core/Prefs.kt
+          test -f app/src/main/java/app/ft/iccoa/IccoaAaVideoProfile.kt
+          test -f app/src/main/java/app/ft/dr/DrPathEvidence.kt
+          test -f app/src/main/java/app/ft/iccoa/IccoaDrInputBridge.kt
+          test -f app/src/test/java/app/ft/iccoa/IccoaDrInputBridgeTest.kt
+          test -f app/src/test/java/app/ft/core/PrefsIccoaVideoModeTest.kt
+          echo "FT185_SOURCE_SHA=$GITHUB_SHA"
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Compile, test and assemble unsigned APK (never owner-sign)
+        shell: bash
+        env:
+          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 --console=plain \
+            -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            -Dkotlin.incremental=false \
+            :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest :app:assembleUnsignedTransit --stacktrace
+      - name: Verify tests and unsigned APK package/version
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=sorted(Path('app/build/test-results/testUnsignedTransitUnitTest').glob('TEST-*.xml'))
+          assert files, 'No JUnit results'
+          totals={k:0 for k in ['tests','failures','errors','skipped']}
+          for f in files:
+              root=ET.parse(f).getroot()
+              for k in totals: totals[k]+=int(root.get(k,0))
+          print('FT185_JUNIT_TOTALS',totals)
+          assert totals['tests'] >= 900 and totals['failures']==totals['errors']==0
+          PY
+          mapfile -t candidates < <(find app/build/outputs/apk/unsignedTransit -maxdepth 2 -name '*.apk' -type f)
+          test "${#candidates[@]}" -eq 1
+          apk="${candidates[0]}"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" >/dev/null
+          "${ANDROID_HOME}/build-tools/36.0.0/aapt" dump badging "$apk" > apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='185'" apk-badging.txt
+          # unsignedTransit has no release signingConfig by contract.
+          if "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify "$apk"; then
+            echo "Refuse accidentally signed unsignedTransit artifact" >&2
+            exit 1
+          fi
+          mkdir -p verified
+          cp "$apk" verified/FT185_XA60_UNSIGNED_TEST.apk
+          (cd verified && sha256sum FT185_XA60_UNSIGNED_TEST.apk > SHA256SUMS)
+          printf 'SOURCE_SHA=%s\nVERSION_CODE=185\nPACKAGE=app.ft.xa60\nSIGNED=NO\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" > verified/PROVENANCE.txt
+          echo "FT185_UNSIGNED_APK_SHA256=$(sha256sum "$apk" | awk '{print $1}')"
+          echo "FT185_UNSIGNED_BUILD_PASS=$GITHUB_SHA"
+      - name: Upload short-lived unsigned test candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ft185-unsigned-test-${{ github.sha }}
+          path: verified/
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Purge only workspace outputs
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done

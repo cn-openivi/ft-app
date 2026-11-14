@@ -20,7 +20,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 185
-        versionName = "3.9.71-xa60-ft185-candidate"
+        versionName = "3.9.71-xa60-ft185-video-direct-default-field"
     }
 
     signingConfigs {

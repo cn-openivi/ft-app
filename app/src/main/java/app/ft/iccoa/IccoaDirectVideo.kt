@@ -9,7 +9,8 @@ import app.ft.core.DiagLog
 import app.ft.projection.VideoPlan
 
 /**
- * Owner-selected SECOND ICCOA video path. Not a replacement for the FT compositor.
+ * Preferred ICCOA video path. Standard composited FT remains available
+ * during capability negotiation and is automatically restored on failure.
  * Source: AA compressed AVC. Target: existing ICCOA TS/RTP muxer.
  * All display/transport lifecycle actions run on the Android main Handler.
  */
@@ -89,6 +90,9 @@ internal class IccoaDirectVideo(
         if (active && (!supported || (previous != null && !previous.contentEquals(normalized))))
             main.post { fallback("AA video SPS changed or is unsupported") }
         if (!supported) {
+            // Fail closed for the entire current car session. A later SPS must
+            // not oscillate an already restored normal encoder back to Direct.
+            if (!active) { failed = true; pending = false }
             DiagLog.i("ICCOA", "DIRECT_VIDEO declined: ${rejection ?: "unknown incompatibility"}")
             onStatus("H.264 direct unavailable for this stream; normal FT video remains active")
             onModeChanged(false, rejection ?: "AA video does not match WFD")

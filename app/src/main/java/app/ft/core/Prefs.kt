@@ -191,8 +191,8 @@ class Prefs(context: Context) {
         set(v) = set("iccoaMicGain", Pcm16Gain.clamp(v))
     /** ICCOA HU compatibility: optional 15s reassert of active OEM GPS request; OFF by default. */
     var iccoaSensorRefresh: Boolean get() = bool("iccoaSensorRefresh", false); set(v) = set("iccoaSensorRefresh", v)
-    /** ICCOA only: 0 = normal FT composition, 1 = opt-in AA H.264 passthrough trial. */
-    var iccoaVideoMode: Int get() = int("iccoaVideoMode", 0).coerceIn(0, 1); set(v) = set("iccoaVideoMode", v.coerceIn(0, 1))
+    /** ICCOA: Direct H.264 by default; explicitly saved 0 keeps normal composition. */
+    var iccoaVideoMode: Int get() = int("iccoaVideoMode", 1).coerceIn(0, 1); set(v) = set("iccoaVideoMode", v.coerceIn(0, 1))
     /** Only a cryptographically verified OEM EC public-key fingerprint may scope a car setting. */
     fun iccoaVideoModeFor(receiverId: String?): Int {
         val id = receiverId?.takeIf { it.matches(Regex("[0-9a-f]{64}")) }

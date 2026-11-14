@@ -91,6 +91,7 @@ internal object FtPositionTelemetry {
             receivedAtMs = fix.producedAtMs, fused = fix)
         _current.value = next
         _updates.tryEmit(next)
+        DrPathEvidence.ftFusedPublished()
         return true
     }
 
