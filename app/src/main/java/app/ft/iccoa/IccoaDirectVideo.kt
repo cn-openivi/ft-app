@@ -33,6 +33,7 @@ internal class IccoaDirectVideo(
     @Volatile private var compatibleConfig: ByteArray? = null
     private val clock = IccoaDirectClock()
     private var firstKeyAtMs = 0L
+    private var keyWritesAtActivate = 0L
     private var frameAtMs = 0L
     private var activatedAtMs = 0L
     private var lastKeyRequestMs = 0L
@@ -40,11 +41,15 @@ internal class IccoaDirectVideo(
         override fun run() {
             if (closed || !active) return
             val now = SystemClock.elapsedRealtime()
+            if (firstKeyAtMs == 0L && output.writtenKeyFrames() > keyWritesAtActivate) {
+                firstKeyAtMs = now
+                DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
+            }
             when {
                 source?.let { !sourceValid(it) } == true ->
                     fallback("Android Auto video session ended")
                 firstKeyAtMs == 0L && now - activatedAtMs >= START_TIMEOUT_MS ->
-                    fallback("Initial AA H.264 IDR did not arrive")
+                    fallback("Initial AA H.264 IDR was not written to RTP")
                 else -> {
                     // A static AA screen may legally produce no new access units.
                     // Probe a fresh picture without declaring that silence is a crash.
@@ -114,21 +119,28 @@ internal class IccoaDirectVideo(
             val pts = synchronized(clock) { clock.next(timestamp) }
             output.frame(frame, key, pts)
             frameAtMs = SystemClock.elapsedRealtime()
-            if (key) firstKeyAtMs = frameAtMs
             return true
         }
         if (key && !pending) {
+            // Keep an owned, MAX 4 MiB, independent copy of the FIRST IDR.
+            // The AA callback buffer is NOT owned by the main Handler. Without
+            // this handoff FT185 stopped its encoder and discarded the only key.
+            val retained = IccoaFirstIdrHandoff.capture(frame, timestamp, csd)
+                ?: return false
             pending = true
-            main.post {
+            val posted = main.post {
                 if (!closed && !failed && pending && sourceValid(source) &&
-                    source === this.source && compatibleConfig === csd) activate(csd)
+                    source === this.source &&
+                    IccoaFirstIdrHandoff.configurationStillCurrent(retained, compatibleConfig))
+                    activate(retained)
                 else pending = false
             }
+            if (!posted) pending = false
         }
-        return false // keep ordinary decoder running until direct path is ready
+        return false // Decode normally while switching; no AA reader stalls
     }
 
-    private fun activate(csd: ByteArray) {
+    private fun activate(retained: IccoaFirstIdrHandoff.Frame) {
         pending = false
         if (!projection.beginDirectVideo(plan, aaWidth, aaHeight)) {
             failed = true
@@ -136,17 +148,23 @@ internal class IccoaDirectVideo(
             onModeChanged(false, "Android Auto is not full-screen")
             return
         }
-        output.pause() // discard earlier composited GOP and audio from same RTP muxer
-        output.configure(csd)
+        output.pause() // discard composited GOP and AAC from previous RTP epoch
+        output.configure(retained.config)
         synchronized(clock) { clock.reset() }
         firstKeyAtMs = 0L
+        keyWritesAtActivate = output.writtenKeyFrames()
         frameAtMs = 0L
         activatedAtMs = SystemClock.elapsedRealtime()
+        // Do not request a SECOND AA IDR before the retained first one is in
+        // the queue: otherwise the two keyframes could arrive out of order.
+        output.resume(requestNewKeyframe = false)
+        val pts = synchronized(clock) { clock.next(retained.timestamp) }
+        output.frame(retained.bytes, true, pts)
+        frameAtMs = SystemClock.elapsedRealtime()
         active = true
-        output.resume() // now request IDR from AA, not the stopped FT encoder
         onModeChanged(true, null)
-        onStatus("ICCOA H.264 passthrough active (trial)")
-        DiagLog.i("ICCOA", "DIRECT_VIDEO activated, FT SurfaceEncoder stopped")
+        onStatus("ICCOA H.264 direct: first IDR queued, RTP verification pending")
+        DiagLog.i("ICCOA", "DIRECT_VIDEO first IDR retained and queued; awaiting RTP key-write proof")
         main.removeCallbacks(watchdog)
         main.postDelayed(watchdog, WATCH_MS)
     }
@@ -193,14 +211,37 @@ internal class IccoaDirectVideo(
         pending = false
         active = false
         main.removeCallbacks(watchdog)
+        val beforeRecovery = output.writtenVideoFrames()
         if (projection.directVideoActive) {
             output.pause()
             projection.resumeCompositedVideo(plan, output::configure, output::frame)
             if (resumeTransport) output.resume()
         }
+        if (resumeTransport) watchCompositedRecovery(beforeRecovery)
         onModeChanged(false, reason)
         onStatus("ICCOA direct video: " + reason + "; normal FT video restored")
         DiagLog.w("ICCOA", "DIRECT_VIDEO fallback: " + reason)
+    }
+
+    /** Verify observable RTP video after fallback; retry only FT's own IDR request. */
+    private fun watchCompositedRecovery(baseline: Long) {
+        main.postDelayed({
+            if (!closed && failed && !projection.directVideoActive) {
+                if (output.writtenVideoFrames() > baseline) {
+                    DiagLog.i("ICCOA", "COMPOSITED_RECOVERY_RTP_VIDEO_WRITTEN")
+                } else {
+                    DiagLog.w("ICCOA", "COMPOSITED_RECOVERY_NO_RTP_VIDEO_3S; requesting FT IDR")
+                    projection.requestKeyFrame()
+                    main.postDelayed({
+                        if (!closed && failed && !projection.directVideoActive) {
+                            if (output.writtenVideoFrames() > baseline)
+                                DiagLog.i("ICCOA", "COMPOSITED_RECOVERY_RTP_VIDEO_WRITTEN_AFTER_IDR")
+                            else DiagLog.w("ICCOA", "COMPOSITED_RECOVERY_NO_RTP_VIDEO_6S")
+                        }
+                    }, 3_000L)
+                }
+            }
+        }, 3_000L)
     }
 
     fun close() {

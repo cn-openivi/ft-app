@@ -103,6 +103,22 @@ class IccoaStreamQueueTest {
         }
     }
 
+    @Test fun retainedFirstIdrHandoffSeedsTheNewEpochBeforePFrames() {
+        val queue = IccoaStreamQueue()
+        val idr = byteArrayOf(0, 0, 0, 1, 0x65)
+        queue.resume(100)
+        queue.video(bytes, true, 101)
+        queue.pause()
+        queue.resume(200)
+        // During the Direct cutover a P frame cannot open a new GOP.
+        assertFalse(queue.video(bytes, false, 200))
+        assertNull(queue.poll())
+        assertFalse(queue.video(idr, true, 201))
+        assertFalse(queue.video(bytes, false, 202))
+        assertTrue(queue.poll()!!.key)
+        assertFalse(queue.poll()!!.key)
+    }
+
     @Test fun duplicatePlayDoesNotDiscardQueuedMedia() {
         val queue = IccoaStreamQueue()
         queue.resume(100)

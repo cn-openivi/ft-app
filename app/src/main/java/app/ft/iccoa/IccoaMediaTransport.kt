@@ -134,11 +134,16 @@ internal class IccoaMediaTransport(
     }
 
     fun pause() { queue.pause() }
-    fun resume() {
+    fun resume(requestNewKeyframe: Boolean = true) {
         if (closed.get()) return
         queue.resume(System.nanoTime() / 1000)
-        onKeyframe()
+        // When Direct has a retained IDR, queue IT before requesting another.
+        // Normal composited recovery retains its original IDR request.
+        if (requestNewKeyframe) onKeyframe()
     }
+
+    fun writtenVideoFrames(): Long = rtpVideoFrames.get()
+    fun writtenKeyFrames(): Long = rtpKeyFrames.get()
 
     private fun output() {
         var sentFirstFrame = false
