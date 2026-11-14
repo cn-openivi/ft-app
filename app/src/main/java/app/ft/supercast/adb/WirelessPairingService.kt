@@ -54,6 +54,13 @@ class WirelessPairingService : Service() {
 
         fun currentPort(): Int? = activePairingPort
 
+        /** Clear only a completed pairing result, never interrupt an in-flight session. */
+        fun clearCompletedResult() {
+            if (_status.value.phase in listOf(Phase.FAILED, Phase.READY)) {
+                _status.value = State(Phase.IDLE)
+            }
+        }
+
         fun begin(context: Context, autoRead: Boolean): Boolean {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
                 _status.value = State(Phase.FAILED, "unsupported")
@@ -67,6 +74,7 @@ class WirelessPairingService : Service() {
                 _status.value = State(Phase.FAILED, "notifications_disabled")
                 return false
             }
+            clearCompletedResult()
             return try {
                 val intent = Intent(context, WirelessPairingService::class.java)
                     .setAction(ACTION_START).putExtra(EXTRA_AUTO, autoRead)
@@ -162,8 +170,16 @@ class WirelessPairingService : Service() {
                     manager.notify(NOTIFICATION_ID, statusNotification(null))
                     // SuperCast.start checks actual helper Binder+ping before reporting READY.
                     val ready = runCatching { SuperCast.start(applicationContext) }.getOrDefault(false)
-                    _status.value = State(if (ready) Phase.READY else Phase.FAILED,
-                        if (ready) null else "helper_failed")
+                    // A failed post-pair TLS/ADB connection is NOT a wrong
+                    // code. Keep its exact stage separate from helper/Binder.
+                    val reason = if (ready) null else when (SuperCast.startReason.value) {
+                        SuperCast.StartReason.TLS_REJECTED -> "tls_peer_changed"
+                        SuperCast.StartReason.DEBUGGING_OFF -> "connect_not_found"
+                        SuperCast.StartReason.CONNECT_FAILED -> "connect_failed"
+                        SuperCast.StartReason.HELPER_UNREACHABLE -> "helper_failed"
+                        else -> "connect_failed"
+                    }
+                    _status.value = State(if (ready) Phase.READY else Phase.FAILED, reason)
                     finishPairing()
                 }
             }
