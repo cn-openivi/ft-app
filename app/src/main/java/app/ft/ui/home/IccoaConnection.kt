@@ -87,6 +87,7 @@ internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnection
     val context = LocalContext.current
     var pin by remember { mutableStateOf("") }
     var forgetConfirmation by remember { mutableStateOf(false) }
+    var forgetError by remember { mutableStateOf(false) }
     LaunchedEffect(state.pinRequired) { pin = "" }
     val scan = state.discovery
     val scanning = state.running && scan.phase in listOf(IccoaPhase.SCANNING, IccoaPhase.INSPECTING)
@@ -142,16 +143,26 @@ internal fun IccoaConnectionControls(state: IccoaState, actions: IccoaConnection
                     "Для следующего подключения потребуется новый код с экрана автомобиля.")
                 Row {
                     TextButton(onClick = {
-                        val key = app.ft.iccoa.IccoaTrustedCarKey(context).clear()
-                        val car = app.ft.iccoa.IccoaRememberedCar(context).clear()
-                        app.ft.iccoa.IccoaTrustedPin(context).clear()
-                        val touchProfile = app.ft.projection.IccoaTouchWelcome.forget(context)
-                        app.ft.core.DiagLog.i("ICCOA", "Owner trust reset key=$key car=$car touchProfile=$touchProfile")
-                        forgetConfirmation = false
+                        val keys = app.ft.iccoa.IccoaTrustedCarKey(context).clearOwnerApprovedKeys()
+                        if (!keys.committed) {
+                            forgetError = true
+                            app.ft.core.DiagLog.w("ICCOA", "Owner forget: trusted key storage commit failed")
+                        } else {
+                            val car = app.ft.iccoa.IccoaRememberedCar(context).clear()
+                            val cachedPin = app.ft.iccoa.IccoaTrustedPin(context).clear()
+                            val touchProfile = app.ft.projection.IccoaTouchWelcome.forget(context)
+                            forgetError = !car || !cachedPin
+                            app.ft.core.DiagLog.i("ICCOA",
+                                "Owner forget aliases=${keys.aliasesFound} keyCommit=true " +
+                                    "rememberedCar=$car cachedPin=$cachedPin touchProfile=$touchProfile")
+                            if (!forgetError) forgetConfirmation = false
+                        }
                     }) { Text("Удалить сопряжение") }
                     TextButton(onClick = { forgetConfirmation = false }) { Text("Отмена") }
                 }
             } else {
+                if (forgetError) Text("Сброс сопряжения не завершён. Проверьте отчёт FT.",
+                    color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = { forgetConfirmation = true }) {
                     Text("Забыть доверенный автомобиль")
                 }

@@ -7,11 +7,14 @@ import kotlinx.coroutines.flow.StateFlow
 
 /** Target follows the real virtual-display content geometry. */
 internal object IccoaWelcomeTarget {
-    const val RADIUS_FRACTION = 0.13f
+    // A precise first-touch check, slightly larger than the four-point circles.
+    // One radius function owns both visible circle and incoming UIBC hit-test.
+    fun radiusPx(width: Int, height: Int): Float =
+        maxOf(30f, minOf(width, height) * 0.025f).coerceAtMost(38f)
 
     fun contains(x: Int, y: Int, width: Int, height: Int): Boolean {
         if (width < 200 || height < 150 || x !in 0 until width || y !in 0 until height) return false
-        val r = minOf(width, height) * RADIUS_FRACTION
+        val r = radiusPx(width, height)
         val dx = x - width / 2.0
         val dy = y - height / 2.0
         return dx * dx + dy * dy <= r * r

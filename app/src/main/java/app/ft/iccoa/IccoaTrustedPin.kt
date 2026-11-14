@@ -34,7 +34,7 @@ internal class IccoaTrustedPin(context: Context) {
         }.getOrDefault(false)
     }
 
-    fun clear() { storage.edit().remove("sealed").commit() }
+    fun clear(): Boolean = storage.edit().remove("sealed").commit()
 
     private fun binding(profileId: String, carName: String): ByteArray =
         ("FT_ICCOA_PIN_V1|" + profileId + "|" + carName.trim().lowercase(Locale.ROOT))

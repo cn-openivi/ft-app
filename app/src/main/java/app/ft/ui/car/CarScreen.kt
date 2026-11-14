@@ -386,7 +386,7 @@ private fun CarRoot(style: CarStyle) {
                     Canvas(Modifier.fillMaxSize()) {
                         drawCircle(
                             color = Color(0xFF53E5BB),
-                            radius = size.minDimension * IccoaWelcomeTarget.RADIUS_FRACTION,
+                            radius = IccoaWelcomeTarget.radiusPx(size.width.toInt(), size.height.toInt()),
                             center = Offset(size.width / 2f, size.height / 2f)
                         )
                     }

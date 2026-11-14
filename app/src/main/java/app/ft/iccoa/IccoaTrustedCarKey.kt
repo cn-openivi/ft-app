@@ -48,8 +48,22 @@ internal class IccoaTrustedCarKey(context: Context) {
         }.getOrDefault(false)
     }
 
-    /** Legacy explicit reset affects the original PRIMARY slot only. */
-    fun clear(): Boolean = prefs.edit().remove("car_auth_pk").commit()
+    /**
+     * Explicitly forget our SINGLE owner-approved car, including all token-based
+     * lookup aliases created for rotating BLE receiver addresses. Never touch
+     * the Android client identity, unrelated preferences or other keystore keys.
+     */
+    data class OwnerReset(val aliasesFound: Int, val committed: Boolean)
+
+    fun clearOwnerApprovedKeys(): OwnerReset {
+        val slots = ownerTrustSlots(prefs.all.keys)
+        if (slots.isEmpty()) return OwnerReset(0, true)
+        val editor = prefs.edit()
+        slots.forEach { editor.remove(it) }
+        return OwnerReset(slots.size, editor.commit())
+    }
+
+    fun clear(): Boolean = clearOwnerApprovedKeys().committed
 
     /** Explicit targeted reset; never erase keys for other verified cars. */
     fun clear(profileId: String, carName: String): Boolean =
@@ -80,5 +94,10 @@ internal class IccoaTrustedCarKey(context: Context) {
         return generator.generateKey()
     }
 
-    private companion object { const val ALIAS = "ft_iccoa_trusted_car_pubkey_v1" }
+    companion object {
+        private const val ALIAS = "ft_iccoa_trusted_car_pubkey_v1"
+        private val TOKEN_ALIAS = Regex("^car_auth_pk_[0-9a-f]{64}$")
+        internal fun ownerTrustSlots(keys: Set<String>): List<String> =
+            keys.filter { it == "car_auth_pk" || TOKEN_ALIAS.matches(it) }.sorted()
+    }
 }
