@@ -673,4 +673,12 @@
     <string name="ft186_bt_id_queued">تمت إضافة هوية Bluetooth Classic للهاتف إلى قائمة Toyota؛ لا يوجد تأكيد من وحدة السيارة.</string>
     <string name="ft186_bt_id_failed">تعذر إرسال هوية Bluetooth للهاتف إلى Toyota.</string>
     <string name="ft186_bt_id_unavailable">هوية Bluetooth Classic للهاتف غير متاحة أو ملحق وحدة السيارة غير مدعوم.</string>
+    <string name="aa_quality_tier">جودة فيديو Android Auto</string>
+    <string name="aa_quality_tier_info">يستخدم الوضع التلقائي الفيديو المتوافق مع جهاز الاستقبال. أوضاع SD وHD وFull HD مدعومة. وضعا QHD وUHD تجريبيان، والدقة الفعلية محدودة حاليًا بـ Full HD.</string>
+    <string name="aa_high_tier_pending">جودة QHD أو UHD تجريبية. يعرض Android Auto حاليًا حتى Full HD (1080p)، ويُحفظ اختيار الجودة الأعلى.</string>
+    <string name="aa_quality_sd">SD</string>
+    <string name="aa_quality_hd">HD</string>
+    <string name="aa_quality_full_hd">Full HD</string>
+    <string name="aa_quality_qhd">QHD</string>
+    <string name="aa_quality_uhd">UHD</string>
 </resources>
