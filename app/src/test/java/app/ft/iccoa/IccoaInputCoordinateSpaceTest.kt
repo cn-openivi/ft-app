@@ -24,8 +24,8 @@ class IccoaInputCoordinateSpaceTest {
         // This used to be ~338x214 and caused first OK to fail.
         val incorrect = UibcFrameMapping.toStream(
             640.0, 360.0, 2421, 1272, frame)!!
-        assertEquals(338, incorrect.first, 2)
-        assertEquals(214, incorrect.second, 2)
+        assertEquals(338, incorrect.first)
+        assertEquals(214, incorrect.second)
     }
 
     @Test fun unmodifiedSenderPixelCenterRemainsPanelSpace() {
