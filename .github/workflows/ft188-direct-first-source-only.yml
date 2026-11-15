@@ -41,6 +41,7 @@ jobs:
           test -f app/src/main/java/app/ft/iccoa/IccoaOemWheelKey.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaOemWheelKeyTest.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaDrSourceGapEvidenceTest.kt
+          test -f app/src/test/java/app/ft/iccoa/IccoaDrInputBridgeTest.kt
           grep -Fq 'dr-source-gaps.txt' app/src/main/java/app/ft/core/DiagReport.kt
           grep -Fq 'IccoaOemWheelKey.CONTROL_METHOD' app/src/main/java/app/ft/iccoa/IccoaService.kt
           echo "FT188_STAGE_SOURCE_SHA=$GITHUB_SHA"
@@ -53,7 +54,7 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - name: Compile Android Kotlin and verify direct and OEM wheel tests
+      - name: Compile Kotlin and verify Direct, OEM wheel, GPS-gap and kmh distance tests
         shell: bash
         env:
           GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
@@ -66,7 +67,7 @@ jobs:
             -Dkotlin.compiler.execution.strategy=in-process \
             -Dkotlin.incremental=false \
             :app:compileUnsignedTransitKotlin \
-            :app:testUnsignedTransitUnitTest --tests app.ft.iccoa.IccoaDirectRecoveryPolicyTest --tests app.ft.iccoa.IccoaOemWheelKeyTest --tests app.ft.iccoa.IccoaDrSourceGapEvidenceTest --stacktrace
+            :app:testUnsignedTransitUnitTest --tests app.ft.iccoa.IccoaDirectRecoveryPolicyTest --tests app.ft.iccoa.IccoaOemWheelKeyTest --tests app.ft.iccoa.IccoaDrSourceGapEvidenceTest --tests app.ft.iccoa.IccoaDrInputBridgeTest --stacktrace
       - name: Require direct and wheel test evidence without creating an APK
         shell: bash
         run: |
@@ -75,7 +76,7 @@ jobs:
           from pathlib import Path
           import xml.etree.ElementTree as ET
           folder=Path('app/build/test-results/testUnsignedTransitUnitTest')
-          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest')
+          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest','IccoaDrInputBridgeTest')
           paths=[]
           for name in names:
             matches=list(folder.glob('*'+name+'*.xml'))
@@ -84,7 +85,7 @@ jobs:
           suites=[ET.parse(p).getroot() for p in paths]
           totals={k:sum(int(s.get(k,0)) for s in suites) for k in ('tests','failures','errors','skipped')}
           print('FT188_DIRECT_POLICY_JUNIT='+str(totals))
-          assert totals['tests'] >= 12 and totals['failures'] == 0 and totals['errors'] == 0
+          assert totals['tests'] >= 22 and totals['failures'] == 0 and totals['errors'] == 0
           PY
           if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
             echo 'Source-only test MUST NOT produce an APK' >&2
