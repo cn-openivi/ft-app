@@ -1,5 +1,7 @@
 package app.ft.iccoa
 
+import android.content.Context
+import app.ft.projection.IccoaCalibrationScope
 import app.ft.projection.IccoaWelcomeTarget
 import app.ft.projection.TouchVideoGeometry
 import app.ft.projection.VideoPlan
@@ -15,6 +17,42 @@ import app.ft.projection.VideoPlan
  */
 internal object IccoaInputCoordinateSpace {
     enum class Mode { UNKNOWN, NATIVE_DISPLAY, VIDEO_STREAM }
+
+    // This is the meaning of UIBC coordinates for one VERIFIED receiver,
+    // not a vehicle/phone model profile or a calibration transform.
+    private const val PROFILE_PREF = "ft-iccoa-uibc-domain"
+    private const val PROFILE_KEY = "uibc-domain-v187"
+
+    fun parseSaved(value: String?): Mode = when (value) {
+        Mode.NATIVE_DISPLAY.name -> Mode.NATIVE_DISPLAY
+        Mode.VIDEO_STREAM.name -> Mode.VIDEO_STREAM
+        else -> Mode.UNKNOWN
+    }
+
+    fun requiresWelcome(previouslyVerified: Boolean, knownMode: Mode): Boolean =
+        !previouslyVerified || knownMode == Mode.UNKNOWN
+
+    /** Never use a model name, BLE MAC, or unverified identity as the key. */
+    fun remembered(context: Context): Mode {
+        val key = IccoaCalibrationScope.key(PROFILE_KEY) ?: return Mode.UNKNOWN
+        return parseSaved(context.getSharedPreferences(PROFILE_PREF, Context.MODE_PRIVATE)
+            .getString(key, null))
+    }
+
+    /** Save only a uniquely selected interpretation of the owner-pressed OK. */
+    fun rememberVerified(context: Context, mode: Mode): Boolean {
+        if (mode == Mode.UNKNOWN) return false
+        val key = IccoaCalibrationScope.key(PROFILE_KEY) ?: return false
+        return context.getSharedPreferences(PROFILE_PREF, Context.MODE_PRIVATE)
+            .edit().putString(key, mode.name).commit()
+    }
+
+    fun forgetReceiver(context: Context, verifiedWelcomeKey: String): Boolean {
+        if (!Regex("^verified_[0-9a-f]{64}:welcome$").matches(verifiedWelcomeKey)) return false
+        val key = verifiedWelcomeKey.removeSuffix("welcome") + PROFILE_KEY
+        return context.getSharedPreferences(PROFILE_PREF, Context.MODE_PRIVATE)
+            .edit().remove(key).commit()
+    }
 
     /**
      * OEM Carlink b3::sendTouchEvent sends JSON width/height from the local
