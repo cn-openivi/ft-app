@@ -30,11 +30,15 @@ internal object IccoaWfdAvc {
             .coerceIn(2_000_000L, 8_000_000L).toInt()
     }
 
-    fun choose(m3: String, requestedFps: Int): Choice? {
+    /**
+     * Return all *advertised* receiver H.264 candidates. A preferred AA raster
+     * never grants a capability to the car. Parsing stays independent of UI.
+     */
+    fun choices(m3: String, requestedFps: Int): List<Choice> {
         val payload = Regex("(?im)^\\s*wfd_video_formats:\\s*([^\\r\\n]+)")
-            .find(m3)?.groupValues?.get(1)?.trim() ?: return null
+            .find(m3)?.groupValues?.get(1)?.trim() ?: return emptyList()
         val header = payload.split(Regex("\\s+"), limit = 3)
-        if (header.size != 3 || !hex(header[0], 2) || !hex(header[1], 2)) return null
+        if (header.size != 3 || !hex(header[0], 2) || !hex(header[1], 2)) return emptyList()
         val choices = mutableListOf<Choice>()
         for (codec in header[2].split(Regex("\\s*,\\s*"))) {
             val parts = codec.trim().split(Regex("\\s+"))
@@ -62,7 +66,44 @@ internal object IccoaWfdAvc {
             addMode(5, 1280, 720, 0)  // Level 3.1, CEA 720p30
         }
         return choices.sortedWith(compareByDescending<Choice> { it.width * it.height }
-            .thenBy { it.level }).firstOrNull()
+            .thenBy { it.level }).distinctBy { it.width to it.height }
+    }
+
+    fun choose(m3: String, requestedFps: Int): Choice? =
+        choices(m3, requestedFps).firstOrNull()
+
+    internal data class Negotiation(
+        val selected: Choice?,
+        val advertised: List<Choice>,
+        val preferred: Pair<Int, Int>?,
+        val reason: String
+    )
+
+    /**
+     * Explicitly try the owner-selected AA raster at RTSP M3, *before* M4.
+     * Only offer an AVC mode after both the receiver's M3 and the local
+     * source encoder independently support it. If 1080p is rejected,
+     * select an actually supported 720p alternate, never fake 1080p.
+     */
+    fun negotiate(
+        m3: String,
+        requestedFps: Int,
+        preferred: Pair<Int, Int>?,
+        encoderSupports: (Choice) -> Boolean
+    ): Negotiation {
+        val offered = choices(m3, requestedFps)
+        val preferredChoice = offered.firstOrNull {
+            preferred != null && (it.width to it.height) == preferred
+        }
+        val preferredSupported = preferredChoice?.takeIf(encoderSupports)
+        val best = preferredSupported ?: offered.firstOrNull(encoderSupports)
+        val reason = when {
+            preferred == null -> if (best != null) "WFD_BEST_COMMON_CODEC" else "NO_VERIFIED_COMMON_CODEC"
+            preferredChoice == null -> "REQUESTED_RASTER_NOT_ADVERTISED_BY_SINK"
+            preferredSupported == null -> "REQUESTED_RASTER_NOT_SUPPORTED_BY_SOURCE_ENCODER"
+            else -> "REQUESTED_RASTER_COMMON_CODEC"
+        }
+        return Negotiation(best, offered, preferred, reason)
     }
 
     fun m4(choice: Choice): String = String.format(Locale.ROOT,
