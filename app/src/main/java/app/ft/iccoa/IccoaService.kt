@@ -529,7 +529,15 @@ class IccoaService : Service() {
                         onKey = { code -> current { projection?.key(code) } },
                         onClosed = { reason -> current {
                             connectionFailed(reason, retryableTransportFailure = true)
-                        } })
+                        } },
+                        preferredDirectAaRaster = {
+                            // Manual AA choice is a pre-M4 negotiation preference,
+                            // not proof of an HU decoder capability.
+                            val p = FTApp.instance.prefs
+                            if (connectionVideoMode == 1 && !p.aaMatchCar)
+                                p.aaWidth to p.aaHeight
+                            else null
+                        })
                     transport.start()
                     connectionVideoMode = FTApp.instance.prefs.iccoaVideoMode
                     media = transport
@@ -652,9 +660,17 @@ class IccoaService : Service() {
             }
         }
         if (connectionVideoMode == 1 && !aaProfile.directStandard) {
-            // Never invent a nonstandard H.264 decoder capability or change WFD mid-PLAY.
+            val requested = "${aaProfile.width}×${aaProfile.height}"
+            val negotiated = "${plan.streamWidth}×${plan.streamHeight}"
+            // User's Full HD AA selection remains untouched; no guessed
+            // RTP transcoding or mid-PLAY WFD renegotiation.
+            val reason = "Direct ${requested} недоступен: ICCOA согласовал WFD ${negotiated} " +
+                "(${config.wfdNegotiationReason}). Разрешение AA сохранено; " +
+                "используется обычная передача видео."
+            DiagLog.i("ICCOA", "DIRECT_WFD_MANUAL_FALLBACK owner=$requested " +
+                "wfd=$negotiated reason=${config.wfdNegotiationReason}")
             _state.update { it.copy(effectiveVideoMode = 0,
-                videoFallbackReason = "Direct requires matching standard AA/WFD raster; normal video active") }
+                videoFallbackReason = reason) }
         }
         DiagLog.i("ICCOA", "video profile ${plan.streamWidth}x${plan.streamHeight}@${plan.fps} CBR ${plan.bitrate / 1000} kbps; receiver asked ${config.fps} fps")
         if (directVideo?.active != true) projection?.start(plan, output::configure, output::frame)
