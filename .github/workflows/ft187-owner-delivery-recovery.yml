@@ -1,0 +1,135 @@
+name: FT187 verified owner-signed APK delivery recovery
+
+on:
+  push:
+    branches: [openivi/ft187-signed-field-20261115]
+    paths: ['.github/workflows/ft187-owner-delivery-recovery.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ft187-owner-delivery-recovery
+  cancel-in-progress: false
+
+jobs:
+  deliver:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 26
+    env:
+      SOURCE_PIN: a1aaa636cb8d17288866fbd0992fe3dbfca332da
+      CERT_PIN: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+      APK_SHA: f30be3a47aa3b9e3b92ba1efd9e1247125ecf9968103a1980bd798356b072ff1
+      APK_NAME: FT187_XA60_OWNER_SIGNED_a1aaa636.apk
+      TAG_NAME: xa60-ft187-a1aaa636
+    steps:
+      - name: Preserve verified original FT187 APK from failed upload run
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          clean: false
+      - name: Validate source, delivery-only change, binary and owner certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = cn-openivi/ft-app
+          test "$GITHUB_REF_NAME" = openivi/ft187-signed-field-20261115
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor "$SOURCE_PIN" "$GITHUB_SHA"
+          diff -u <(printf '%s\n' '.github/workflows/ft187-owner-signed-field.yml' '.github/workflows/ft187-owner-delivery-recovery.yml' 'docs/releases/FT187.ru.md' | sort) <(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA" | sort)
+          grep -Fq 'versionCode = 187' app/build.gradle.kts
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          apk="verified/$APK_NAME"
+          test -f "$apk" && test ! -L "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          test "$(sha256sum "$apk" | cut -d' ' -f1)" = "$APK_SHA"
+          unzip -t "$apk" >/dev/null
+          bt="$ANDROID_HOME/build-tools/36.0.0"
+          test -x "$bt/aapt" && test -x "$bt/apksigner"
+          "$bt/aapt" dump badging "$apk" | grep -Fq "package: name='app.ft.xa60' versionCode='187'"
+          "$bt/apksigner" verify --verbose --print-certs "$apk" | grep -iq "$CERT_PIN"
+          echo "FT187_EXISTING_OWNER_SIGNED_APK_READBACK=PASS sha256=$APK_SHA"
+      - name: Publish original signed APK with bounded retry and independent readback
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib,subprocess,time,urllib.request
+          repo=os.environ["GITHUB_REPOSITORY"]
+          tag=os.environ["TAG_NAME"]
+          name=os.environ["APK_NAME"]
+          apk=pathlib.Path("verified")/name
+          sha=os.environ["APK_SHA"]
+          assert apk.is_file() and hashlib.sha256(apk.read_bytes()).hexdigest()==sha
+          base="https://api.github.com/repos/"+repo
+          headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                   "Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"}
+          def get_release():
+              req=urllib.request.Request(base+"/releases/tags/"+tag,headers=headers)
+              with urllib.request.urlopen(req,timeout=40) as response:
+                  return json.load(response)
+          def verify():
+              release=get_release()
+              assert release["tag_name"]==tag and not release["draft"]
+              assert release["target_commitish"]==os.environ["SOURCE_PIN"]
+              matching=[a for a in release.get("assets",[]) if a["name"]==name]
+              if len(matching)>1:
+                  raise RuntimeError("Duplicate release assets; fail closed")
+              if not matching:
+                  return None
+              a=matching[0]
+              assert a["state"]=="uploaded", "Asset incomplete"
+              assert a["size"]==apk.stat().st_size, "Asset length differs"
+              if a.get("digest"):
+                  assert a["digest"]=="sha256:"+sha, "Asset SHA256 mismatch"
+              print("FT187_GITHUB_APK="+a["browser_download_url"],flush=True)
+              print("FT187_GITHUB_APK_SHA256="+sha,flush=True)
+              print("FT187_GITHUB_RELEASE_READBACK=PASS",flush=True)
+              return a
+          if verify() is None:
+              release=get_release()
+              target=("https://uploads.github.com/repos/"+repo+"/releases/"+
+                      str(release["id"])+"/assets?name="+name)
+              for attempt in (1,2):
+                  if verify() is not None:
+                      break
+                  print("FT187_SIGNED_APK_UPLOAD_ATTEMPT="+str(attempt),flush=True)
+                  cmd=["curl","--http1.1","--fail-with-body","--silent","--show-error",
+                       "--connect-timeout","30","--max-time","490",
+                       "--speed-limit","2048","--speed-time","100",
+                       "--header","Authorization: Bearer "+os.environ["GH_TOKEN"],
+                       "--header","Accept: application/vnd.github+json",
+                       "--header","Content-Type: application/vnd.android.package-archive",
+                       "--header","Expect:",
+                       "--data-binary","@"+str(apk),
+                       "-o","/tmp/ft187-upload-receipt.json",target]
+                  try:
+                      r=subprocess.run(cmd,check=False,timeout=500)
+                      print("UPLOAD_PROCESS_RETURN="+str(r.returncode),flush=True)
+                  except subprocess.TimeoutExpired:
+                      print("UPLOAD_PROCESS_TIMEOUT",flush=True)
+                  if verify() is not None:
+                      break
+                  if attempt==2:
+                      raise SystemExit("FT187_GITHUB_UPLOAD_PENDING after bounded attempts")
+                  time.sleep(5)
+          assert verify() is not None
+          PY
+      - name: Deliver signed FT187 APK to Drive with separate bounded status
+        continue-on-error: true
+        timeout-minutes: 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          src="verified/$APK_NAME"
+          dst="openivi-drive:$APK_NAME"
+          timeout -k 10s 160s rclone copyto "$src" "$dst" --tpslimit 0.5 --tpslimit-burst 1 --drive-pacer-min-sleep 2s --drive-pacer-burst 1 --retries 1 --low-level-retries 1 --timeout 40s --contimeout 15s
+          received="$(timeout -k 10s 160s rclone cat "$dst" --tpslimit 0.5 --tpslimit-burst 1 --drive-pacer-min-sleep 2s --drive-pacer-burst 1 --retries 1 --low-level-retries 1 --timeout 40s --contimeout 15s | sha256sum | cut -d' ' -f1)"
+          test "$received" = "$APK_SHA"
+          echo "FT187_DRIVE_BYTE_READBACK=PASS SHA256=$received"
