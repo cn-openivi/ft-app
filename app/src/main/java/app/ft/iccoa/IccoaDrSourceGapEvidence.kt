@@ -23,7 +23,10 @@ internal object IccoaDrSourceGapEvidence {
         val movingGearFramesBeforeFirstGps: Long,
         val movingGearFramesDuringGap: Long,
         val gpsFrames: Long,
-        val gearFrames: Long
+        val gearFrames: Long,
+        val postFixGpsSilenceWithMovingGearMs: Long?,
+        val initialGpsWaitWithMovingGearMs: Long?,
+        val snapshotEndedSession: Boolean
     ) {
         fun reportLine(): String = listOf(
             "format=ICCOA_DR_SOURCE_GAPS_V1",
@@ -33,6 +36,10 @@ internal object IccoaDrSourceGapEvidence {
             "movingGearFramesBeforeFirstGps=$movingGearFramesBeforeFirstGps",
             "movingGearFramesDuringInterGpsGaps=$movingGearFramesDuringGap",
             "gpsFrames=$gpsFrames gearFrames=$gearFrames",
+            "postFixGpsSilenceWithMovingGearMs=${postFixGpsSilenceWithMovingGearMs ?: "UNKNOWN"}",
+            "initialGpsWaitWithMovingGearMs=${initialGpsWaitWithMovingGearMs ?: "UNKNOWN"}",
+            "gapWindow=${if (snapshotEndedSession) "FROZEN_AT_DISCONNECT" else "ACTIVE_SNAPSHOT"}",
+            "postFixSilenceIsGpsReceiptLossNotSatelliteProof=true",
             "oemGpsReceivedClock=PHONE_MONOTONIC_RECEIPT_NOT_FIX_CLOCK",
             "oemGearSpeedUnit=UNVERIFIED",
             "gnssActuallyLost=UNKNOWN",
@@ -51,6 +58,8 @@ internal object IccoaDrSourceGapEvidence {
     private var movingGearInGap = 0L
     private var gpsCount = 0L
     private var gearCount = 0L
+    private var activeSession = false
+    private var endedAtMonoMs = 0L
 
     @Synchronized fun beginSession() {
         firstGearAt = 0L; firstMovingGearAt = 0L
@@ -58,6 +67,19 @@ internal object IccoaDrSourceGapEvidence {
         previousGpsAt = 0L; maxInterGpsMs = 0L
         movingGearBeforeGps = 0L; movingGearInGap = 0L
         gpsCount = 0L; gearCount = 0L
+        activeSession = true
+        endedAtMonoMs = 0L
+    }
+
+    /**
+     * Freeze a still-open GPS gap at car disconnect. Exporting a ZIP 40 minutes
+     * later must not inflate a real one-minute parking loss into 41 minutes.
+     */
+    @Synchronized fun endSession(receiptMonoMs: Long) {
+        if (activeSession) {
+            endedAtMonoMs = receiptMonoMs.takeIf { it > 0L } ?: 0L
+            activeSession = false
+        }
     }
 
     @Synchronized fun onGear(speedRaw: Long?, receiptMonoMs: Long) {
@@ -97,7 +119,20 @@ internal object IccoaDrSourceGapEvidence {
         return observation
     }
 
-    @Synchronized fun snapshot() = Snapshot(
-        firstGapMs, firstMovingGapMs, maxInterGpsMs,
-        movingGearBeforeGps, movingGearInGap, gpsCount, gearCount)
+    /**
+     * Return *both* completed GPS intervals and an ongoing unclosed gap.
+     * This is receive-time only, not a GNSS fix-age or DR eligibility signal.
+     */
+    @Synchronized fun snapshot(nowMonoMs: Long = 0L): Snapshot {
+        val measuredAt = if (activeSession) nowMonoMs else endedAtMonoMs
+        val postFixMs = if (previousGpsAt > 0L && movingGearInGap > 0L &&
+            measuredAt >= previousGpsAt)
+            (measuredAt - previousGpsAt).takeIf { it >= 10_000L } else null
+        val preFixMs = if (previousGpsAt == 0L && movingGearBeforeGps > 0L &&
+            firstMovingGearAt > 0L && measuredAt >= firstMovingGearAt)
+            (measuredAt - firstMovingGearAt).takeIf { it >= 10_000L } else null
+        return Snapshot(firstGapMs, firstMovingGapMs, maxInterGpsMs,
+            movingGearBeforeGps, movingGearInGap, gpsCount, gearCount,
+            postFixMs, preFixMs, !activeSession)
+    }
 }
