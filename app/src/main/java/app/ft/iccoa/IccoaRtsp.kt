@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 internal data class IccoaVideoConfig(
     val host: String, val width: Int = 2764, val height: Int = 1426,
     val fps: Int = 30, val rtpPort: Int = 19000,
-    val wfdAvc: IccoaWfdAvc.Choice? = null
+    val wfdAvc: IccoaWfdAvc.Choice? = null,
+    val wfdNegotiationReason: String = "NO_WFD_M3_EVIDENCE"
 )
 
 /** Phone is the WFD source; HU opens RTSP to :7236 and later listens for RTP/TCP. */
@@ -21,7 +22,8 @@ internal class IccoaRtsp(
     private val onPlay: (IccoaVideoConfig) -> Unit,
     private val onPause: () -> Unit,
     private val onKeyframe: () -> Unit,
-    private val onClosed: (String) -> Unit
+    private val onClosed: (String) -> Unit,
+    private val directPreferredAaRaster: () -> Pair<Int, Int>? = { null }
 ) : AutoCloseable {
     private val pending = ConcurrentHashMap<Int, String>()
     private var sequence = 1
@@ -63,12 +65,23 @@ internal class IccoaRtsp(
                     when (kind) {
                         "M3" -> {
                             config = capabilities(config, message.body)
-                            config.wfdAvc?.let { selected ->
-                                if (!IccoaWfdSourceEncoder.supports(selected)) {
-                                    app.ft.core.DiagLog.w("ICCOA",
-                                        "WFD sink AVC mode unsupported by phone encoder; conservative baseline remains")
-                                    config = config.copy(wfdAvc = null)
-                                } else app.ft.core.DiagLog.i("ICCOA",
+                            val wanted = directPreferredAaRaster()
+                            val common = IccoaWfdAvc.negotiate(
+                                message.body, config.fps, wanted, IccoaWfdSourceEncoder::supports)
+                            config = config.copy(wfdAvc = common.selected,
+                                wfdNegotiationReason = common.reason)
+                            // No model-specific decoder assumptions: only modes in the M3
+                            // receiver advertisement and the local AVC encoder admission.
+                            val advertised = common.advertised.joinToString(";") {
+                                "${it.width}x${it.height}@${it.fps}"
+                            }.ifEmpty { "NONE" }
+                            app.ft.core.DiagLog.i("ICCOA", "WFD_AVC_NEGOTIATION " +
+                                "ownerAa=${wanted?.let { "${it.first}x${it.second}" } ?: "AUTO"} " +
+                                "offered=$advertised " +
+                                "selected=${common.selected?.let { "${it.width}x${it.height}@${it.fps}" } ?: "BASELINE"} " +
+                                "reason=${common.reason}")
+                            common.selected?.let { selected ->
+                                app.ft.core.DiagLog.i("ICCOA",
                                     "WFD AVC selected ${selected.width}x${selected.height}@${selected.fps}")
                             }
                             request("SET_PARAMETER rtsp://localhost/wfd1.0 RTSP/1.0", "M4", parameters())
