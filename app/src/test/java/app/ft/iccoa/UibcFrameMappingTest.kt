@@ -41,6 +41,32 @@ class UibcFrameMappingTest {
         }
     }
 
+    @Test fun directAaUsesFullWfdFrameNeverCompositedFtLetterbox() {
+        val fit = VideoContentTransform(2422, 1272, 1280, 720, true)
+        val direct = VideoContentTransform(2422, 1272, 1280, 720, false)
+        // The actual AA coded raster covers 0..720, whereas the old FT
+        // viewport has 24px top/bottom bars in an intermediate 1280x720.
+        val fitNearTop = UibcFrameMapping.toStream(
+            1210.5, 0.0, 2421, 1272, fit)!!
+        val directNearTop = UibcFrameMapping.toStream(
+            1210.5, 0.0, 2421, 1272, direct)!!
+        assertTrue(fitNearTop.second in 23..25)
+        assertEquals(0, directNearTop.second)
+
+        // The central OK alone cannot distinguish these two modes!
+        assertEquals(640 to 360, UibcFrameMapping.toStream(
+            1210.5, 636.0, 2421, 1272, fit))
+        assertEquals(640 to 360, UibcFrameMapping.toStream(
+            1210.5, 636.0, 2421, 1272, direct))
+
+        val nearBottomFit = UibcFrameMapping.toStream(
+            1210.5, 1272.0, 2421, 1272, fit)!!
+        val nearBottomDirect = UibcFrameMapping.toStream(
+            1210.5, 1272.0, 2421, 1272, direct)!!
+        assertTrue(nearBottomFit.second in 695..697)
+        assertEquals(719, nearBottomDirect.second)
+    }
+
     @Test fun inputOutsideDeclaredWindowCannotBecomeAClickOnEdge() {
         assertNull(UibcFrameMapping.toStream(-1.0, 636.0, 2421, 1272, frame))
         assertNull(UibcFrameMapping.toStream(5000.0, 636.0, 2421, 1272, frame))
