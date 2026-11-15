@@ -49,5 +49,17 @@ class UibcFrameMappingTest {
         assertNull(UibcFrameMapping.fromStream(-1.0, 360.0, 1280, 720))
         assertEquals(640 to 360,
             UibcFrameMapping.fromStream(640.0, 360.0, 1280, 720))
+
+        // A valid gesture can leave the image before ACTION_UP; do not drop
+        // that release and accidentally hold a button or a drag forever.
+        val released = UibcFrameMapping.toStream(
+            2600.0, 1300.0, 2421, 1272, frame,
+            allowOutsideAfterDown = true
+        )
+        assertNotNull(released)
+        assertNull(UibcFrameMapping.toStream(
+            2600.0, 1300.0, 2421, 1272, frame))
+        assertEquals(1279 to 360, UibcFrameMapping.fromStream(
+            1400.0, 360.0, 1280, 720, allowOutsideAfterDown = true))
     }
 }
