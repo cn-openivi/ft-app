@@ -379,26 +379,38 @@ private fun CarRoot(style: CarStyle) {
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(stringResource(R.string.iccoa_touch_welcome_title),
                                 style = MaterialTheme.typography.headlineSmall)
-                            Text(stringResource(R.string.iccoa_touch_welcome_body),
+                            Text(stringResource(
+                                if (welcome.centerChecked) R.string.iccoa_touch_edge_verify
+                                else R.string.iccoa_touch_welcome_body),
                                 style = MaterialTheme.typography.bodyMedium)
                             if (welcome.centerMismatch) {
-                                Text(stringResource(R.string.iccoa_touch_center_failed),
+                                Text(stringResource(
+                                    if (welcome.centerChecked) R.string.iccoa_touch_edge_failed
+                                    else R.string.iccoa_touch_center_failed),
                                     color = Color(0xFFFF8888),
                                     style = MaterialTheme.typography.bodyLarge)
                             }
                         }
                     }
                     Canvas(Modifier.fillMaxSize()) {
+                        val marker = if (welcome.centerChecked)
+                            Offset(IccoaWelcomeTarget.rightX(size.width.toInt()).toFloat(),
+                                IccoaWelcomeTarget.rightY(size.height.toInt()).toFloat())
+                        else Offset(size.width / 2f, size.height / 2f)
                         drawCircle(
                             color = Color(0xFF53E5BB),
                             radius = IccoaWelcomeTarget.radiusPx(size.width.toInt(), size.height.toInt()),
-                            center = Offset(size.width / 2f, size.height / 2f)
+                            center = marker
                         )
+                        if (welcome.centerChecked)
+                            drawCircle(Color(0xFF07190F), radius = 10f, center = marker)
                     }
-                    Text(stringResource(R.string.iccoa_touch_welcome_button),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color(0xFF07190F),
-                        modifier = Modifier.align(Alignment.Center))
+                    if (!welcome.centerChecked) {
+                        Text(stringResource(R.string.iccoa_touch_welcome_button),
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = Color(0xFF07190F),
+                            modifier = Modifier.align(Alignment.Center))
+                    }
                 }
             }
             if (!state.aaOverlay && !state.mirroring && touchCal.step in 1..4) {
