@@ -303,7 +303,18 @@ class IccoaProjection(
         if (!active) return@onMain
         display.noteTouch(raw.action)
         if (directVideoActive) {
+            ignoreLetterboxGesture = false
             directTouch(raw)
+            return@onMain
+        }
+        if (raw.action == CarTouch.DOWN) {
+            ignoreLetterboxGesture = !display.containsEncodedContent(raw.x, raw.y)
+        }
+        if (ignoreLetterboxGesture) {
+            // Never coerce a tap on a black bar into a button at the content
+            // edge; swallow its entire gesture until release/cancel.
+            if (raw.action == CarTouch.UP || raw.action == CarTouch.CANCEL)
+                ignoreLetterboxGesture = false
             return@onMain
         }
         val (initialX, y) = display.toContent(raw.x, raw.y)
