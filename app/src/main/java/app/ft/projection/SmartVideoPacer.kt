@@ -36,8 +36,13 @@ internal class SmartVideoPacer(
         val now = clockMs()
         val baseMode = when {
             !enabled -> Mode.OFF
-            now - lastInputMs < CRUISE_AFTER_MS -> Mode.ACTIVE
+            // A moving navigation map must retain its negotiated frame rate,
+            // even during a long drive with no screen touches. Fresh buffer
+            // arrivals are evidence of activity; only an actual gap permits
+            // static power saving.
             hasFresh && now - lastFreshMs >= STATIC_AFTER_MS -> Mode.STATIC
+            now - lastInputMs < CRUISE_AFTER_MS ||
+                (hasFresh && now - lastFreshMs < STATIC_AFTER_MS) -> Mode.ACTIVE
             else -> Mode.CRUISE
         }
         val target = when (baseMode) {
