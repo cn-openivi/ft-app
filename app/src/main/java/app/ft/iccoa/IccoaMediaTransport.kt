@@ -277,49 +277,46 @@ internal class IccoaMediaTransport(
                             "stream=${plan.streamWidth}x${plan.streamHeight}")
                     }
                 }
-                // Coordinate packet units are ambiguous when UIBC omits source
-                // dimensions. Keep the chosen mode only for the current raster
-                // and socket; it must not leak to another receiver or WFD mode.
+                // Carlink.apk b3.a/b confirms x0/y0 may ALREADY be remapped
+                // to the source video raster, even while width/height still
+                // describe the HU's local touch SurfaceView. Do not normalize
+                // those x0/y0 values by width/height a second time.
+                val dimensionsMissing = event.optInt("width", 0) <= 0 &&
+                    event.optInt("height", 0) <= 0
+                val sourceW = event.optInt("width", 0).takeIf { it > 0 } ?: video.width
+                val sourceH = event.optInt("height", 0).takeIf { it > 0 } ?: video.height
                 val geometryKey = "${video.width}x${video.height}:" +
                     "${plan.streamWidth}x${plan.streamHeight}:${plan.preserveAspect}:" +
-                    "direct=${directFramesEnabled}"
+                    "direct=${directFramesEnabled}:uibc=${sourceW}x${sourceH}"
                 if (geometryKey != lastVideoGeometry) {
                     lastVideoGeometry = geometryKey
                     undimensionedSpace = IccoaInputCoordinateSpace.Mode.UNKNOWN
                 }
-                val dimensionsMissing = event.optInt("width", 0) <= 0 &&
-                    event.optInt("height", 0) <= 0
-                if (dimensionsMissing &&
-                    undimensionedSpace == IccoaInputCoordinateSpace.Mode.UNKNOWN &&
-                    nativeTouch.action == CarTouch.DOWN &&
-                    app.ft.projection.IccoaTouchWelcome.state.value.phase ==
-                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
-                    undimensionedSpace = IccoaInputCoordinateSpace.inferFromWelcome(
-                        nativeTouch.x, nativeTouch.y, plan)
-                    DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
-                        "${undimensionedSpace.name}; dimensions_missing=true")
-                }
-                // Use the EXACT affine viewport that FrameGate draws.
-                // Preserve UIBC floating-point x0/y0 until the final video
-                // pixel. The previous path truncated at source->native, then
-                // again native->stream, losing precision at every stage.
-                // Direct AA owns the ENTIRE WFD raster, not the former FT
-                // composited letterbox. Using FT's FIT viewport on direct
-                // touch adds phantom bars and corrupts edge hit-testing.
-                // No device/receiver brand is consulted: only the actual
-                // active producer determines the transform.
+                // EXACT same affine viewport as FrameGate. In Direct AA the
+                // whole WFD raster is used; the FT compositor's bars do not
+                // exist, so no phantom letterbox transform is applied.
                 val frame = app.ft.projection.VideoContentTransform(
                     plan.contentWidth, plan.contentHeight,
                     plan.streamWidth, plan.streamHeight,
                     preserveAspect = plan.preserveAspect && !directFramesEnabled
                 )
-                val sourceW = event.optInt("width", 0).takeIf { it > 0 } ?: video.width
-                val sourceH = event.optInt("height", 0).takeIf { it > 0 } ?: video.height
+                if (undimensionedSpace == IccoaInputCoordinateSpace.Mode.UNKNOWN &&
+                    nativeTouch.action == CarTouch.DOWN &&
+                    app.ft.projection.IccoaTouchWelcome.state.value.phase ==
+                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
+                    undimensionedSpace = IccoaInputCoordinateSpace.inferRawCenter(
+                        event.optDouble("x0", Double.NaN),
+                        event.optDouble("y0", Double.NaN),
+                        sourceW, sourceH, frame
+                    )
+                    DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
+                        "${undimensionedSpace.name} dimensions_explicit=${!dimensionsMissing}" +
+                        " oem_premapped_wfd_candidate=true")
+                }
                 fun toStream(index: Int): Pair<Int, Int>? {
                     val rawX = event.optDouble("x$index", Double.NaN)
                     val rawY = event.optDouble("y$index", Double.NaN)
-                    if (dimensionsMissing &&
-                        undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM) {
+                    if (undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM) {
                         return UibcFrameMapping.fromStream(
                             rawX, rawY, plan.streamWidth, plan.streamHeight,
                             allowOutsideAfterDown = nativeTouch.action != CarTouch.DOWN)
