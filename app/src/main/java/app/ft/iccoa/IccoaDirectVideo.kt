@@ -42,6 +42,7 @@ internal class IccoaDirectVideo(
     private var resumeIdrReceived = false
     private var directNoIdrWarned = false
     private var gopStallWarned = false
+    @Volatile private var rearmPending = false
     @Volatile private var receiverPaused = false
     private var observedGopDrops = 0L
     private var gopLostAtMs = 0L
@@ -144,7 +145,44 @@ internal class IccoaDirectVideo(
         if (this.source !== source) compatibleConfig = null
         this.source = source
         pending = false
-        if (active) main.post { fallback("Android Auto started a new video session") }
+        if (active) {
+            rearmPending = true
+            main.post {
+                if (!closed && active && this.source === source)
+                    rearmDirectGop("AA_VIDEO_SESSION_RESTART")
+            }
+        }
+    }
+
+    /**
+     * New AA START / compatible SPS is a new *compressed* GOP, not a reason to
+     * decode and re-encode AA pixels. Keep the same RTP sender and request a
+     * new original IDR. This is a real RTP epoch boundary, never a P-frame
+     * resumption from a previous encoder session.
+     */
+    private fun rearmDirectGop(reason: String) {
+        if (closed || !active) return
+        rearmPending = true
+        output.pause()
+        output.selectDirectFrames(true)
+        compatibleConfig?.let(output::configure)
+        synchronized(clock) { clock.reset() }
+        observedGopDrops = output.directGopDropCount()
+        gopLostAtMs = 0L
+        firstKeyAtMs = 0L
+        frameAtMs = 0L
+        keyWritesAtActivate = output.writtenDirectKeyFrames()
+        activatedAtMs = SystemClock.elapsedRealtime()
+        lastKeyRequestMs = 0L
+        awaitingResumeRtpIdr = true
+        resumeIdrReceived = false
+        directNoIdrWarned = false
+        gopStallWarned = false
+        output.resume(requestNewKeyframe = false)
+        rearmPending = false
+        requestKeyframe()
+        DiagLog.i("ICCOA", "DIRECT_VIDEO_GOP_REARMED reason=$reason " +
+            "configured=${compatibleConfig != null} doubleEncode=false awaiting_RTP_IDR=true")
     }
 
     override fun onConfig(source: AaSession, csd: ByteArray) {
@@ -162,8 +200,30 @@ internal class IccoaDirectVideo(
         val supported = rejection == null
         val previous = compatibleConfig
         compatibleConfig = if (supported) normalized else null
-        if (active && (!supported || (previous != null && !previous.contentEquals(normalized))))
-            main.post { fallback("AA video SPS changed or is unsupported") }
+        if (active && !supported) {
+            // Incompatible SPS is a demonstrated codec/canvas mismatch. This
+            // is the exception where composition can actually be necessary.
+            main.post { if (!closed && active) fallback("AA SPS incompatible with receiver") }
+        } else if (active && supported && normalized != null) {
+            if (previous != null && !previous.contentEquals(normalized)) {
+                rearmPending = true
+                main.post {
+                    if (!closed && active && this.source === source &&
+                        compatibleConfig?.contentEquals(normalized) == true)
+                        rearmDirectGop("COMPATIBLE_AA_SPS_CHANGED")
+                }
+            } else if (previous == null) {
+                // New AA source has supplied its first compatible codec config.
+                main.post {
+                    if (!closed && active && this.source === source &&
+                        compatibleConfig?.contentEquals(normalized) == true) {
+                        output.configure(normalized)
+                        requestKeyframe()
+                        DiagLog.i("ICCOA", "DIRECT_VIDEO_NEW_AA_CONFIG no_reencode=true")
+                    }
+                }
+            }
+        }
         if (!supported) {
             // Fail closed for the entire current car session. A later SPS must
             // not oscillate an already restored normal encoder back to Direct.
@@ -182,8 +242,8 @@ internal class IccoaDirectVideo(
 
     override fun onFrame(source: AaSession, frame: ByteArray, timestamp: Long): Boolean {
         if (!sourceValid(source) || source !== this.source || failed || frame.isEmpty()) return false
-        if (receiverPaused) return active // No queued P frames while Toyota hides WFD.
-        val csd = compatibleConfig ?: return false
+        if (receiverPaused || rearmPending) return active // Ignore old or not-yet-rearmed GOP.
+        val csd = compatibleConfig ?: return active // Direct pending new AA SPS; do not decode again.
         val key = IccoaDirectAvc.isIdr(frame)
         if (active) {
             if (awaitingResumeRtpIdr && key && !resumeIdrReceived) {
@@ -231,6 +291,7 @@ internal class IccoaDirectVideo(
         observedGopDrops = output.directGopDropCount()
         gopLostAtMs = 0L
         receiverPaused = false
+        rearmPending = false
         awaitingResumeRtpIdr = false
         resumeIdrReceived = false
         directNoIdrWarned = false
@@ -267,7 +328,17 @@ internal class IccoaDirectVideo(
     override fun onStop(source: AaSession) {
         if (source !== this.source || closed) return
         compatibleConfig = null
-        main.post { fallback("Android Auto video stopped") }
+        // AV_STOP often precedes a new AV_START during surface changes. Wait
+        // briefly for a real restart before showing the native FT compositor.
+        if (active) {
+            rearmPending = true
+            DiagLog.i("ICCOA", "DIRECT_VIDEO_AA_STOP_RESTART_GRACE no_reencode=true")
+            main.postDelayed({
+                if (!closed && active && this.source === source &&
+                    source.phase.value != AaSession.Phase.STREAMING)
+                    fallback("Android Auto stream ended; return to native FT home")
+            }, AA_RESTART_GRACE_MS)
+        } else main.post { fallback("Android Auto video stopped") }
     }
 
     /** A new WFD mode is never fed the previous AA bitstream. */
@@ -380,6 +451,7 @@ internal class IccoaDirectVideo(
 
     companion object {
         private const val WATCH_MS = 1_000L
+        private const val AA_RESTART_GRACE_MS = 3_000L
         private const val START_TIMEOUT_MS = 5_000L
         private const val IDLE_PROBE_MS = 30_000L
         private const val GOP_RETRY_AFTER_MS = 2_500L
