@@ -532,7 +532,13 @@ class IccoaService : Service() {
                         onPlay = { config -> current { play(config) } },
                         onPause = { current { pauseProjection("RTSP_PAUSE") } },
                         onKeyframe = { current {
-                            if (directVideo?.requestKeyframe() != true) projection?.requestKeyFrame()
+                            // A temporarily unavailable AA VIDEO_FOCUS request does NOT
+                            // authorize FT compositor keyframes while Direct owns RTP.
+                            val direct = directVideo
+                            if (direct?.active == true) {
+                                if (!direct.requestKeyframe())
+                                    DiagLog.i("ICCOA", "DIRECT_VIDEO_IDR_DEFERRED no_compositor_request=true")
+                            } else projection?.requestKeyFrame()
                         } },
                         onTouch = { touch -> current { projection?.touch(touch) } },
                         onKey = { code -> current { projection?.key(code) } },
