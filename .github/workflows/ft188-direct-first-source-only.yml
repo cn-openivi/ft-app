@@ -54,7 +54,7 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - name: Compile Kotlin and verify Direct, OEM wheel, GPS-gap and kmh distance tests
+      - name: Compile Kotlin and run full FT188 unsigned JUnit suite
         shell: bash
         env:
           GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
@@ -67,8 +67,8 @@ jobs:
             -Dkotlin.compiler.execution.strategy=in-process \
             -Dkotlin.incremental=false \
             :app:compileUnsignedTransitKotlin \
-            :app:testUnsignedTransitUnitTest --tests app.ft.iccoa.IccoaDirectRecoveryPolicyTest --tests app.ft.iccoa.IccoaOemWheelKeyTest --tests app.ft.iccoa.IccoaDrSourceGapEvidenceTest --tests app.ft.iccoa.IccoaDrInputBridgeTest --stacktrace
-      - name: Require direct and wheel test evidence without creating an APK
+            :app:testUnsignedTransitUnitTest --stacktrace
+      - name: Require full JUnit and P0 regressions without creating an APK
         shell: bash
         run: |
           set -euo pipefail
@@ -76,23 +76,26 @@ jobs:
           from pathlib import Path
           import xml.etree.ElementTree as ET
           folder=Path('app/build/test-results/testUnsignedTransitUnitTest')
-          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest','IccoaDrInputBridgeTest')
+          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest','IccoaDrInputBridgeTest','StringsTest','IccoaMediaTest','IccoaWfdAvcTest','CarUiViewportTest','FtUiScaleStepTest')
           paths=[]
           for name in names:
             matches=list(folder.glob('*'+name+'*.xml'))
             assert matches, name+' test XML absent'
             paths.extend(matches)
-          suites=[ET.parse(p).getroot() for p in paths]
+          all_paths=list(folder.glob('TEST-*.xml'))
+          assert all_paths, 'Full test XML results absent'
+          suites=[ET.parse(p).getroot() for p in all_paths]
           totals={k:sum(int(s.get(k,0)) for s in suites) for k in ('tests','failures','errors','skipped')}
-          print('FT188_DIRECT_POLICY_JUNIT='+str(totals))
-          assert totals['tests'] >= 22 and totals['failures'] == 0 and totals['errors'] == 0
+          print('FT188_FULL_UNSIGNED_JUNIT='+str(totals))
+          print('FT188_REQUIRED_TEST_CLASSES='+str(names))
+          assert totals['tests'] >= 1000 and totals['failures'] == 0 and totals['errors'] == 0
           PY
           if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
             echo 'Source-only test MUST NOT produce an APK' >&2
             exit 1
           fi
           echo "FT188_DIRECT_SOURCE_ONLY_PASS=$GITHUB_SHA"
-          echo "FULL_JUNIT=NOT_RUN; FT187_KNOWN_6_FAILURES_UNRESOLVED"
+          echo "FULL_JUNIT=PASS; FT187_KNOWN_6_FAILURES_RECHECKED=YES"
           echo "SIGNED_APK=NOT_BUILT"
           echo "HU_FIELD=NOT_TESTED"
       - name: Clean workspace build outputs
