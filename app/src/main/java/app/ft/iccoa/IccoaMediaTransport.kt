@@ -290,7 +290,14 @@ internal class IccoaMediaTransport(
                     "direct=${directFramesEnabled}:uibc=${sourceW}x${sourceH}"
                 if (geometryKey != lastVideoGeometry) {
                     lastVideoGeometry = geometryKey
-                    undimensionedSpace = IccoaInputCoordinateSpace.Mode.UNKNOWN
+                    // The previous socket-local mode was lost on every
+                    // reconnect. Load the independently center-verified UIBC
+                    // sender semantics from this authenticated receiver.
+                    // No Toyota/Samsung conditional or guessed fallback.
+                    undimensionedSpace = IccoaInputCoordinateSpace.remembered(
+                        app.ft.FTApp.instance)
+                    DiagLog.i("ICCOA", "UIBC domain new geometry; " +
+                        "receiver-scoped remembered=${undimensionedSpace.name}")
                 }
                 // EXACT same affine viewport as FrameGate. In Direct AA the
                 // whole WFD raster is used; the FT compositor's bars do not
@@ -309,9 +316,11 @@ internal class IccoaMediaTransport(
                         event.optDouble("y0", Double.NaN),
                         sourceW, sourceH, frame
                     )
+                    val saved = IccoaInputCoordinateSpace.rememberVerified(
+                        app.ft.FTApp.instance, undimensionedSpace)
                     DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
                         "${undimensionedSpace.name} dimensions_explicit=${!dimensionsMissing}" +
-                        " oem_premapped_wfd_candidate=true")
+                        " receiver_scoped_saved=$saved oem_premapped_wfd_candidate=true")
                 }
                 fun toStream(index: Int): Pair<Int, Int>? {
                     val rawX = event.optDouble("x$index", Double.NaN)
