@@ -46,10 +46,12 @@ jobs:
           test "$(stat -c%s "$apk")" -gt 1000000
           test "$(sha256sum "$apk" | cut -d' ' -f1)" = "$APK_SHA"
           unzip -t "$apk" >/dev/null
-          bt="$ANDROID_HOME/build-tools/36.0.0"
+          bt="/srv/openivi-ci/.android/sdk/build-tools/36.0.0"
           test -x "$bt/aapt" && test -x "$bt/apksigner"
-          "$bt/aapt" dump badging "$apk" | grep -Fq "package: name='app.ft.xa60' versionCode='187'"
-          "$bt/apksigner" verify --verbose --print-certs "$apk" | grep -iq "$CERT_PIN"
+          "$bt/aapt" dump badging "$apk" > "$RUNNER_TEMP/ft187-recovery-badging.txt"
+          grep -Fq "package: name='app.ft.xa60' versionCode='187'" "$RUNNER_TEMP/ft187-recovery-badging.txt"
+          "$bt/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/ft187-recovery-signer.txt"
+          grep -iq "$CERT_PIN" "$RUNNER_TEMP/ft187-recovery-signer.txt"
           echo "FT187_EXISTING_OWNER_SIGNED_APK_READBACK=PASS sha256=$APK_SHA"
       - name: Publish original signed APK with bounded retry and independent readback
         shell: bash
