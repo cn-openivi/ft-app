@@ -240,7 +240,7 @@ class IccoaService : Service() {
             val gearFrames = sensorLiveness.gearFrames
             if (gearFrames <= 3L || gearFrames and (gearFrames - 1L) == 0L) {
                 DiagLog.i("ICCOA", "SENSOR GearInfo count=$gearFrames valid=${sensorLiveness.acceptedGearFrames} " +
-                    "payloadBytes=${body.size} unit=unconfirmed " +
+                    "payloadBytes=${body.size} speedUnit=kmh_FAWRAV4_field_verified " +
                     "rawGear=${VehicleTelemetry.current.value?.gearRaw ?: "NA"} " +
                     "rawSpeed=${VehicleTelemetry.current.value?.gearSpeedRaw ?: "NA"}")
             }
