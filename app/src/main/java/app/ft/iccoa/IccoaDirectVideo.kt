@@ -40,6 +40,8 @@ internal class IccoaDirectVideo(
     // Never restart FT's encoder on a transient Toyota PAUSE.
     private var awaitingResumeRtpIdr = false
     private var resumeIdrReceived = false
+    private var directNoIdrWarned = false
+    private var gopStallWarned = false
     @Volatile private var receiverPaused = false
     private var observedGopDrops = 0L
     private var gopLostAtMs = 0L
@@ -65,6 +67,7 @@ internal class IccoaDirectVideo(
             if (gopLostAtMs > 0L && output.writtenDirectKeyFrames() > directKeyWritesAtLoss) {
                 DiagLog.i("ICCOA", "DIRECT_VIDEO_GOP_RECOVERED elapsedMs=${now - gopLostAtMs}")
                 gopLostAtMs = 0L
+                gopStallWarned = false
             }
             if (firstKeyAtMs == 0L && output.writtenDirectKeyFrames() > keyWritesAtActivate) {
                 firstKeyAtMs = now
@@ -78,46 +81,57 @@ internal class IccoaDirectVideo(
                     DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
                 }
             }
-            when {
-                source?.let { !sourceValid(it) } == true ->
-                    fallback("Android Auto video session ended")
-                firstKeyAtMs == 0L && awaitingResumeRtpIdr &&
-                    IccoaDirectRecoveryPolicy.postPauseExpired(now - activatedAtMs) ->
-                    fallback(if (resumeIdrReceived)
-                        "AA post-PAUSE IDR arrived but RTP did not write it; normal video emergency recovery"
-                    else "AA did not send a post-PAUSE IDR after bounded requests; normal video emergency recovery")
-                firstKeyAtMs == 0L && !awaitingResumeRtpIdr &&
-                    now - activatedAtMs >= START_TIMEOUT_MS ->
-                    fallback("Initial AA H.264 IDR was not written to RTP")
-                gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RECOVERY_TIMEOUT_MS ->
-                    fallback("Direct RTP GOP did not recover with an IDR in ${GOP_RECOVERY_TIMEOUT_MS}ms")
-                else -> {
-                    // Post-PAUSE is not a brand-new AA session. Re-request the
-                    // true AA keyframe before enabling any second encoder.
-                    if (awaitingResumeRtpIdr && firstKeyAtMs == 0L &&
-                        IccoaDirectRecoveryPolicy.shouldRetryPostPause(
-                            now - activatedAtMs, now - lastKeyRequestMs)) {
-                        requestKeyframe()
-                        DiagLog.i("ICCOA", "DIRECT_VIDEO_POST_PAUSE_IDR_RETRY " +
-                            "elapsedMs=${now - activatedAtMs} idrReceived=$resumeIdrReceived")
-                    }
-                    // AA can keep emitting P frames even while all of them are
-                    // rejected by the RTP queue. Input activity is not RTP liveness.
-                    if (gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RETRY_AFTER_MS &&
-                        now - lastKeyRequestMs >= KEY_REQUEST_COOLDOWN_MS)
-                        requestKeyframe()
-
-                    // A static AA screen may legally produce no new access units.
-                    // Probe a fresh picture without declaring that silence is a crash.
-                    // RTSP/RTP transport failure has its own independent close path.
-                    if (frameAtMs > 0L && now - frameAtMs >= IDLE_PROBE_MS &&
-                        now - lastKeyRequestMs >= IDLE_PROBE_MS) {
-                        requestKeyframe()
-                        DiagLog.i("ICCOA", "DIRECT_VIDEO idle AA picture; requested fresh IDR")
-                    }
-                    main.postDelayed(this, WATCH_MS)
-                }
+            if (source?.let { !sourceValid(it) } == true) {
+                // A genuinely terminated AA stream needs a native FT screen,
+                // not a second encoder for a stream which no longer exists.
+                fallback("Android Auto video session ended")
+                return
             }
+            // While the original AA compressed stream is still available,
+            // missing IDR / RTP GOP is a recovery problem, NOT permission to
+            // decode AA and start FT's second AVC encoder.
+            if (firstKeyAtMs == 0L && awaitingResumeRtpIdr &&
+                IccoaDirectRecoveryPolicy.postPauseExpired(now - activatedAtMs) &&
+                !directNoIdrWarned) {
+                directNoIdrWarned = true
+                DiagLog.w("ICCOA", "DIRECT_VIDEO_POST_PAUSE_STALLED " +
+                    "elapsedMs=${now - activatedAtMs} idrReceived=$resumeIdrReceived " +
+                    "AA_source_still_active=true FT_encoder_remains_off=true")
+                onStatus("AA direct waiting for fresh H.264 IDR; no FT re-encode")
+            }
+            if (firstKeyAtMs == 0L && !awaitingResumeRtpIdr &&
+                now - activatedAtMs >= START_TIMEOUT_MS && !directNoIdrWarned) {
+                directNoIdrWarned = true
+                DiagLog.w("ICCOA", "DIRECT_VIDEO_FIRST_IDR_STALLED " +
+                    "elapsedMs=${now - activatedAtMs} FT_encoder_remains_off=true")
+                onStatus("AA direct awaiting original IDR; no FT re-encode")
+            }
+            if (gopLostAtMs > 0L &&
+                now - gopLostAtMs >= GOP_RECOVERY_TIMEOUT_MS && !gopStallWarned) {
+                gopStallWarned = true
+                DiagLog.w("ICCOA", "DIRECT_VIDEO_GOP_STALLED " +
+                    "elapsedMs=${now - gopLostAtMs} FT_encoder_remains_off=true")
+                onStatus("AA direct recovering RTP GOP; no FT re-encode")
+            }
+            // Bounded control request *frequency*, without a terminal timeout
+            // that would permanently lock this car session into compositing.
+            if (firstKeyAtMs == 0L &&
+                IccoaDirectRecoveryPolicy.shouldRetryPostPause(
+                    now - activatedAtMs, now - lastKeyRequestMs)) {
+                if (requestKeyframe() && awaitingResumeRtpIdr)
+                    DiagLog.i("ICCOA", "DIRECT_VIDEO_POST_PAUSE_IDR_RETRY " +
+                        "elapsedMs=${now - activatedAtMs} idrReceived=$resumeIdrReceived")
+            }
+            if (gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RETRY_AFTER_MS &&
+                now - lastKeyRequestMs >= KEY_REQUEST_COOLDOWN_MS)
+                requestKeyframe()
+            // A static AA screen may legally produce no new access units.
+            if (frameAtMs > 0L && now - frameAtMs >= IDLE_PROBE_MS &&
+                now - lastKeyRequestMs >= IDLE_PROBE_MS) {
+                requestKeyframe()
+                DiagLog.i("ICCOA", "DIRECT_VIDEO idle AA picture; requested fresh IDR")
+            }
+            main.postDelayed(this, WATCH_MS)
         }
     }
 
@@ -219,6 +233,8 @@ internal class IccoaDirectVideo(
         receiverPaused = false
         awaitingResumeRtpIdr = false
         resumeIdrReceived = false
+        directNoIdrWarned = false
+        gopStallWarned = false
         keyWritesAtActivate = output.writtenDirectKeyFrames()
         frameAtMs = 0L
         activatedAtMs = SystemClock.elapsedRealtime()
@@ -281,11 +297,13 @@ internal class IccoaDirectVideo(
             frameAtMs = 0L
             awaitingResumeRtpIdr = true
             resumeIdrReceived = false
+            directNoIdrWarned = false
+            gopStallWarned = false
             activatedAtMs = SystemClock.elapsedRealtime()
             lastKeyRequestMs = 0L
             DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true " +
-                "boundedWaitMs=${IccoaDirectRecoveryPolicy.POST_PAUSE_MAX_MS} " +
-                "FT_encoder_stays_off=true")
+                "firstWarningMs=${IccoaDirectRecoveryPolicy.POST_PAUSE_MAX_MS} " +
+                "autoReencode_on_IDR_timeout=false FT_encoder_stays_off=true")
         }
     }
 
