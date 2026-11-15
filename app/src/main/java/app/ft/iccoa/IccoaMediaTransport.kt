@@ -208,11 +208,22 @@ internal class IccoaMediaTransport(
                     if (frame.key) {
                         if (rtpKeyFrames.incrementAndGet() == 1L)
                             DiagLog.i("ICCOA", "RTP FIRST_KEY_FRAME_WRITTEN packets=${rtpPacketCount.get()} bytes=${frame.data.size}")
-                        // A late old FT-compositor IDR must NOT satisfy the
-                        // Direct readiness proof, even if it completed post-pause.
+                        // A pre-PAUSE write can finish AFTER the queue has switched
+                        // epochs. It must NEVER certify post-PAUSE Direct recovery.
+                        // Hold the queue monitor across epoch test and counter bump
+                        // so PAUSE cannot race between proof and its increment.
                         if (frame.direct) {
-                            rtpDirectKeyFrames.incrementAndGet()
-                            DiagLog.i("ICCOA", "DIRECT_VIDEO_RTP_KEY_WRITTEN packets=${rtpPacketCount.get()}")
+                            val currentEpoch = synchronized(queue) {
+                                if (queue.isCurrentDirectIdr(frame)) {
+                                    rtpDirectKeyFrames.incrementAndGet()
+                                    true
+                                } else false
+                            }
+                            if (currentEpoch) {
+                                DiagLog.i("ICCOA", "DIRECT_VIDEO_RTP_KEY_WRITTEN packets=${rtpPacketCount.get()}")
+                            } else {
+                                DiagLog.w("ICCOA", "DIRECT_VIDEO_STALE_RTP_IDR_NOT_CREDITED epoch=${frame.epoch}")
+                            }
                         }
                     }
                     videoFrames++
