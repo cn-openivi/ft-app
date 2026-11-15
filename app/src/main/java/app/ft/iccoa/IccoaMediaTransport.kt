@@ -298,26 +298,33 @@ internal class IccoaMediaTransport(
                     DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
                         "${undimensionedSpace.name}; dimensions_missing=true")
                 }
-                // Match FrameGate's actual letterbox (rather than stretching X/Y).
-                // CarDisplay uses the exact inverse of this same geometry.
-                val geometry = app.ft.projection.TouchVideoGeometry(
-                    plan.contentWidth, plan.contentHeight, plan.streamWidth, plan.streamHeight,
-                    plan.preserveAspect
+                // Use the EXACT affine viewport that FrameGate draws.
+                // Preserve UIBC floating-point x0/y0 until the final video
+                // pixel. The previous path truncated at source->native, then
+                // again native->stream, losing precision at every stage.
+                val frame = app.ft.projection.VideoContentTransform(
+                    plan.contentWidth, plan.contentHeight,
+                    plan.streamWidth, plan.streamHeight, plan.preserveAspect
                 )
-                fun toStream(x: Int, y: Int): Pair<Int, Int> {
-                    if (x < 0 || y < 0) return -1 to -1
+                val sourceW = event.optInt("width", 0).takeIf { it > 0 } ?: video.width
+                val sourceH = event.optInt("height", 0).takeIf { it > 0 } ?: video.height
+                fun toStream(index: Int): Pair<Int, Int>? {
+                    val rawX = event.optDouble("x$index", Double.NaN)
+                    val rawY = event.optDouble("y$index", Double.NaN)
                     if (dimensionsMissing &&
-                        undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM)
-                        return x.coerceIn(0, plan.streamWidth - 1) to
-                            y.coerceIn(0, plan.streamHeight - 1)
-                    return geometry.toStream(
-                        (x.toLong() * plan.contentWidth / video.width).toInt(),
-                        (y.toLong() * plan.contentHeight / video.height).toInt()
-                    )
+                        undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM) {
+                        return UibcFrameMapping.fromStream(
+                            rawX, rawY, plan.streamWidth, plan.streamHeight)
+                    }
+                    return UibcFrameMapping.toStream(
+                        rawX, rawY, sourceW, sourceH, frame)
                 }
-                val (x, y) = toStream(nativeTouch.x, nativeTouch.y)
-                val (x2, y2) = toStream(nativeTouch.x2, nativeTouch.y2)
-                val touch = nativeTouch.copy(x = x, y = y, x2 = x2, y2 = y2)
+                val (x, y) = toStream(0) ?: return@IccoaInputJson
+                val secondary = if (nativeTouch.x2 >= 0 && nativeTouch.y2 >= 0)
+                    toStream(1) ?: return@IccoaInputJson else -1 to -1
+                val touch = nativeTouch.copy(
+                    x = x, y = y, x2 = secondary.first, y2 = secondary.second
+                )
                 if (touch.action != CarTouch.MOVE) {
                     val detailed = runCatching { app.ft.FTApp.instance.prefs.vehicleCoordinateLogging }
                         .getOrDefault(false)
