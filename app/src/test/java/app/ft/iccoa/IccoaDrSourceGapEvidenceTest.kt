@@ -54,4 +54,35 @@ class IccoaDrSourceGapEvidenceTest {
         assertEquals(0L, fresh.gearFrames)
         assertNull(fresh.firstGearToFirstGpsMs)
     }
+
+    @Test fun parkingGpsStopsAfterSuccessfulFixAndGearKeepsMovingUntilDisconnect() {
+        IccoaDrSourceGapEvidence.beginSession()
+        IccoaDrSourceGapEvidence.onGps(10_000L)
+        IccoaDrSourceGapEvidence.onGps(11_000L)
+        IccoaDrSourceGapEvidence.onGear(25L, 14_000L)
+        IccoaDrSourceGapEvidence.onGear(8L, 22_000L)
+        IccoaDrSourceGapEvidence.onGear(19L, 44_000L)
+        val live = IccoaDrSourceGapEvidence.snapshot(66_700L)
+        assertEquals(55_700L, live.postFixGpsSilenceWithMovingGearMs)
+        assertFalse(live.snapshotEndedSession)
+        // User exports the report much later; measure only until the HU disconnect.
+        IccoaDrSourceGapEvidence.endSession(74_600L)
+        val laterExport = IccoaDrSourceGapEvidence.snapshot(2_500_000L)
+        assertEquals(63_600L, laterExport.postFixGpsSilenceWithMovingGearMs)
+        assertTrue(laterExport.snapshotEndedSession)
+        assertTrue(laterExport.reportLine().contains("FROZEN_AT_DISCONNECT"))
+        assertEquals(1_000L, laterExport.maxInterGpsReceiptGapMs)
+        assertNull(laterExport.initialGpsWaitWithMovingGearMs)
+    }
+
+    @Test fun ifNoGpsEverAppearedFreezeOnlyInitialMotionWait() {
+        IccoaDrSourceGapEvidence.beginSession()
+        IccoaDrSourceGapEvidence.onGear(9L, 1_000L)
+        IccoaDrSourceGapEvidence.onGear(20L, 10_000L)
+        IccoaDrSourceGapEvidence.endSession(85_000L)
+        val exported = IccoaDrSourceGapEvidence.snapshot(8_000_000L)
+        assertEquals(84_000L, exported.initialGpsWaitWithMovingGearMs)
+        assertNull(exported.postFixGpsSilenceWithMovingGearMs)
+        assertTrue(exported.reportLine().contains("gnssActuallyLost=UNKNOWN"))
+    }
 }
