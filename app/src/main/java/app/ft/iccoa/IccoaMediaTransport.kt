@@ -24,7 +24,8 @@ internal class IccoaMediaTransport(
     private val onKeyframe: () -> Unit,
     private val onTouch: (CarTouch) -> Unit,
     private val onKey: (Int) -> Unit,
-    private val onClosed: (String) -> Unit
+    private val onClosed: (String) -> Unit,
+    private val preferredDirectAaRaster: () -> Pair<Int, Int>? = { null }
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
     private val rtpPacketCount = AtomicLong(0)
@@ -57,7 +58,8 @@ internal class IccoaMediaTransport(
                 ::input, { DiagLog.i("ICCOA", it) })
             executor.execute {
                 accept(rtspServer!!) { socket ->
-                    val session = IccoaRtsp(socket, ::play, { onPause() }, onKeyframe, ::fail)
+                    val session = IccoaRtsp(socket, ::play, { onPause() }, onKeyframe,
+                        ::fail, preferredDirectAaRaster)
                     synchronized(this) {
                         rtsp?.close()
                         rtsp = session
