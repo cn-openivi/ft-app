@@ -45,8 +45,15 @@ internal object IccoaTouchWelcome {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         prefs.edit().putString(LAST, key).apply()
         swallowUntilUp = false
-        _state.value = State(if (prefs.getBoolean(key, false)) Phase.NONE else Phase.CHECK)
-        DiagLog.i("ICCOA", "Touch welcome required=${awaiting}; receiver identity verified")
+        // A pre-187 'welcome verified' flag is NOT proof of how the current
+        // input connection interprets x0/y0. If no verified domain was saved,
+        // show the center check again, rather than silently using PANEL_PIXELS.
+        val domain = app.ft.iccoa.IccoaInputCoordinateSpace.remembered(context)
+        val needsCheck = app.ft.iccoa.IccoaInputCoordinateSpace.requiresWelcome(
+            prefs.getBoolean(key, false), domain)
+        _state.value = State(if (needsCheck) Phase.CHECK else Phase.NONE)
+        DiagLog.i("ICCOA", "Touch welcome required=${awaiting}; " +
+            "receiver verified; cached UIBC domain=${domain.name}")
     }
 
     /** Called before any FT widget/AA/mirror touch routing; raw mapped content coords. */
@@ -127,9 +134,10 @@ internal object IccoaTouchWelcome {
         val edit = quad.edit()
         quad.all.keys.filter { it.startsWith(prefix) }.forEach { edit.remove(it) }
         val q = edit.commit()
+        val mode = app.ft.iccoa.IccoaInputCoordinateSpace.forgetReceiver(context, key)
         val p = prefs.edit().remove(key).remove(LAST).commit()
         cancel()
-        DiagLog.i("ICCOA", "Owner forgot verified car touch profile; success=${p && q}")
-        return p && q
+        DiagLog.i("ICCOA", "Owner forgot verified car touch profile; success=${p && q && mode}")
+        return p && q && mode
     }
 }
