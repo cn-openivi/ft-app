@@ -11,6 +11,31 @@ class IccoaInputCoordinateSpaceTest {
         fps = 30, bitrate = 3_555_000, preserveAspect = true
     )
 
+    @Test fun oldWelcomeFlagCannotSkipUnverifiedCoordinateDomainOnReconnect() {
+        // Regression: FT186 persisted welcome=true, but FT187's VIDEO_STREAM
+        // interpretation lived only in the socket and reset on reconnect.
+        assertEquals(true, IccoaInputCoordinateSpace.requiresWelcome(
+            previouslyVerified = true, knownMode = IccoaInputCoordinateSpace.Mode.UNKNOWN))
+        assertEquals(false, IccoaInputCoordinateSpace.requiresWelcome(
+            previouslyVerified = true, knownMode = IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+        assertEquals(false, IccoaInputCoordinateSpace.requiresWelcome(
+            previouslyVerified = true, knownMode = IccoaInputCoordinateSpace.Mode.NATIVE_DISPLAY))
+        assertEquals(true, IccoaInputCoordinateSpace.requiresWelcome(
+            previouslyVerified = false, knownMode = IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+    }
+
+    @Test fun persistedReceiverDomainRejectsInvalidOrObsoleteSettings() {
+        assertEquals(IccoaInputCoordinateSpace.Mode.VIDEO_STREAM,
+            IccoaInputCoordinateSpace.parseSaved("VIDEO_STREAM"))
+        assertEquals(IccoaInputCoordinateSpace.Mode.NATIVE_DISPLAY,
+            IccoaInputCoordinateSpace.parseSaved("NATIVE_DISPLAY"))
+        for (v in listOf<String?>(null, "", "UNKNOWN", "TOYOTA", "RAV4", "HIGH",
+            "VIDEO_STREAM;DROP TABLE", "NATIVE_DISPLAY ")) {
+            assertEquals(IccoaInputCoordinateSpace.Mode.UNKNOWN,
+                IccoaInputCoordinateSpace.parseSaved(v))
+        }
+    }
+
     @Test fun genuineOEMCarlinkPreMappedCenterWithExplicitSurfaceDimensions() {
         // Direct examination of OEM Carlink.apk classes3.dex:
         // UibcManager b3.a/b maps touch 2421x1272 -> source VIDEO 1280x720
