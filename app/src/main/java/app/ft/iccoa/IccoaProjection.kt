@@ -446,6 +446,30 @@ class IccoaProjection(
         }
     }
 
+    /**
+     * OEM wheel key from CarLink's UCar CustomKeyEvent CONTROL12.
+     * Different from UIBC generic keyboard events: AA music owns these
+     * physical NEXT/PREV keys whenever an AA session is connected, including
+     * when the visible car screen is FT home, and even if the local FT player
+     * previously held audio focus. Never dispatch a second local action.
+     */
+    fun oemWheelMediaKey(code: Int) = onMain {
+        if (!active || code != 87 && code != 88) return@onMain
+        val aa = AaHeadUnitService.current
+        if (aa != null) {
+            val queued = aa.sendKey(code)
+            if (queued)
+                DiagLog.i("ICCOA", "ICCOA_OEM_WHEEL_AA_INPUT_QUEUED code=$code " +
+                    "aaVisible=${state.value.aaOverlay} ftPlaying=${CarPlayer.playing}")
+            else
+                DiagLog.w("ICCOA", "ICCOA_OEM_WHEEL_AA_INPUT_FAILED code=$code " +
+                    "input_channel_unavailable; no_local_duplicate=true")
+            return@onMain
+        }
+        if (code == 87) CarPlayer.next() else CarPlayer.previous()
+        DiagLog.i("ICCOA", "ICCOA_OEM_WHEEL_FT_PLAYER code=$code aaConnected=false")
+    }
+
     fun key(code: Int) = onMain {
         if (!active) return@onMain
         if (CarTouchCalibration.state.value.step != 0 && (code == 3 || code == 4)) {
