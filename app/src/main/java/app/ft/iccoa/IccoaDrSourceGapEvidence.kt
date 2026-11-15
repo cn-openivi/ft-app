@@ -81,9 +81,9 @@ internal object IccoaDrSourceGapEvidence {
             receiptMonoMs - before else 0L
         maxInterGpsMs = maxOf(maxInterGpsMs, gap)
         val observation = if (before == 0L) {
-            firstGapMs = firstGearAt.takeIf { it in 1..receiptMonoMs }
+            firstGapMs = firstGearAt.takeIf { it in 1L..receiptMonoMs }
                 ?.let { receiptMonoMs - it }
-            firstMovingGapMs = firstMovingGearAt.takeIf { it in 1..receiptMonoMs }
+            firstMovingGapMs = firstMovingGearAt.takeIf { it in 1L..receiptMonoMs }
                 ?.let { receiptMonoMs - it }
             firstMovingGapMs?.takeIf { it >= 10_000L && movingGearBeforeGps > 0L }
                 ?.let { Observation("FIRST_GPS_AFTER_MOVING_GEAR", it,
