@@ -38,6 +38,9 @@ jobs:
           grep -Fq 'DIRECT_VIDEO_POST_PAUSE_RECOVERED' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
           grep -Fq 'FT_encoder_stays_off=true' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaDirectRecoveryPolicyTest.kt
+          test -f app/src/main/java/app/ft/iccoa/IccoaOemWheelKey.kt
+          test -f app/src/test/java/app/ft/iccoa/IccoaOemWheelKeyTest.kt
+          grep -Fq 'IccoaOemWheelKey.CONTROL_METHOD' app/src/main/java/app/ft/iccoa/IccoaService.kt
           echo "FT188_STAGE_SOURCE_SHA=$GITHUB_SHA"
       - name: JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
@@ -48,7 +51,7 @@ jobs:
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
           packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
-      - name: Compile Android Kotlin and verify direct recovery policy
+      - name: Compile Android Kotlin and verify direct and OEM wheel tests
         shell: bash
         env:
           GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
@@ -61,20 +64,25 @@ jobs:
             -Dkotlin.compiler.execution.strategy=in-process \
             -Dkotlin.incremental=false \
             :app:compileUnsignedTransitKotlin \
-            :app:testUnsignedTransitUnitTest --tests app.ft.iccoa.IccoaDirectRecoveryPolicyTest --stacktrace
-      - name: Require direct test evidence without creating an APK
+            :app:testUnsignedTransitUnitTest --tests app.ft.iccoa.IccoaDirectRecoveryPolicyTest --tests app.ft.iccoa.IccoaOemWheelKeyTest --stacktrace
+      - name: Require direct and wheel test evidence without creating an APK
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import xml.etree.ElementTree as ET
-          paths=list(Path('app/build/test-results/testUnsignedTransitUnitTest').glob('*IccoaDirectRecoveryPolicyTest*.xml'))
-          assert paths, 'Direct recovery policy test XML absent'
+          folder=Path('app/build/test-results/testUnsignedTransitUnitTest')
+          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest')
+          paths=[]
+          for name in names:
+            matches=list(folder.glob('*'+name+'*.xml'))
+            assert matches, name+' test XML absent'
+            paths.extend(matches)
           suites=[ET.parse(p).getroot() for p in paths]
           totals={k:sum(int(s.get(k,0)) for s in suites) for k in ('tests','failures','errors','skipped')}
           print('FT188_DIRECT_POLICY_JUNIT='+str(totals))
-          assert totals['tests'] >= 3 and totals['failures'] == 0 and totals['errors'] == 0
+          assert totals['tests'] >= 8 and totals['failures'] == 0 and totals['errors'] == 0
           PY
           if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
             echo 'Source-only test MUST NOT produce an APK' >&2
