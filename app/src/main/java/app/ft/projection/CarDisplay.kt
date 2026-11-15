@@ -225,6 +225,13 @@ class CarDisplay(private val context: Context) {
             video?.preserveAspect == true
         ).toContent(x, y)
 
+    /** Black letterbox margins are not clickable FT / mirrored-app content. */
+    fun containsEncodedContent(x: Int, y: Int): Boolean =
+        streamWidth > 0 && streamHeight > 0 && width > 0 && height > 0 &&
+            x in 0 until streamWidth && y in 0 until streamHeight &&
+            TouchVideoGeometry(width, height, streamWidth, streamHeight,
+                video?.preserveAspect == true).isInsideRenderedContent(x, y)
+
     fun dispatchTouch(t: CarTouch) {
         noteTouch(t.action)
         if (t.action == CarTouch.MOVE) {
