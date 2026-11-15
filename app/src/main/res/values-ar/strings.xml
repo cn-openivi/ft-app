@@ -687,5 +687,7 @@
     <string name="ft_zoom_large">كبير</string>
     <string name="ft_zoom_very_large">كبير جدًا</string>
     <string name="ft_zoom_maximum">أقصى حجم</string>
+    <string name="iccoa_touch_edge_verify">تطابقت نقطة الوسط. المس الآن العلامة الخضراء على اليمين للتحقق من محاذاة الشاشة.</string>
+    <string name="iccoa_touch_edge_failed">موضع اللمس خارج الوسط غير متطابق. حاول لمس العلامة اليمنى مرة أخرى؛ عند تكرار الإخفاق ستبدأ المعايرة.</string>
     <string name="iccoa_touch_center_failed">فشل فحص إحداثيات اللمس: لم يصل اللمس إلى دائرة OK. لن يتم تأكيد نجاح الفحص أو بدء المعايرة تلقائيًا. أرفق تقرير التشخيص.</string>
 </resources>
