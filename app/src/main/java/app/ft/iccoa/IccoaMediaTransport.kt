@@ -314,10 +314,12 @@ internal class IccoaMediaTransport(
                     if (dimensionsMissing &&
                         undimensionedSpace == IccoaInputCoordinateSpace.Mode.VIDEO_STREAM) {
                         return UibcFrameMapping.fromStream(
-                            rawX, rawY, plan.streamWidth, plan.streamHeight)
+                            rawX, rawY, plan.streamWidth, plan.streamHeight,
+                            allowOutsideAfterDown = nativeTouch.action != CarTouch.DOWN)
                     }
                     return UibcFrameMapping.toStream(
-                        rawX, rawY, sourceW, sourceH, frame)
+                        rawX, rawY, sourceW, sourceH, frame,
+                        allowOutsideAfterDown = nativeTouch.action != CarTouch.DOWN)
                 }
                 val (x, y) = toStream(0) ?: return@IccoaInputJson
                 val secondary = if (nativeTouch.x2 >= 0 && nativeTouch.y2 >= 0)
