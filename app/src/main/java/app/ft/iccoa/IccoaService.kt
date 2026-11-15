@@ -728,6 +728,21 @@ class IccoaService : Service() {
                 play(it)
             }
             5, 41 -> pauseProjection("CONTROL_$method")
+            IccoaOemWheelKey.CONTROL_METHOD -> {
+                // Toyota CarMode hard keys are UCar CAR/control CustomKeyEvent
+                // (method 12), not WFD UIBC. Handle the authenticated existing
+                // ICCOA connection without any privileged HU hooks.
+                val event = IccoaOemWheelKey.decode(body)
+                if (event == null) {
+                    DiagLog.w("ICCOA", "ICCOA_OEM_WHEEL method12 invalid_or_unhandled " +
+                        "bytes=${body.size}; no key injected")
+                } else {
+                    DiagLog.i("ICCOA", "ICCOA_OEM_WHEEL_RX code=${event.code} " +
+                        "action=${event.action} meta=${event.metaState} " +
+                        "dispatch=${event.dispatchTrack}")
+                    if (event.dispatchTrack) projection?.oemWheelMediaKey(event.code)
+                }
+            }
             16 -> projection?.key(84) // Same AA voice/search key as the CarLife voice button.
             23 -> connectionFailed("The car disconnected", retryableTransportFailure = true)
             25 -> runCatching { IccoaCarConfig.describe(body) }
