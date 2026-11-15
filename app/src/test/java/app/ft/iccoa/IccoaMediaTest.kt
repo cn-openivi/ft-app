@@ -267,7 +267,11 @@ class IccoaMediaTest {
             assertTrue(read().headers["session"]!!.startsWith("1"))
             send("PLAY rtsp://localhost/wfd1.0 RTSP/1.0\r\nCSeq: 22\r\nSession: 1\r\n\r\n")
             read()
-            assertEquals(IccoaVideoConfig("127.0.0.1", 1920, 720, 30, 23456), played.get(3, TimeUnit.SECONDS))
+            // Fake receiver sent display dimensions but no wfd_video_formats.
+            // Preserve conservative baseline and explicitly record absent codec proof.
+            assertEquals(IccoaVideoConfig("127.0.0.1", 1920, 720, 30, 23456,
+                wfdNegotiationReason = "NO_VERIFIED_COMMON_CODEC"),
+                played.get(3, TimeUnit.SECONDS))
             send("TEARDOWN rtsp://localhost/wfd1.0 RTSP/1.0\r\nCSeq: 23\r\n\r\n")
             read(); worker.join(3000)
             assertFalse(worker.isAlive)
