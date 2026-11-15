@@ -43,6 +43,7 @@ internal class IccoaDirectVideo(
     private var directNoIdrWarned = false
     private var gopStallWarned = false
     @Volatile private var rearmPending = false
+    @Volatile private var restartGraceAtMs = 0L
     @Volatile private var receiverPaused = false
     private var observedGopDrops = 0L
     private var gopLostAtMs = 0L
@@ -83,9 +84,15 @@ internal class IccoaDirectVideo(
                 }
             }
             if (source?.let { !sourceValid(it) } == true) {
-                // A genuinely terminated AA stream needs a native FT screen,
-                // not a second encoder for a stream which no longer exists.
-                fallback("Android Auto video session ended")
+                // Temporary AV_STOP is often followed by AV_START. Do not
+                // turn it into a second encoder just because the watchdog
+                // observed a non-STREAMING AA phase inside the grace window.
+                if (rearmPending && restartGraceAtMs > 0L &&
+                    now - restartGraceAtMs < AA_RESTART_GRACE_MS) {
+                    main.postDelayed(this, WATCH_MS)
+                    return
+                }
+                fallback("Android Auto video session ended; native FT UI required")
                 return
             }
             // While the original AA compressed stream is still available,
@@ -145,6 +152,7 @@ internal class IccoaDirectVideo(
         if (this.source !== source) compatibleConfig = null
         this.source = source
         pending = false
+        restartGraceAtMs = 0L
         if (active) {
             rearmPending = true
             main.post {
@@ -178,9 +186,9 @@ internal class IccoaDirectVideo(
         resumeIdrReceived = false
         directNoIdrWarned = false
         gopStallWarned = false
-        output.resume(requestNewKeyframe = false)
+        if (!receiverPaused) output.resume(requestNewKeyframe = false)
         rearmPending = false
-        requestKeyframe()
+        if (!receiverPaused) requestKeyframe()
         DiagLog.i("ICCOA", "DIRECT_VIDEO_GOP_REARMED reason=$reason " +
             "configured=${compatibleConfig != null} doubleEncode=false awaiting_RTP_IDR=true")
     }
@@ -292,6 +300,7 @@ internal class IccoaDirectVideo(
         gopLostAtMs = 0L
         receiverPaused = false
         rearmPending = false
+        restartGraceAtMs = 0L
         awaitingResumeRtpIdr = false
         resumeIdrReceived = false
         directNoIdrWarned = false
@@ -332,6 +341,7 @@ internal class IccoaDirectVideo(
         // briefly for a real restart before showing the native FT compositor.
         if (active) {
             rearmPending = true
+            restartGraceAtMs = SystemClock.elapsedRealtime()
             DiagLog.i("ICCOA", "DIRECT_VIDEO_AA_STOP_RESTART_GRACE no_reencode=true")
             main.postDelayed({
                 if (!closed && active && this.source === source &&
