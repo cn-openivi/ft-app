@@ -25,7 +25,12 @@ internal object IccoaDrInputBridge {
         val speedKmhHypothesisSupported: Boolean,
         val quantizedGyroFrames: Long,
         val nonMonotonicGyroFrames: Long,
-        val activeVerifiedCar: Boolean
+        val activeVerifiedCar: Boolean,
+        val gearDistanceMetres: Double,
+        val gearSpeedIntervalsIntegrated: Long,
+        val gearSpeedGapMsUncovered: Long,
+        val gearSpeedFramesAccepted: Long,
+        val gearSpeedNonMonotonicFrames: Long
     ) {
         fun reportLine(): String = buildString {
             append("verifiedHU=").append(activeVerifiedCar).append('\n')
@@ -34,9 +39,17 @@ internal object IccoaDrInputBridge {
                 .append(speedSlopeRawPerGpsMps ?: "UNKNOWN").append('\n')
             append("gearVsOemGpsSpeedCorrelation=")
                 .append(speedCorrelation ?: "UNKNOWN").append('\n')
+            append("gearSpeedUnit=KMH_FAWRAV4_FIELD_CONFIRMED").append('\n')
             append("gearSpeedKmhStatisticalCandidate=")
                 .append(speedKmhHypothesisSupported)
-                .append(" (NOT_WHEEL_UNITS_VERIFIED)").append('\n')
+                .append(" (LEGACY_OEM_GPS_CROSSCHECK)").append('\n')
+            append("gearDistanceEstimateMetres=").append(gearDistanceMetres).append('\n')
+            append("gearDistanceIntegratedIntervals=").append(gearSpeedIntervalsIntegrated).append('\n')
+            append("gearSpeedUncoveredGapMs=").append(gearSpeedGapMsUncovered).append('\n')
+            append("gearSpeedFramesAccepted=").append(gearSpeedFramesAccepted).append('\n')
+            append("gearSpeedNonMonotonicFrames=").append(gearSpeedNonMonotonicFrames).append('\n')
+            append("gearDistanceMethod=TRAPEZOIDAL_KMH_TO_METRES_ON_MONOTONIC_RECEIPT_GAPS_MAX_5000MS").append('\n')
+            append("gearDistanceQuality=ESTIMATE_NOT_INDEPENDENT_WHEEL_ODOMETER_NO_HEADING").append('\n')
             append("oemFlooredGyroFrames=").append(quantizedGyroFrames).append('\n')
             append("nonMonotonicGyroFrames=").append(nonMonotonicGyroFrames).append('\n')
             append("gyroYawSource=OEM_MATH_FLOOR_LOSSY_NOT_VERIFIED").append('\n')
@@ -91,6 +104,18 @@ internal object IccoaDrInputBridge {
     private var gyroClockBackwards = 0L
     private var lastGyroTimestamp: Long? = null
 
+    // Separate speed-only path length estimator. This FAW XA60's GearInfo
+    // speed unit was verified against independent phone GPS: km/h.
+    // No yaw, steering, wheel-pulse, GNSS fix time or vehicle heading is inferred.
+    private const val MAX_GEAR_SAMPLE_GAP_MS = 5_000L
+    private var gearDistanceMetres = 0.0
+    private var gearSpeedIntervals = 0L
+    private var gearSpeedUncoveredGapMs = 0L
+    private var gearSpeedFrames = 0L
+    private var gearSpeedNonMonotonicFrames = 0L
+    private var lastDistanceAtMs = 0L
+    private var lastDistanceKmh = 0.0
+
     @Synchronized fun beginSession(epoch: Long) {
         session = epoch
         carId = null
@@ -101,15 +126,33 @@ internal object IccoaDrInputBridge {
         minSpeed = Double.POSITIVE_INFINITY; maxSpeed = Double.NEGATIVE_INFINITY
         gyroQuantized = 0L; gyroClockBackwards = 0L
         lastGyroTimestamp = null
+        gearDistanceMetres = 0.0
+        gearSpeedIntervals = 0L
+        gearSpeedUncoveredGapMs = 0L
+        gearSpeedFrames = 0L
+        gearSpeedNonMonotonicFrames = 0L
+        lastDistanceAtMs = 0L
+        lastDistanceKmh = 0.0
     }
 
     /** Cryptographic ICCOA CONTROL identity, NOT a BLE MAC or model label. */
     @Synchronized fun bindAuthenticatedReceiver(id: String) {
-        carId = id.takeIf { it.isNotBlank() && it.length <= 256 }
+        val next = id.takeIf { it.isNotBlank() && it.length <= 256 }
+        if (next != carId) {
+            // Never integrate the unauthenticated period into the new identity.
+            lastDistanceAtMs = 0L
+            lastDistanceKmh = 0.0
+        }
+        carId = next
     }
 
     /** End connection; preserve the last diagnostic counters until next epoch. */
-    @Synchronized fun endSession() { carId = null }
+    @Synchronized fun endSession() {
+        carId = null
+        lastDistanceAtMs = 0L
+        lastDistanceKmh = 0.0
+        // Preserve distance and gap evidence for a ZIP exported after disconnect.
+    }
 
     @Synchronized fun rawGps(speedFlooredMps: Long?, arrivalMonoMs: Long) {
         if (speedFlooredMps != null && speedFlooredMps in 3L..40L &&
@@ -119,8 +162,41 @@ internal object IccoaDrInputBridge {
         } else lastGpsSpeed = null
     }
 
-    /** Statistical cross-check only. Correlation does NOT qualify wheel units. */
+    /**
+     * GearInfo speed is km/h on the owner's measured FAW XA60.
+     * Integrate path length independently of yaw or EKF heading; positive
+     * magnitude works for forward/reverse without guessing gear enum values.
+     * Skip missing/out-of-order/unbounded receipt-time intervals rather than
+     * filling them with a stale speed during parking or ICCOA interruption.
+     */
     @Synchronized fun rawGear(speedRaw: Long?, gearRaw: Long?, arrivalMonoMs: Long) {
+        if (carId != null) {
+            if (speedRaw != null && speedRaw in 0L..234L && arrivalMonoMs > 0L) {
+                if (lastDistanceAtMs > 0L && arrivalMonoMs <= lastDistanceAtMs) {
+                    gearSpeedNonMonotonicFrames++
+                    return
+                }
+                if (lastDistanceAtMs > 0L) {
+                    val deltaMs = arrivalMonoMs - lastDistanceAtMs
+                    if (deltaMs <= MAX_GEAR_SAMPLE_GAP_MS) {
+                        // km/h * milliseconds / 3,600 => metres.
+                        gearDistanceMetres +=
+                            (lastDistanceKmh + speedRaw.toDouble()) * deltaMs / 7_200.0
+                        gearSpeedIntervals++
+                    } else {
+                        gearSpeedUncoveredGapMs += deltaMs
+                    }
+                }
+                lastDistanceKmh = speedRaw.toDouble()
+                lastDistanceAtMs = arrivalMonoMs
+                gearSpeedFrames++
+            } else {
+                // Never bridge across a malformed speed or absent timebase.
+                lastDistanceAtMs = 0L
+                lastDistanceKmh = 0.0
+            }
+        }
+        // Legacy OEM GPS correlation is diagnostic only and does not gate distance.
         val gps = lastGpsSpeed ?: return
         if (gearRaw != 2L || speedRaw == null || speedRaw !in 1L..200L ||
             arrivalMonoMs <= 0L || lastGpsAtMs <= 0L ||
@@ -157,7 +233,9 @@ internal object IccoaDrInputBridge {
             corr != null && corr >= 0.98 &&
             intercept != null && intercept in -1.0..5.0
         return Evidence(session, count, slope, corr, plausible,
-            gyroQuantized, gyroClockBackwards, carId != null)
+            gyroQuantized, gyroClockBackwards, carId != null,
+            gearDistanceMetres, gearSpeedIntervals, gearSpeedUncoveredGapMs,
+            gearSpeedFrames, gearSpeedNonMonotonicFrames)
     }
 
     /**
