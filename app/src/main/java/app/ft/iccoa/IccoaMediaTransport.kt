@@ -281,7 +281,8 @@ internal class IccoaMediaTransport(
                 // dimensions. Keep the chosen mode only for the current raster
                 // and socket; it must not leak to another receiver or WFD mode.
                 val geometryKey = "${video.width}x${video.height}:" +
-                    "${plan.streamWidth}x${plan.streamHeight}:${plan.preserveAspect}"
+                    "${plan.streamWidth}x${plan.streamHeight}:${plan.preserveAspect}:" +
+                    "direct=${directFramesEnabled}"
                 if (geometryKey != lastVideoGeometry) {
                     lastVideoGeometry = geometryKey
                     undimensionedSpace = IccoaInputCoordinateSpace.Mode.UNKNOWN
@@ -302,9 +303,15 @@ internal class IccoaMediaTransport(
                 // Preserve UIBC floating-point x0/y0 until the final video
                 // pixel. The previous path truncated at source->native, then
                 // again native->stream, losing precision at every stage.
+                // Direct AA owns the ENTIRE WFD raster, not the former FT
+                // composited letterbox. Using FT's FIT viewport on direct
+                // touch adds phantom bars and corrupts edge hit-testing.
+                // No device/receiver brand is consulted: only the actual
+                // active producer determines the transform.
                 val frame = app.ft.projection.VideoContentTransform(
                     plan.contentWidth, plan.contentHeight,
-                    plan.streamWidth, plan.streamHeight, plan.preserveAspect
+                    plan.streamWidth, plan.streamHeight,
+                    preserveAspect = plan.preserveAspect && !directFramesEnabled
                 )
                 val sourceW = event.optInt("width", 0).takeIf { it > 0 } ?: video.width
                 val sourceH = event.optInt("height", 0).takeIf { it > 0 } ?: video.height
