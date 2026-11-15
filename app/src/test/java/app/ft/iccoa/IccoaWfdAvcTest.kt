@@ -40,4 +40,46 @@ class IccoaWfdAvcTest {
         assertNull(IccoaWfdAvc.choose("wfd_video_formats: none", 30))
         assertNull(IccoaWfdAvc.choose("wfd_video_formats: 28 00 01 04 000000a0", 30))
     }
+    @Test fun ownerFullHdPreferenceIsAdmittedOnlyWithExplicitSinkModeAndEncoderSupport() {
+        val both = "wfd_video_formats: 28 00 01 04 000000a0 00000000 00000000 00 0000 0000 00 none none"
+        val attempt = IccoaWfdAvc.negotiate(both, 30, 1920 to 1080) { true }
+        assertEquals(1920 to 1080, attempt.selected?.let { it.width to it.height })
+        assertEquals("REQUESTED_RASTER_COMMON_CODEC", attempt.reason)
+        assertEquals(2, attempt.advertised.size)
+    }
+
+    @Test fun unsupported1080EncoderFallsBackToActuallyAdvertised720NotFakeFullHd() {
+        val both = "wfd_video_formats: 28 00 01 04 000000a0 00000000 00000000 00 0000 0000 00 none none"
+        val attempt = IccoaWfdAvc.negotiate(both, 30, 1920 to 1080) {
+            it.width == 1280 && it.height == 720
+        }
+        assertEquals("REQUESTED_RASTER_NOT_SUPPORTED_BY_SOURCE_ENCODER", attempt.reason)
+        assertEquals(1280 to 720, attempt.selected?.let { it.width to it.height })
+        assertEquals(1, attempt.selected?.level)
+    }
+
+    @Test fun sinkAdvertisesOnly720SoFullHdDirectIsNotNegotiable() {
+        val only720 = "wfd_video_formats: 28 00 01 01 00000020 00000000 00000000 00 0000 0000 00 none none"
+        val attempt = IccoaWfdAvc.negotiate(only720, 30, 1920 to 1080) { true }
+        assertEquals("REQUESTED_RASTER_NOT_ADVERTISED_BY_SINK", attempt.reason)
+        assertEquals(1280 to 720, attempt.selected?.let { it.width to it.height })
+        // The existing AA selection logic preserves the manually selected
+        // Full HD and reports composited fallback, never a false Direct PASS.
+        val plan = IccoaVideoPlan.from(IccoaVideoConfig(
+            "127.0.0.1", 2422, 1272, 30,
+            wfdAvc = attempt.selected, wfdNegotiationReason = attempt.reason
+        ))
+        val aa = IccoaAaVideoProfile.choose(plan, true, false, 1920, 1080)
+        assertFalse(aa.directStandard)
+        assertFalse(aa.applyToPrefs)
+        assertEquals(1920 to 1080, aa.width to aa.height)
+    }
+
+    @Test fun sinkDecoderHasNotProvenAnyH264CommonCodec() {
+        val only720 = "wfd_video_formats: 28 00 01 01 00000020 00000000 00000000 00 0000 0000 00 none none"
+        val attempt = IccoaWfdAvc.negotiate(only720, 30, 1920 to 1080) { false }
+        assertNull(attempt.selected)
+        assertFalse(attempt.advertised.isEmpty())
+    }
+
 }
