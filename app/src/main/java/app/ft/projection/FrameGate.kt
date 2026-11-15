@@ -46,13 +46,11 @@ class FrameGate(
     private var coord = -1
     private var transform = -1
     private val matrix = FloatArray(16)
-    private val quad = run {
-        // Letterbox without cropping or distorting the incoming presentation.
-        val scale = if (preserveAspect) minOf(width.toFloat() / inWidth, height.toFloat() / inHeight) else 0f
-        val x = if (preserveAspect) inWidth * scale / width else 1f
-        val y = if (preserveAspect) inHeight * scale / height else 1f
-        floats(-x, -y, x, -y, -x, y, x, y)
-    }
+    // DO NOT implement a second renderer-only fit formula here: the actual
+    // GLES viewport and the touch inverse must share the very same transform.
+    private val quad = floats(*VideoContentTransform(
+        inWidth, inHeight, width, height, preserveAspect
+    ).glQuad())
     private val uv = floats(0f, 0f, 1f, 0f, 0f, 1f, 1f, 1f)
     private var ready = false
     private var fresh = false
