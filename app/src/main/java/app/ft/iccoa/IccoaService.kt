@@ -225,8 +225,10 @@ class IccoaService : Service() {
             if (acceptedGear) {
                 DrPathEvidence.rawGear()
                 val observed = VehicleTelemetry.current.value
+                val gearReceiptMonoMs = android.os.SystemClock.elapsedRealtime()
                 IccoaDrInputBridge.rawGear(observed?.gearSpeedRaw, observed?.gearRaw,
-                    android.os.SystemClock.elapsedRealtime())
+                    gearReceiptMonoMs)
+                IccoaDrSourceGapEvidence.onGear(observed?.gearSpeedRaw, gearReceiptMonoMs)
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
                     VehicleTraceRecorder.gear(
@@ -257,8 +259,14 @@ class IccoaService : Service() {
             // Original raw device timestamp retained in deviceTimestampRaw.
             if (frameReceivedAtMs != null) {
                 DrPathEvidence.rawGps(receivedAtMs)
+                val gpsReceiptMonoMs = android.os.SystemClock.elapsedRealtime()
                 IccoaDrInputBridge.rawGps(fix.speedRaw.takeIf { fix.speedPresent },
-                    android.os.SystemClock.elapsedRealtime())
+                    gpsReceiptMonoMs)
+                IccoaDrSourceGapEvidence.onGps(gpsReceiptMonoMs)?.let { gap ->
+                    DiagLog.w("ICCOA", "ICCOA_GPS_SOURCE_GAP kind=${gap.kind} " +
+                        "durationMs=${gap.elapsedMs} rawMovingGearFrames=${gap.rawMovingGearFrames} " +
+                        "ACTUAL_GNSS_LOSS_UNPROVEN")
+                }
                 VehicleTelemetry.publish(VehicleLocation(
                 source = "ICCOA", receivedAtMs = receivedAtMs,
                 positionAtMs = frameReceivedAtMs,
@@ -471,6 +479,7 @@ class IccoaService : Service() {
         DiagLog.i("ICCOA", "Quick eligibility remembered=$known manuallySelected=$ownerSelected forcedNormal=$forceCurrentPin eligible=$canTryQuick")
         endConnection()
         DrPathEvidence.beginSession()
+        IccoaDrSourceGapEvidence.beginSession()
         IccoaDrInputBridge.beginSession(DrPathEvidence.sessionId())
         // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
         // as connecting BEFORE stopping it: otherwise that callback can
