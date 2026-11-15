@@ -55,7 +55,9 @@ class IccoaWfdAvcTest {
         }
         assertEquals("REQUESTED_RASTER_NOT_SUPPORTED_BY_SOURCE_ENCODER", attempt.reason)
         assertEquals(1280 to 720, attempt.selected?.let { it.width to it.height })
-        assertEquals(1, attempt.selected?.level)
+        // M3 explicitly offered level bitmap 0x04 (AVC Level 4.0). Even the
+        // 720p fallback must not invent unadvertised AVC Level 3.1.
+        assertEquals(4, attempt.selected?.level)
     }
 
     @Test fun sinkAdvertisesOnly720SoFullHdDirectIsNotNegotiable() {
