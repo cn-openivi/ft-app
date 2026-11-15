@@ -53,6 +53,8 @@ internal object CarUiViewport {
 
         // Android requires a logical densityDpi for its VirtualDisplay API.
         // The reference is resolution-independent and does not touch WFD/AA codecs.
-        return (adjusted * originalScale).roundToInt().coerceIn(80, 1280)
+        // Preserve six distinct selectable zoom levels even at 720p. The
+        // previous 80dpi floor collapsed 70% and 85% presets into one size.
+        return (adjusted * originalScale).roundToInt().coerceIn(40, 1280)
     }
 }
