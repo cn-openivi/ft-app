@@ -83,7 +83,9 @@ internal class IccoaDirectVideo(
                     fallback("Android Auto video session ended")
                 firstKeyAtMs == 0L && awaitingResumeRtpIdr &&
                     IccoaDirectRecoveryPolicy.postPauseExpired(now - activatedAtMs) ->
-                    fallback("AA IDR not written to RTP after OEM PAUSE/RESUME despite retries")
+                    fallback(if (resumeIdrReceived)
+                        "AA post-PAUSE IDR arrived but RTP did not write it; normal video emergency recovery"
+                    else "AA did not send a post-PAUSE IDR after bounded requests; normal video emergency recovery")
                 firstKeyAtMs == 0L && !awaitingResumeRtpIdr &&
                     now - activatedAtMs >= START_TIMEOUT_MS ->
                     fallback("Initial AA H.264 IDR was not written to RTP")
