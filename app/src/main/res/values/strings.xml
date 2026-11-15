@@ -652,7 +652,7 @@
     <string name="mirror_landscape_title">Lock mirrored apps to landscape</string>
     <string name="mirror_landscape_about">Optional. Phone launcher remains portrait. Requires Modify system settings and FT accessibility service.</string>
     <string name="iccoa_touch_welcome_title">Welcome! Check your car touchscreen</string>
-    <string name="iccoa_touch_welcome_body">Tap the green OK circle. If it misses, try again. Four-point calibration is optional and can be started from the phone.</string>
+    <string name="iccoa_touch_welcome_body">Tap the large green OK circle, then the green marker on the right. Two misses start four-point calibration on the car.</string>
     <string name="iccoa_touch_welcome_button">OK</string>
     <string name="iccoa_touch_welcome_mismatch">The touch position does not match. Let’s calibrate the screen. Touch the green circle: point %1$d of 4.</string>
     <string name="ft186_bt_unknown_device">Unknown device</string>
@@ -684,5 +684,7 @@
     <string name="ft_zoom_large">Large</string>
     <string name="ft_zoom_very_large">Very large</string>
     <string name="ft_zoom_maximum">Maximum</string>
-    <string name="iccoa_touch_center_failed">Coordinate check FAILED. The touch was outside OK. FT will not mark it verified or force calibration. Please include this diagnostic in the field report.</string>
+    <string name="iccoa_touch_edge_verify">Center matched. Now touch the green marker on the right to check screen alignment.</string>
+    <string name="iccoa_touch_edge_failed">Off-center touch mismatch. Try the right marker again; another miss starts calibration.</string>
+    <string name="iccoa_touch_center_failed">Center check failed. Tap OK again; another miss opens four-point calibration.</string>
 </resources>
