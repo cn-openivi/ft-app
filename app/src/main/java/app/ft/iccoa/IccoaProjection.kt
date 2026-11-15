@@ -89,6 +89,7 @@ class IccoaProjection(
     private var pendingLaunch: Pair<Intent, String>? = null
     private var touchFt = false
     private var touchBeside = false
+    private var ignoreLetterboxGesture = false
     private val mirrorTouches = MirrorTouchSequence()
     private val aaTouchGesture = AaTouchGestureViewport()
     private var mirrorTouchGestureMap: MirrorTouchMap? = null
