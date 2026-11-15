@@ -257,7 +257,8 @@ internal class IccoaMediaTransport(
                 val plan = IccoaVideoPlan.from(video)
                 if (nativeTouch.action == CarTouch.DOWN &&
                     app.ft.projection.IccoaTouchWelcome.state.value.phase ==
-                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
+                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK &&
+                    !app.ft.projection.IccoaTouchWelcome.state.value.centerChecked) {
                     // This UI is a deliberate CENTER-only test. Report source
                     // coordinate units without recording arbitrary user taps,
                     // keyboard input, touched app or absolute touch positions.
@@ -310,7 +311,8 @@ internal class IccoaMediaTransport(
                 if (undimensionedSpace == IccoaInputCoordinateSpace.Mode.UNKNOWN &&
                     nativeTouch.action == CarTouch.DOWN &&
                     app.ft.projection.IccoaTouchWelcome.state.value.phase ==
-                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK) {
+                    app.ft.projection.IccoaTouchWelcome.Phase.CHECK &&
+                    !app.ft.projection.IccoaTouchWelcome.state.value.centerChecked) {
                     undimensionedSpace = IccoaInputCoordinateSpace.inferRawCenter(
                         event.optDouble("x0", Double.NaN),
                         event.optDouble("y0", Double.NaN),
