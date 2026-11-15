@@ -37,6 +37,9 @@ internal class IccoaDirectVideo(
     private var frameAtMs = 0L
     private var activatedAtMs = 0L
     private var lastKeyRequestMs = 0L
+    // Never restart FT's encoder on a transient Toyota PAUSE.
+    private var awaitingResumeRtpIdr = false
+    private var resumeIdrReceived = false
     @Volatile private var receiverPaused = false
     private var observedGopDrops = 0L
     private var gopLostAtMs = 0L
@@ -65,16 +68,37 @@ internal class IccoaDirectVideo(
             }
             if (firstKeyAtMs == 0L && output.writtenDirectKeyFrames() > keyWritesAtActivate) {
                 firstKeyAtMs = now
-                DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
+                if (awaitingResumeRtpIdr) {
+                    DiagLog.i("ICCOA", "DIRECT_VIDEO_POST_PAUSE_RECOVERED " +
+                        "elapsedMs=${now - activatedAtMs} idrReceived=$resumeIdrReceived " +
+                        "rtpKeyWrites=${output.writtenDirectKeyFrames()}")
+                    awaitingResumeRtpIdr = false
+                    resumeIdrReceived = false
+                } else {
+                    DiagLog.i("ICCOA", "DIRECT_VIDEO first AA key frame actually written to RTP")
+                }
             }
             when {
                 source?.let { !sourceValid(it) } == true ->
                     fallback("Android Auto video session ended")
-                firstKeyAtMs == 0L && now - activatedAtMs >= START_TIMEOUT_MS ->
+                firstKeyAtMs == 0L && awaitingResumeRtpIdr &&
+                    IccoaDirectRecoveryPolicy.postPauseExpired(now - activatedAtMs) ->
+                    fallback("AA IDR not written to RTP after OEM PAUSE/RESUME despite retries")
+                firstKeyAtMs == 0L && !awaitingResumeRtpIdr &&
+                    now - activatedAtMs >= START_TIMEOUT_MS ->
                     fallback("Initial AA H.264 IDR was not written to RTP")
                 gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RECOVERY_TIMEOUT_MS ->
                     fallback("Direct RTP GOP did not recover with an IDR in ${GOP_RECOVERY_TIMEOUT_MS}ms")
                 else -> {
+                    // Post-PAUSE is not a brand-new AA session. Re-request the
+                    // true AA keyframe before enabling any second encoder.
+                    if (awaitingResumeRtpIdr && firstKeyAtMs == 0L &&
+                        IccoaDirectRecoveryPolicy.shouldRetryPostPause(
+                            now - activatedAtMs, now - lastKeyRequestMs)) {
+                        requestKeyframe()
+                        DiagLog.i("ICCOA", "DIRECT_VIDEO_POST_PAUSE_IDR_RETRY " +
+                            "elapsedMs=${now - activatedAtMs} idrReceived=$resumeIdrReceived")
+                    }
                     // AA can keep emitting P frames even while all of them are
                     // rejected by the RTP queue. Input activity is not RTP liveness.
                     if (gopLostAtMs > 0L && now - gopLostAtMs >= GOP_RETRY_AFTER_MS &&
@@ -146,6 +170,10 @@ internal class IccoaDirectVideo(
         val csd = compatibleConfig ?: return false
         val key = IccoaDirectAvc.isIdr(frame)
         if (active) {
+            if (awaitingResumeRtpIdr && key && !resumeIdrReceived) {
+                resumeIdrReceived = true
+                DiagLog.i("ICCOA", "DIRECT_VIDEO_POST_PAUSE_IDR_RECEIVED awaiting_RTP=true")
+            }
             // Bounded enqueue never blocks AA AV_MEDIA_ACK on an RTP write.
             val pts = synchronized(clock) { clock.next(timestamp) }
             output.directFrame(frame, key, pts)
@@ -187,6 +215,8 @@ internal class IccoaDirectVideo(
         observedGopDrops = output.directGopDropCount()
         gopLostAtMs = 0L
         receiverPaused = false
+        awaitingResumeRtpIdr = false
+        resumeIdrReceived = false
         keyWritesAtActivate = output.writtenDirectKeyFrames()
         frameAtMs = 0L
         activatedAtMs = SystemClock.elapsedRealtime()
@@ -247,9 +277,13 @@ internal class IccoaDirectVideo(
             keyWritesAtActivate = output.writtenDirectKeyFrames()
             firstKeyAtMs = 0L
             frameAtMs = 0L
+            awaitingResumeRtpIdr = true
+            resumeIdrReceived = false
             activatedAtMs = SystemClock.elapsedRealtime()
             lastKeyRequestMs = 0L
-            DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true")
+            DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true " +
+                "boundedWaitMs=${IccoaDirectRecoveryPolicy.POST_PAUSE_MAX_MS} " +
+                "FT_encoder_stays_off=true")
         }
     }
 
@@ -269,6 +303,8 @@ internal class IccoaDirectVideo(
         pending = false
         active = false
         receiverPaused = false
+        awaitingResumeRtpIdr = false
+        resumeIdrReceived = false
         gopLostAtMs = 0L
         main.removeCallbacks(watchdog)
         val beforeRecovery = output.writtenCompositedFrames()
@@ -313,6 +349,8 @@ internal class IccoaDirectVideo(
         active = false
         pending = false
         receiverPaused = false
+        awaitingResumeRtpIdr = false
+        resumeIdrReceived = false
         gopLostAtMs = 0L
         main.removeCallbacks(watchdog)
         if (AaH264Tap.listener === this) AaH264Tap.listener = null
