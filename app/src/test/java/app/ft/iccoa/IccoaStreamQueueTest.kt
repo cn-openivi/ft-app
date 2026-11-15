@@ -118,6 +118,25 @@ class IccoaStreamQueueTest {
         assertFalse(queue.current(key))
     }
 
+    @Test fun staleInFlightDirectIdrCannotCertifyPostPauseRtpRecovery() {
+        val queue = IccoaStreamQueue()
+        val idr = byteArrayOf(0, 0, 0, 1, 0x65)
+        assertTrue(queue.resume(100))
+        queue.video(idr, true, 101, direct = true)
+        // Sender has already polled this IDR; its socket write is still pending.
+        val inFlightBeforePause = queue.poll()!!
+        assertTrue(queue.isCurrentDirectIdr(inFlightBeforePause))
+        queue.pause()
+        assertTrue(queue.resume(200))
+        // Even when the old write completes after PLAY, it is not the new GOP.
+        assertFalse(queue.isCurrentDirectIdr(inFlightBeforePause))
+        queue.video(idr, true, 201, direct = true)
+        val postPause = queue.poll()!!
+        assertTrue(queue.isCurrentDirectIdr(postPause))
+        queue.pause()
+        assertFalse(queue.isCurrentDirectIdr(postPause))
+    }
+
     @Test fun retainedFirstIdrHandoffSeedsTheNewEpochBeforePFrames() {
         val queue = IccoaStreamQueue()
         val idr = byteArrayOf(0, 0, 0, 1, 0x65)
