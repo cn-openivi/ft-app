@@ -812,6 +812,9 @@ class IccoaService : Service() {
     private fun endConnection() {
         IccoaDrInputBridge.endSession()
         FtDrRuntime.reset()
+        // Freeze a still-open OEM GPS blackout at this exact disconnect
+        // so the later field ZIP does not count offline phone time as loss.
+        IccoaDrSourceGapEvidence.endSession(android.os.SystemClock.elapsedRealtime())
         DrPathEvidence.endSession()
         IccoaTouchWelcome.cancel()
         IccoaCalibrationScope.clear()
