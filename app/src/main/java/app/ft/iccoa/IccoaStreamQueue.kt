@@ -94,4 +94,8 @@ internal class IccoaStreamQueue {
         }
     }
     @Synchronized fun current(frame: Frame): Boolean = !paused && frame.epoch == epoch && frame.pts >= minimumPts
+
+    /** Certify a Direct RTP key only when its write belongs to the current GOP epoch. */
+    @Synchronized fun isCurrentDirectIdr(frame: Frame): Boolean =
+        frame.video && frame.key && frame.direct && current(frame)
 }
