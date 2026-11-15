@@ -41,7 +41,7 @@ internal object IccoaDrSourceGapEvidence {
             "gapWindow=${if (snapshotEndedSession) "FROZEN_AT_DISCONNECT" else "ACTIVE_SNAPSHOT"}",
             "postFixSilenceIsGpsReceiptLossNotSatelliteProof=true",
             "oemGpsReceivedClock=PHONE_MONOTONIC_RECEIPT_NOT_FIX_CLOCK",
-            "oemGearSpeedUnit=UNVERIFIED",
+            "oemGearSpeedUnit=KMH_FAWRAV4_FIELD_CONFIRMED",\n            "oemGearSpeedProvenance=VEHICLE_GEAR_INFO_NOT_WHEEL_ODOMETER",
             "gnssActuallyLost=UNKNOWN",
             "oemDeadReckoningProven=NO",
             "ftVerifiedEkfInputs=NOT_PRODUCED_BY_THIS_DIAGNOSTIC"
