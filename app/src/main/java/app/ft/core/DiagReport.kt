@@ -51,8 +51,8 @@ object DiagReport {
                 .reportLine())
             // Distinguish GPS FIRST-acquisition after OEM GearInfo from a
             // later inter-GPS receipt gap. Receipt is not real GNSS fix time.
-            put("dr-source-gaps.txt", app.ft.iccoa.IccoaDrSourceGapEvidence.snapshot()
-                .reportLine())
+            put("dr-source-gaps.txt", app.ft.iccoa.IccoaDrSourceGapEvidence.snapshot(
+                    android.os.SystemClock.elapsedRealtime()).reportLine())
             put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
                 "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))
