@@ -4,17 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SmartVideoPacerTest {
-    @Test fun longDriveKeepsThirtyFpsWhileNewNavigationFramesArrive() {
+    @Test fun longDriveCruisesThenWakesOnFirstTouch() {
         var ms = 1_000L
         val p = SmartVideoPacer(true) { ms }
         p.setRequestedFps(30)
         p.onFreshBuffer()
         assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
-        repeat(10) {
-            ms += SmartVideoPacer.CRUISE_AFTER_MS
-            p.onFreshBuffer() // map/video is active even with no touch
-            assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
-        }
+        ms += SmartVideoPacer.CRUISE_AFTER_MS
+        p.onFreshBuffer() // moving navigation map, not a static image
+        assertEquals(SmartVideoPacer.State(15, SmartVideoPacer.Mode.CRUISE), p.state())
         p.onInput()
         assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
     }
@@ -25,25 +23,13 @@ class SmartVideoPacerTest {
         p.setRequestedFps(30)
         ms += 45_000L
         p.onFreshBuffer()
-        assertEquals(30, p.state().fps)
+        assertEquals(15, p.state().fps)
         ms += 4_999L
-        assertEquals(30, p.state().fps)
+        assertEquals(15, p.state().fps)
         ms++
         assertEquals(SmartVideoPacer.State(5, SmartVideoPacer.Mode.STATIC), p.state())
         p.onFreshBuffer()
-        assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
-    }
-
-    @Test fun oldCruiseRateOnlyAppliesBeforeAnyNewVideoBuffer() {
-        var ms = 1_000L
-        val p = SmartVideoPacer(true) { ms }
-        p.setRequestedFps(30)
-        ms += SmartVideoPacer.CRUISE_AFTER_MS
-        assertEquals(SmartVideoPacer.State(15, SmartVideoPacer.Mode.CRUISE), p.state())
-        p.onFreshBuffer()
-        assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
-        p.setThermalCeiling(24)
-        assertEquals(SmartVideoPacer.State(24, SmartVideoPacer.Mode.THERMAL), p.state())
+        assertEquals(15, p.state().fps)
     }
 
     @Test fun disabledModePreservesNegotiatedFpsAndThermalLimit() {
