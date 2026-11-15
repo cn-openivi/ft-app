@@ -27,7 +27,8 @@ class CarUiViewportTest {
     @Test fun portraitAndInvalidInputKeepSafeBounds() {
         assertEquals(90, CarUiViewport.logicalDpi(720, 1280))
         assertEquals(135, CarUiViewport.logicalDpi(1080, 1920))
-        assertEquals(80, CarUiViewport.logicalDpi(800, 480))
+        // Relative physical sizing remains proportional at 480p as well.
+        assertEquals(60, CarUiViewport.logicalDpi(800, 480))
         assertEquals(160, CarUiViewport.logicalDpi(0, 0, 160))
         assertEquals(90, CarUiViewport.logicalDpi(1280, 720, 0))
         assertTrue(CarUiViewport.logicalDpi(7680, 4320, 320) <= 1280)
