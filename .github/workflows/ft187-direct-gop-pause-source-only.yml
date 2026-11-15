@@ -34,7 +34,7 @@ jobs:
           test "$GITHUB_REF_NAME" = "openivi/ft187-direct-gop-pause-20261114"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
-          grep -Fq 'versionCode = 186' app/build.gradle.kts
+          grep -Fq 'versionCode = 187' app/build.gradle.kts
           grep -Fq 'DIRECT_VIDEO_GOP_RECOVERED' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
           grep -Fq 'DIRECT_VIDEO_RECEIVER_RESUMED' app/src/main/java/app/ft/iccoa/IccoaDirectVideo.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaStreamQueueTest.kt
