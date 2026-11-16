@@ -10,7 +10,7 @@ package app.ft.core
  */
 internal object SystemLogcatSummary {
     private val header = Regex(
-        """^(\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3})\\s+(\\d+)\\s+(\\d+)\\s+([VDIWEF])\\s+([A-Za-z0-9_.-]+)\\s*:\\s*(.*)$"""
+        """^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+(\d+)\s+(\d+)\s+([VDIWEF])\s+([A-Za-z0-9_.-]+)\s*:\s*(.*)$"""
     )
     private val approvedTags = setOf(
         "MediaCodec", "CCodec", "ACodec", "Codec2Client", "AudioRecord",
@@ -48,9 +48,9 @@ internal object SystemLogcatSummary {
             events.addLast(safe)
         }
         return buildString {
-            append("SYSTEM_LOGCAT_METADATA_ONLY version=1 no_raw_messages=true no_coordinates=true\\n")
-            append("matched_events=$seen retained_events=${events.size} cap=$MAX_LINES\\n")
-            for (line in events) append(line).append('\\n')
+            append("SYSTEM_LOGCAT_METADATA_ONLY version=1 no_raw_messages=true no_coordinates=true\n")
+            append("matched_events=$seen retained_events=${events.size} cap=$MAX_LINES\n")
+            for (line in events) append(line).append('\n')
         }
     }
 }
