@@ -32,3 +32,15 @@
 Для **source**: терминальный exact SHA unsigned compile+JUnit PASS.
 Для **field**: приложение принимает настоящий OEM GPS во время обычного движения; при реальном blackout CONTROL11 отправляется не более раза, пустой OEM (0,0) не закрывает его, возвращённые координаты вновь уходят в AA при подписке. Если blackout не случился, считать recovery **NOT_TESTED**, а не PASS.
 Отдельно не объявлять PASS для OEM DR/GNSS HAL, руль 87/88, Direct, 1080p, BT или касаний без их собственных результатов.
+
+## Разобранный исходный эпизод 15.11.2026 — не повторять эту диагностику
+
+В исходном ZIP `FT-report-samsung-SM-S916B-20261115-195226.zip`, SHA256 `3b9b4151f5fa00a432801b055c4864fc0de9dfe518a0dec1bd311b20d0b4b9df`, `ft-log.txt` 873371 байт:
+
+- `18:29:54.550` OEM `CONTROL11 active=true`; до отключения `18:40:30` **нет `active=false`**. FT не отключил GPS sensor producer командой Control11 в этот blackout.
+- Последний полученный GPS около `18:39:27`; `positionAgeMs` растёт от `3089` в 18:39:30 до `55735` в 18:40:23. Старый GPS в VehicleTelemetry — кэш для интерфейса, не новый fix.
+- `GearInfo count=512 valid=510` (18:39:40), RTP video `fps=29` (18:40:24), media audio продолжал работать. Общий ICCOA transport **не упал**.
+- AA при shutdown `locationRequests=1 eventsSubmitted=554 socketWritesFlushed=554`; телефонный AA transport записал все 554 переданных location events этой сессии. Это не доказательство использования картами, но локализует *этот* длительный обрыв ДО FT→AA socket.
+- Неразрешённая развилка: HU `gps` provider, активная подписка `CarLinkSensorMgr`, OEM ICCOA `category=2 method=1`. На исходных телефоном логах уже нельзя доказать, какой из трёх остановился.
+
+FT189 теперь различает `controlQueueSucceeded`, `controlSocketWritten`, `gpsReceiptsAfterWrittenControl` как ТРИ РАЗНЫХ состояния. Queue=true не означает socket.flush; socket.flush не означает HU ACK; последующий реальный GPS — корреляция, не доказательство причинности. Если `CONTROL11(true)` явно записан в сокет, а GPS не возвращается, прекращаем считать reassert restart-исправлением. Никаких OFF→ON экспериментов без независимого OEM обоснования.
