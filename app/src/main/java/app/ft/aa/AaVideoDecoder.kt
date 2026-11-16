@@ -32,6 +32,18 @@ object AaVideoSink {
     fun frameSize(width: Int, height: Int) {
         _frame.value = width to height
     }
+
+    // TextureView may destroy its SurfaceTexture before StateFlow collectors run.
+    // Let the active decoder finish its in-flight render and retire the codec
+    // BEFORE the view releases that SurfaceTexture; no blocking on the UI thread.
+    @Volatile private var activeDecoder: AaVideoDecoder? = null
+    fun bind(decoder: AaVideoDecoder?) { activeDecoder = decoder }
+    fun retire(s: Surface?, completed: () -> Unit) {
+        if (s == null) { completed(); return }
+        _surface.compareAndSet(s, null)
+        val decoder = activeDecoder
+        if (decoder == null) completed() else decoder.retireSurface(s, completed)
+    }
 }
 
 class AaVideoDecoder(private val width: Int, private val height: Int) {
@@ -82,7 +94,15 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
             val c = codec
             if (running.get() && c != null) {
                 if (!mediaTek) {
-                    val moved = runCatching { c.setOutputSurface(s) }
+                    // Both setOutputSurface and releaseOutputBuffer act on the
+                    // codec output target; serialize them with the same lock.
+                    outputLock.lock()
+                    val moved = try {
+                        if (s.isValid) runCatching { c.setOutputSurface(s) }
+                        else Result.failure(IllegalStateException("new Surface is invalid"))
+                    } finally {
+                        outputLock.unlock()
+                    }
                     if (moved.isSuccess) {
                         DiagLog.i(tag, "decoder moved onto the new car screen surface")
                         return
@@ -117,7 +137,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                     return
                 }
             }
-            if (mediaTek && surface?.isValid != true) {
+            if (surface?.isValid != true) {
                 DiagLog.w(tag, "the car screen went away under the decoder, making a fresh one next frame")
                 stopLocked()
                 return
@@ -129,7 +149,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
     private fun startLocked() {
         val s = surface ?: return
         val csd = config ?: return
-        if (mediaTek && !s.isValid) {
+        if (!s.isValid) {
             DiagLog.w(tag, "not starting the decoder, the car screen is not ready")
             return
         }
@@ -229,8 +249,13 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                         outputLock.lock()
                     }
                     try {
-                        c.releaseOutputBuffer(idx, true)
-                        _frames.value = _frames.value + 1
+                        // The texture may have become invalid just before the
+                        // callback; dropping this output is safer than rendering
+                        // to a dead Surface and triggering CodecException.
+                        val render = running.get() && generation == mine &&
+                            surface?.isValid == true
+                        c.releaseOutputBuffer(idx, render)
+                        if (render) _frames.value = _frames.value + 1
                     } finally {
                         outputLock.unlock()
                     }
@@ -273,10 +298,26 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         AaVideoSink.frameSize(w, h)
     }
 
+    /**
+     * Called synchronously from TextureView destruction. The caller retains
+     * ownership of the SurfaceTexture until completed() is invoked asynchronously
+     * after all in-flight output rendering and codec teardown have finished.
+     */
+    fun retireSurface(retiring: Surface, completed: () -> Unit) {
+        val pending = synchronized(lock) {
+            if (surface !== retiring) null
+            else {
+                surface = null
+                stopLocked(onRetired = completed)
+            }
+        }
+        if (pending == null) completed()
+    }
+
     // Caller holds the input monitor. Invalidate immediately; retire outside it.
     // Never execute MediaCodec.stop/release synchronously under the AA input lock,
     // even when outputLock is uncontended: hardware stop itself can hang.
-    private fun stopLocked(): Thread? {
+    private fun stopLocked(onRetired: (() -> Unit)? = null): Thread? {
         recoveryGate.reset()
         val old = codec
         generation++
@@ -291,6 +332,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                 runCatching { old.release() }
             } finally {
                 outputLock.unlock()
+                runCatching { onRetired?.invoke() }
             }
         }, "FT-AaRetire-$generation").apply {
             isDaemon = true
