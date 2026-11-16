@@ -12,6 +12,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class AaVideoDecoderTest {
+    private fun validSurface(): Surface = mock(Surface::class.java).also {
+        `when`(it.isValid).thenReturn(true)
+    }
+
     @Test fun slowDecoderInputCannotWaitTwentyMillisecondsOnAaDispatchThread() {
         val codec = mock(MediaCodec::class.java)
         val format = mock(MediaFormat::class.java)
@@ -32,7 +36,7 @@ class AaVideoDecoderTest {
                 }.thenReturn(codec)
                 val decoder = AaVideoDecoder(1280, 720)
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(0, 0, 1, 103))
                     var requests = 0
                     decoder.askForAFreshPicture = { requests++ }
@@ -75,7 +79,7 @@ class AaVideoDecoderTest {
                 }.thenReturn(codec)
                 val decoder = AaVideoDecoder(1280, 720)
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(0, 0, 1, 103))
                     val frame = byteArrayOf(0, 0, 1, 65, 7)
                     decoder.onFrame(frame, 1234L)
@@ -109,7 +113,7 @@ class AaVideoDecoderTest {
                 codecs.`when`<MediaCodec> { MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC) }.thenReturn(codec)
                 val decoder = AaVideoDecoder(1920, 720)
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue(entered.await(5, TimeUnit.SECONDS))
                     decoder.reset()
@@ -119,7 +123,7 @@ class AaVideoDecoderTest {
                     assertFalse(drainThread.get().isAlive)
                     assertEquals(1920 to 720, AaVideoSink.frame.value)
                     verify(codec, never()).getOutputFormat()
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     codecs.verify({ MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC) }, times(1))
                     assertNull(decoder.askForAFreshPicture)
                 } finally {
@@ -127,6 +131,48 @@ class AaVideoDecoderTest {
                     drainThread.get()?.join(5000)
                     decoder.reset()
                 }
+            }
+        }
+    }
+
+    @Test fun retiringTextureWaitsForInFlightOutputBeforeReleasingSurface() {
+        val rendering = CountDownLatch(1)
+        val allowOutput = CountDownLatch(1)
+        val retired = CountDownLatch(1)
+        val codec = mock(MediaCodec::class.java)
+        val format = mock(MediaFormat::class.java)
+        val surface = validSurface()
+        `when`(codec.dequeueOutputBuffer(any(MediaCodec.BufferInfo::class.java), anyLong()))
+            .thenReturn(0, MediaCodec.INFO_TRY_AGAIN_LATER)
+        doAnswer {
+            rendering.countDown()
+            check(allowOutput.await(5, TimeUnit.SECONDS))
+            null
+        }.`when`(codec).releaseOutputBuffer(0, true)
+        mockStatic(MediaFormat::class.java).use { formats ->
+            formats.`when`<MediaFormat> {
+                MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720)
+            }.thenReturn(format)
+            mockStatic(MediaCodec::class.java).use { codecs ->
+                codecs.`when`<MediaCodec> {
+                    MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+                }.thenReturn(codec)
+                val decoder = AaVideoDecoder(1280, 720)
+                try {
+                    decoder.setSurface(surface)
+                    decoder.onConfig(byteArrayOf(1, 2, 3))
+                    assertTrue(rendering.await(5, TimeUnit.SECONDS))
+                    decoder.retireSurface(surface) { retired.countDown() }
+                    assertFalse("texture freed while MediaCodec was still rendering",
+                        retired.await(50, TimeUnit.MILLISECONDS))
+                } finally {
+                    allowOutput.countDown()
+                    assertTrue("surface retirement never completed",
+                        retired.await(5, TimeUnit.SECONDS))
+                    decoder.reset()
+                }
+                verify(codec, times(1)).stop()
+                verify(codec, times(1)).release()
             }
         }
     }
@@ -156,7 +202,7 @@ class AaVideoDecoderTest {
                 val decoder = AaVideoDecoder(1280, 720)
                 var stopper: Thread? = null
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue("drain did not reach releaseOutputBuffer", releaseEntered.await(5, TimeUnit.SECONDS))
                     stopper = Thread {
@@ -218,7 +264,7 @@ class AaVideoDecoderTest {
                     }
                 }
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue("output render never started", rendering.await(5, TimeUnit.SECONDS))
                     input.start()
@@ -273,7 +319,7 @@ class AaVideoDecoderTest {
                     }
                 }
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue("render did not begin", rendering.await(5, TimeUnit.SECONDS))
                     resetThread.start()
@@ -361,7 +407,7 @@ class AaVideoDecoderTest {
                     }
                 }
                 try {
-                    decoder.setSurface(mock(Surface::class.java))
+                    decoder.setSurface(validSurface())
                     decoder.onConfig(byteArrayOf(1, 2, 3))
                     assertTrue("failed drain did not reach codec.stop", stopEntered.await(5, TimeUnit.SECONDS))
                     input.start()
