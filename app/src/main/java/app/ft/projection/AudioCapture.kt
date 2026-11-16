@@ -16,7 +16,10 @@ class AudioCapture internal constructor(
     constructor(onPcm: (ByteArray) -> Unit) : this(::buildRecord, onPcm)
 
     private val tag = "Audio"
-    private class Capture(val record: AudioRecord) {
+    private class Capture(
+        val record: AudioRecord, val projection: MediaProjection,
+        val recoveryAttempt: Int
+    ) {
         private val released = AtomicBoolean(false)
         fun close() {
             if (!released.compareAndSet(false, true)) return
@@ -25,6 +28,8 @@ class AudioCapture internal constructor(
         }
     }
     @Volatile private var capture: Capture? = null
+    // A stopped/replaced session must never be resurrected by an old read error.
+    private var captureEpoch = 0L
     val active: Boolean get() = capture != null
     @Volatile var startedAt = 0L; private set
     @Volatile var lastLoudAt = 0L; private set
@@ -32,16 +37,22 @@ class AudioCapture internal constructor(
     @Synchronized
     fun start(projection: MediaProjection): Boolean {
         stop()
+        return startCapture(projection, recoveryAttempt = 0)
+    }
+
+    // Caller holds the ownership monitor. Recovery starts only in the SAME
+    // MediaProjection epoch and only once for AudioRecord.ERROR_BAD_VALUE (-2).
+    private fun startCapture(projection: MediaProjection, recoveryAttempt: Int): Boolean {
         var owner: Capture? = null
         return try {
-            val next = Capture(createRecord(projection))
+            val next = Capture(createRecord(projection), projection, recoveryAttempt)
             owner = next
             next.record.startRecording()
             startedAt = android.os.SystemClock.elapsedRealtime()
             lastLoudAt = startedAt
             capture = next
             Thread { read(next) }.apply { isDaemon = true; start() }
-            DiagLog.i(tag, "audio capture started 48000/2/16")
+            DiagLog.i(tag, "audio capture started 48000/2/16 recoveryAttempt=$recoveryAttempt")
             true
         } catch (t: Throwable) {
             if (capture === owner) capture = null
@@ -52,6 +63,7 @@ class AudioCapture internal constructor(
     }
 
     private fun read(owner: Capture) {
+        var retryBadValueOnce = false
         try {
             val buf = ByteArray(3840)
             var blocks = 0L
@@ -59,7 +71,12 @@ class AudioCapture internal constructor(
             while (capture === owner) {
                 val n = owner.record.read(buf, 0, buf.size)
                 if (n < 0) {
+                    // A stopped old reader can legitimately return a negative
+                    // value; never report it as a live failure or restart it.
+                    if (capture !== owner) break
                     DiagLog.w(tag, "audio capture read failed: $n")
+                    retryBadValueOnce = n == AudioRecord.ERROR_BAD_VALUE &&
+                        owner.recoveryAttempt == 0
                     break
                 }
                 // A zero-byte native read can return immediately. Bound retries
@@ -93,13 +110,28 @@ class AudioCapture internal constructor(
         } catch (t: Exception) {
             DiagLog.e(tag, "audio capture read failed", t)
         } finally {
-            synchronized(this) { if (capture === owner) capture = null }
+            val retryEpoch = synchronized(this) {
+                if (capture === owner) {
+                    capture = null
+                    if (retryBadValueOnce) captureEpoch else null
+                } else null
+            }
             owner.close()
+            if (retryEpoch != null) {
+                synchronized(this) {
+                    if (capture == null && captureEpoch == retryEpoch) {
+                        DiagLog.w(tag, "AudioRecord -2 while active; one bounded capture restart")
+                        startCapture(owner.projection, recoveryAttempt = 1)
+                    }
+                }
+            }
         }
     }
 
     @Synchronized
     fun stop() {
+        // Invalidate even a reader already in its cleanup gap.
+        captureEpoch++
         val previous = capture ?: return
         capture = null
         previous.close()
