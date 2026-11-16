@@ -182,6 +182,9 @@ class IccoaService : Service() {
     private val audioPlayerState = IccoaAudioPlayerState()
     private val audioStateRetry = Runnable { flushAudioState() }
     private val sensorLiveness = IccoaSensorSessionLiveness()
+    // FT189: a single event-driven OEM Control11 re-arm attempt per moving
+    // car-GPS receipt blackout; never a PHONE fallback or fake DR position.
+    private val gpsActivationRecovery = IccoaGpsActivationRecovery()
     private var lastCarGps: IccoaGpsFix? = null
     private fun onSensorMessage(method: Int, body: ByteArray) {
         if (method == IccoaInertialWire.GYRO_METHOD || method == IccoaInertialWire.ACCEL_METHOD) {
@@ -229,6 +232,23 @@ class IccoaService : Service() {
                 IccoaDrInputBridge.rawGear(observed?.gearSpeedRaw, observed?.gearRaw,
                     gearReceiptMonoMs)
                 IccoaDrSourceGapEvidence.onGear(observed?.gearSpeedRaw, gearReceiptMonoMs)
+                // Only the already-authenticated, active OEM sensor lane can
+                // request a ONE-SHOT reassertion of its known CONTROL11 frame.
+                // onSensorMessage is dispatched onto our main handler; there is
+                // no new timer, worker, polling or change to AA LOCATION packets.
+                val hasDemand = session?.verifiedReceiverId != null &&
+                    IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist,
+                        ftProjectionSensorAssist).active
+                gpsActivationRecovery.onGear(observed?.gearSpeedRaw,
+                    gearReceiptMonoMs, hasDemand)?.let { trigger ->
+                    DiagLog.w("ICCOA", "ICCOA_GPS_CONTROL11_REARM kind=${trigger.kind} " +
+                        "silenceReceiptMs=${trigger.elapsedMs} attempt=1/1 " +
+                        "gpsProducerOutcome=UNKNOWN satellitesLost=UNKNOWN")
+                    navigationGate.reset()
+                    navigationRetries = 0
+                    main.removeCallbacks(navigationSend)
+                    navigationSend.run()
+                }
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
                     VehicleTraceRecorder.gear(
@@ -262,6 +282,7 @@ class IccoaService : Service() {
                 val gpsReceiptMonoMs = android.os.SystemClock.elapsedRealtime()
                 IccoaDrInputBridge.rawGps(fix.speedRaw.takeIf { fix.speedPresent },
                     gpsReceiptMonoMs)
+                gpsActivationRecovery.onGps(gpsReceiptMonoMs)
                 IccoaDrSourceGapEvidence.onGps(gpsReceiptMonoMs)?.let { gap ->
                     DiagLog.w("ICCOA", "ICCOA_GPS_SOURCE_GAP kind=${gap.kind} " +
                         "durationMs=${gap.elapsedMs} rawMovingGearFrames=${gap.rawMovingGearFrames} " +
@@ -480,6 +501,7 @@ class IccoaService : Service() {
         endConnection()
         DrPathEvidence.beginSession()
         IccoaDrSourceGapEvidence.beginSession()
+        gpsActivationRecovery.beginSession()
         IccoaDrInputBridge.beginSession(DrPathEvidence.sessionId())
         // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
         // as connecting BEFORE stopping it: otherwise that callback can
@@ -821,6 +843,7 @@ class IccoaService : Service() {
         // Freeze a still-open OEM GPS blackout at this exact disconnect
         // so the later field ZIP does not count offline phone time as loss.
         IccoaDrSourceGapEvidence.endSession(android.os.SystemClock.elapsedRealtime())
+        gpsActivationRecovery.endSession()
         DrPathEvidence.endSession()
         IccoaTouchWelcome.cancel()
         IccoaCalibrationScope.clear()
