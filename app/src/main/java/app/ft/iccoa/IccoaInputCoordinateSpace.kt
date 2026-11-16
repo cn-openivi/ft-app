@@ -23,6 +23,30 @@ internal object IccoaInputCoordinateSpace {
     private const val PROFILE_PREF = "ft-iccoa-uibc-domain"
     private const val PROFILE_KEY = "uibc-domain-v187"
 
+    /**
+     * This receiver's first CENTER probe gives a provisional hypothesis,
+     * NOT verification. Persist only after the independent off-centre
+     * spatial probe succeeds. The slot is scoped by verified receiver key.
+     */
+    private val spatialCandidate = UibcCoordinateModeCandidate()
+
+    fun stageCenterCandidate(context: Context, mode: Mode): Boolean {
+        val key = IccoaCalibrationScope.key(PROFILE_KEY) ?: return false
+        return spatialCandidate.stage(key, mode)
+    }
+
+    fun commitAfterSpatialPass(context: Context): Boolean {
+        val key = IccoaCalibrationScope.key(PROFILE_KEY) ?: return false
+        val candidate = spatialCandidate.forReceiver(key)
+        if (candidate == Mode.UNKNOWN) return remembered(context) != Mode.UNKNOWN
+        val saved = rememberVerified(context, candidate)
+        if (saved) spatialCandidate.clear()
+        return saved
+    }
+
+    fun clearUnverifiedCandidate() = spatialCandidate.clear()
+
+
     fun parseSaved(value: String?): Mode = when (value) {
         Mode.NATIVE_DISPLAY.name -> Mode.NATIVE_DISPLAY
         Mode.VIDEO_STREAM.name -> Mode.VIDEO_STREAM
@@ -118,5 +142,29 @@ internal object IccoaInputCoordinateSpace {
             hits(stream) && !hits(native) -> Mode.VIDEO_STREAM
             else -> Mode.UNKNOWN
         }
+    }
+}
+
+/** Pure state that cannot turn a centre-only guess into persistent PASS. */
+internal class UibcCoordinateModeCandidate {
+    private var key: String? = null
+    private var mode = IccoaInputCoordinateSpace.Mode.UNKNOWN
+
+    @Synchronized fun stage(
+        receiverKey: String, candidate: IccoaInputCoordinateSpace.Mode
+    ): Boolean {
+        if (receiverKey.isBlank() || candidate == IccoaInputCoordinateSpace.Mode.UNKNOWN)
+            return false
+        key = receiverKey
+        mode = candidate
+        return true
+    }
+
+    @Synchronized fun forReceiver(receiverKey: String): IccoaInputCoordinateSpace.Mode =
+        if (receiverKey == key) mode else IccoaInputCoordinateSpace.Mode.UNKNOWN
+
+    @Synchronized fun clear() {
+        key = null
+        mode = IccoaInputCoordinateSpace.Mode.UNKNOWN
     }
 }
