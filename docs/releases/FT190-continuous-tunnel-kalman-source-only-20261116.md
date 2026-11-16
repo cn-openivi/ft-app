@@ -48,3 +48,18 @@ NEXT_EDGE: проверить терминальный exact SHA CI; испра�
 
 
 **Терминальная ссылка:** https://github.com/cn-openivi/ft-app/actions/runs/43893271060. Остальные изменения этого документа после проверенного SHA не меняют исполняемый исходный код. Никакого подписанного APK/эксперимента с автомобилем не было.
+
+## FT190 — аудит UIBC/касания с оригинальными XiaoDroidLink и Open Headunit, 16.11
+
+**Не объявлять физический PASS без машины.** Проверены оригинальные APK: XiaoDroidLink v8.18 SHA256 `ce31f64d0f4de233b1c06b9f5665052b13f4c7274bb96dd422d01d80b2f05a29`, точный Toyota FAW Carlink `6292f74524a5f7eecb84fe80d7b4c63acd81835912f03cf085ee78ae44c076d7`. Открыт код `andreknieriem/open-headunit` `TouchCoordinateMapper.kt` и тесты. Это не доказательство реализации закрытого коммерческого Headunit Reloaded.
+
+- Toyota `UibcManager b3.a/b` отправляет `x0/y0`, которые *могут быть уже* WFD pixels, и одновременно `width/height` локальной сенсорной поверхности. Ранее наша ошибка давала `338x214` вместо правильных `640x360` для центрального пробного касания на 1280x720. Текущая двухдоменная `VIDEO_STREAM/NATIVE_DISPLAY` схема остаётся правильной архитектурно.
+- Xiao разделяет входные touch units и реальную геометрию отрисованного видео, использует общий affine для dashboard; FT уже использует `VideoContentTransform` как общий forward/inverse у GL и касаний.
+- Open Headunit использует **реальную inputSurface W/H** (например 1748x720, touch1740,715→AA1280x720 point1274,715), отличает FILL/CONTAIN/COVER и AA margins. Добавлены численные cross-source тесты `UibcFrameMappingTest`.
+- **Доказанный наш новый source bug:** `IccoaMediaTransport` сохранял режим sender immediately after CENTER DOWN до второго off-centre пробного нажатия. Изменено: CENTER ставит только receiver-scoped candidate, и только успешная независимая EDGE PASS сохраняет профиль. Смена видео-геометрии между пробами сбрасывает неподтверждённую гипотезу; при обрыве она очищается.
+- Старый `uibc-domain-v187` профиль мог быть сохранён до настоящего edge PASS, поэтому введён `uibc-domain-v190-spatial`; старая «проверка ОК» больше не обходится автоматически. На машине потребуется один новый CENTER+EDGE для проверки. Ручная четырёхточечная калибровка остаётся резервом.
+- **Реально открытый P1 вопрос:** у Open Headunit для ненулевого `VideoConfig.margin_height` Android Auto content привязан к TOP_LEFT, тогда как `AaVideoView` в FT191? нет — текущая FT190 source использует centered `Matrix` crop у неравного AA frame/content. Не переобозначать это как проверенную ошибку на конкретном Samsung без подтверждения AA frame origin. При Direct AA с совпадающим 720p/1080p размером активного фрейма нет такого crop; он не должен возвращаться.
+- Exact source-only CI нового патча: https://github.com/cn-openivi/ft-app/actions/runs/43903436278 commit `35c23e3be12f0ecdb7d6bb5f25c23aac04b7b248`. В момент подготовки этой заметки IN_PROGRESS; не объявлять новые тесты пройденными до терминального readback.
+- Полный сравнительный отчёт в OpenIVI/80_FIELD_EVIDENCE: https://docs.google.com/document/d/1cIpc5uc0WKFwZWnvcufgeH12_-WJkMUe9MM_HY6kovw/edit
+
+NEXT_EDGE: terminal JUnit receipt; затем одна проверка реальных CENTER+EDGE, AA Direct углов, rotation и composited margins. Не изменять FTMP master, HU permissions, CAN/VHAL, GPS или route к телефону. APK FT190 пока не создавался/не подписывался.
