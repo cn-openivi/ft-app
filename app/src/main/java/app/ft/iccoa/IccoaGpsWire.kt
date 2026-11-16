@@ -32,6 +32,18 @@ internal object IccoaGpsWire {
     private const val MAX_BYTES = 512
 
     /**
+     * A decoded OEM protobuf is not necessarily a usable WGS84 position:
+     * FAW's producer can supply an uninitialized (0,0) fix. This is the
+     * same navigation admission rule used by FT and Android Auto.
+     * Do NOT reject equal successive coordinates or zero satellite counters:
+     * neither is evidence of a stale GNSS callback.
+     */
+    fun hasNavigationPosition(fix: IccoaGpsFix?): Boolean =
+        fix != null && fix.latitude.isFinite() && fix.longitude.isFinite() &&
+            fix.latitude in -90.0..90.0 && fix.longitude in -180.0..180.0 &&
+            !(fix.latitude == 0.0 && fix.longitude == 0.0)
+
+    /**
      * The OEM ucar.proto defines both direct Gps and SensorIndex.gps (field 1).
      * Exact on-air nesting is unconfirmed on this HU: accept either *only* when
      * the corresponding complete protobuf form is strictly valid.
