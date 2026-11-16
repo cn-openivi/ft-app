@@ -348,6 +348,7 @@ class IccoaService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        IccoaGpsActivationRecoveryEvidence.attach(gpsActivationRecovery)
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL, "ICCOA Carlink", NotificationManager.IMPORTANCE_LOW)
         )
