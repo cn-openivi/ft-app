@@ -32,12 +32,16 @@ class IccoaGpsActivationRecoveryTest {
         val recovery = IccoaGpsActivationRecovery()
         recovery.beginSession()
         recovery.onGps(5_000L)
-        assertNull(recovery.onGear(30L, 7_000L, true))
-        assertNotNull(recovery.onGear(30L, 15_000L, true))
+        for (t in 7_000L..15_000L step 1_000L) {
+            val event = recovery.onGear(30L, t, true)
+            assertEquals(t == 15_000L, event != null)
+        }
         recovery.onGps(16_000L)
         assertEquals(1, recovery.evidence().gpsReceiptsAfterAttempt)
-        assertNull(recovery.onGear(30L, 17_000L, true))
-        assertNotNull(recovery.onGear(30L, 26_000L, true))
+        for (t in 17_000L..26_000L step 1_000L) {
+            val event = recovery.onGear(30L, t, true)
+            assertEquals(t == 26_000L, event != null)
+        }
         assertEquals(2, recovery.evidence().attempts)
     }
 
