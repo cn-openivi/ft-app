@@ -26,6 +26,8 @@ internal class IccoaGpsActivationRecovery {
         val attempts: Int,
         val gpsReceiptsAfterAttempt: Int,
         val gpsReceiptsAfterQueuedControl: Int,
+        val gpsReceiptsAfterWrittenControl: Int,
+        val controlSocketWritten: Int,
         val controlQueueSucceeded: Int,
         val controlQueueFailed: Int,
         val controlOutcomePending: Boolean,
@@ -42,12 +44,15 @@ internal class IccoaGpsActivationRecovery {
             "initialAttempts=$initialAttempts postFixAttempts=$postFixAttempts",
             "gpsReceiptsAfterAttempt=$gpsReceiptsAfterAttempt",
             "gpsReceiptsAfterQueuedControl=$gpsReceiptsAfterQueuedControl",
+            "gpsReceiptsAfterWrittenControl=$gpsReceiptsAfterWrittenControl",
+            "controlSocketWritten=$controlSocketWritten",
             "controlQueueSucceeded=$controlQueueSucceeded controlQueueFailed=$controlQueueFailed",
             "controlOutcomePending=$controlOutcomePending",
             "lastReason=$lastReason lastSilenceMs=$lastSilenceMs",
             "frozenAtDisconnect=$frozen",
             "outgoingControl=EXISTING_OEM_CONTROL11_ONLY",
-            "controlQueueSuccessIsNotHuAck=true",
+            "controlQueueSuccessIsNotSocketWriteOrHuAck=true",
+            "socketFlushIsNotHuAck=true",
             "gpsResumeAfterQueueIsTemporalCorrelationNotCausation=true",
             "oemGpsProducerRestartProven=NO",
             "satellitesActuallyLost=UNKNOWN",
@@ -66,10 +71,13 @@ internal class IccoaGpsActivationRecovery {
     private var postFixAttempts = 0
     private var gpsReceiptsAfterAttempt = 0
     private var gpsReceiptsAfterQueuedControl = 0
+    private var gpsReceiptsAfterWrittenControl = 0
+    private var controlSocketWritten = 0
     private var controlQueueSucceeded = 0
     private var controlQueueFailed = 0
     private var controlOutcomePending = false
     private var lastAttemptQueued = false
+    private var lastAttemptWritten = false
     private var lastReason = "NONE"
     private var lastSilenceMs = 0L
 
@@ -85,10 +93,13 @@ internal class IccoaGpsActivationRecovery {
         postFixAttempts = 0
         gpsReceiptsAfterAttempt = 0
         gpsReceiptsAfterQueuedControl = 0
+        gpsReceiptsAfterWrittenControl = 0
+        controlSocketWritten = 0
         controlQueueSucceeded = 0
         controlQueueFailed = 0
         controlOutcomePending = false
         lastAttemptQueued = false
+        lastAttemptWritten = false
         lastReason = "NONE"
         lastSilenceMs = 0L
     }
@@ -104,6 +115,7 @@ internal class IccoaGpsActivationRecovery {
         if (attemptedCurrentGap) {
             gpsReceiptsAfterAttempt++
             if (lastAttemptQueued) gpsReceiptsAfterQueuedControl++
+            if (lastAttemptWritten) gpsReceiptsAfterWrittenControl++
         }
         lastGpsReceiptMonoMs = receiptMonoMs
         movingSinceMonoMs = 0L
@@ -112,6 +124,7 @@ internal class IccoaGpsActivationRecovery {
         attemptedCurrentGap = false
         controlOutcomePending = false
         lastAttemptQueued = false
+        lastAttemptWritten = false
     }
 
     /**
@@ -146,6 +159,7 @@ internal class IccoaGpsActivationRecovery {
         attemptedCurrentGap = true
         controlOutcomePending = true
         lastAttemptQueued = false
+        lastAttemptWritten = false
         attempts++
         lastSilenceMs = receiptMonoMs - baseline
         val kind = if (lastGpsReceiptMonoMs > 0L)
@@ -170,8 +184,23 @@ internal class IccoaGpsActivationRecovery {
         return true
     }
 
+    /**
+     * Called only after the encrypted CONTROL11 frame was actually written
+     * and flushed to the socket. Neither this nor subsequent GPS packets
+     * establish a Toyota HU acknowledgement or the cause of GPS recovery.
+     * The ICCOA service must guard this callback by session generation.
+     */
+    @Synchronized fun controlSocketFlushed(): Boolean {
+        if (!active || !attemptedCurrentGap || controlOutcomePending ||
+            !lastAttemptQueued || lastAttemptWritten) return false
+        lastAttemptWritten = true
+        controlSocketWritten++
+        return true
+    }
+
     @Synchronized fun evidence(): Evidence = Evidence(
         attempts, gpsReceiptsAfterAttempt, gpsReceiptsAfterQueuedControl,
+        gpsReceiptsAfterWrittenControl, controlSocketWritten,
         controlQueueSucceeded, controlQueueFailed, controlOutcomePending,
         initialAttempts, postFixAttempts, lastReason, lastSilenceMs, !active
     )
