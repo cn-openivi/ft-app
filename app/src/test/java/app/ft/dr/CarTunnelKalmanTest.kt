@@ -91,9 +91,11 @@ class CarTunnelKalmanTest {
         assertEquals(CarTunnelKalman.Mode.GPS_OBSERVED, returned.mode)
         assertEquals(0L, returned.gpsReceiptGapMs)
         assertTrue(f.evidence().gpsAccepted == 2L)
+        val lastStd = f.current.value!!.modelStdMetres
         f.endSession()
         assertNull(f.current.value)
         assertFalse(f.evidence().active)
+        assertEquals(lastStd, f.evidence().lastModelStdMetres!!, 1e-6)
         assertNull(f.onGear(30L, 2L, 9_000L))
         f.beginSession()
         assertEquals(0L, f.evidence().gpsAccepted)
