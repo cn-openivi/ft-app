@@ -114,6 +114,59 @@ class IccoaGpsActivationRecoveryTest {
         assertEquals(0, recovery.evidence().attempts)
     }
 
+    @Test fun queuedControlAndRealGpsResumeAreRecordedSeparatelyFromHuAck() {
+        val recovery = IccoaGpsActivationRecovery()
+        recovery.beginSession()
+        recovery.onGps(10_000L)
+        assertFalse(recovery.controlQueueResult(true)) // no attempt yet
+        for (t in 11_000L..20_000L step 1_000L) {
+            val triggered = recovery.onGear(40L, t, true)
+            assertEquals(t == 20_000L, triggered != null)
+        }
+        assertTrue(recovery.evidence().controlOutcomePending)
+        assertTrue(recovery.controlQueueResult(true))
+        assertFalse(recovery.controlQueueResult(true)) // cannot count the same send twice
+        var evidence = recovery.evidence()
+        assertEquals(1, evidence.attempts)
+        assertEquals(1, evidence.controlQueueSucceeded)
+        assertEquals(0, evidence.controlQueueFailed)
+        assertEquals(0, evidence.gpsReceiptsAfterAttempt)
+        assertEquals(0, evidence.gpsReceiptsAfterQueuedControl)
+        assertTrue(evidence.reportLine().contains("controlQueueSuccessIsNotHuAck=true"))
+
+        recovery.onGps(21_000L)
+        evidence = recovery.evidence()
+        assertEquals(1, evidence.gpsReceiptsAfterAttempt)
+        assertEquals(1, evidence.gpsReceiptsAfterQueuedControl)
+        assertTrue(evidence.reportLine().contains(
+            "gpsResumeAfterQueueIsTemporalCorrelationNotCausation=true"))
+    }
+
+    @Test fun failedQueueIsNotSuccessfulHuRecoveryAndNeverTriggersHiddenRetries() {
+        val recovery = IccoaGpsActivationRecovery()
+        recovery.beginSession()
+        recovery.onGps(10_000L)
+        for (t in 11_000L..20_000L step 1_000L) {
+            val triggered = recovery.onGear(12L, t, true)
+            assertEquals(t == 20_000L, triggered != null)
+        }
+        assertTrue(recovery.controlQueueResult(false))
+        assertFalse(recovery.controlQueueResult(false))
+        for (t in 21_000L..73_000L step 1_000L) {
+            assertNull(recovery.onGear(12L, t, true))
+        }
+        assertEquals(1, recovery.evidence().attempts)
+        assertEquals(0, recovery.evidence().controlQueueSucceeded)
+        assertEquals(1, recovery.evidence().controlQueueFailed)
+        recovery.onGps(74_000L) // unrelated resumption, no causal assertion
+        assertEquals(1, recovery.evidence().gpsReceiptsAfterAttempt)
+        assertEquals(0, recovery.evidence().gpsReceiptsAfterQueuedControl)
+        recovery.endSession()
+        assertFalse(recovery.controlQueueResult(true))
+        recovery.beginSession()
+        assertEquals(0, recovery.evidence().controlQueueFailed)
+    }
+
     @Test fun rearmUsesExactlyTheExistingOemNavigationWireSchema() {
         val requested = IccoaNavigation.sensorActivation(NavigationInfo(), aaConnected = true)
         assertEquals(11, IccoaNavigation.CONTROL_METHOD)
