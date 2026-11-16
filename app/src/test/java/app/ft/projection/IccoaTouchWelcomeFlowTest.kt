@@ -93,6 +93,21 @@ class IccoaTouchWelcomeFlowTest {
         assertTrue(stored[verified + ":spatial-check-v1"] == true)
     }
 
+    @Test fun formerFt187CentreOnlyCacheCannotBypassNewSpatialVerification() {
+        Mockito.`when`(modePrefs.getString(Mockito.anyString(), Mockito.isNull()))
+            .thenAnswer {
+                val key = it.getArgument<String>(0)
+                if (key.endsWith(":uibc-domain-v187")) "VIDEO_STREAM" else null
+            }
+        stored[verified] = true
+        stored[verified + ":spatial-check-v1"] = true
+        IccoaTouchWelcome.begin(context, 2422, 1272)
+        assertTrue("legacy saved domain must not skip the two-probe migration",
+            IccoaTouchWelcome.awaiting)
+        Mockito.verify(modePrefs).getString(
+            Mockito.contains(":uibc-domain-v190-spatial"), Mockito.isNull())
+    }
+
     @Test fun geometryChangeBetweenSpatialProbesRestartsAtCentreAndDiscardsCandidate() {
         Mockito.`when`(modePrefs.getString(Mockito.anyString(), Mockito.isNull()))
             .thenReturn(null)
