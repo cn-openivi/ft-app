@@ -32,6 +32,7 @@ import app.ft.core.MotionVector
 import app.ft.core.VehicleMotionTelemetry
 import app.ft.dr.DrPathEvidence
 import app.ft.dr.FtDrRuntime
+import app.ft.dr.CarTunnelRuntime
 import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
 import app.ft.projection.IccoaCalibrationScope
@@ -232,51 +233,18 @@ class IccoaService : Service() {
                 IccoaDrInputBridge.rawGear(observed?.gearSpeedRaw, observed?.gearRaw,
                     gearReceiptMonoMs)
                 IccoaDrSourceGapEvidence.onGear(observed?.gearSpeedRaw, gearReceiptMonoMs)
-                // Only the already-authenticated, active OEM sensor lane can
-                // request a ONE-SHOT reassertion of its known CONTROL11 frame.
-                // onSensorMessage is dispatched onto our main handler; there is
-                // no new timer, worker, polling or change to AA LOCATION packets.
-                val hasDemand = session?.verifiedReceiverId != null &&
-                    IccoaNavigation.sensorActivation(latestNavigation, aaSensorAssist,
-                        ftProjectionSensorAssist).active
-                gpsActivationRecovery.onGear(observed?.gearSpeedRaw,
-                    gearReceiptMonoMs, hasDemand)?.let { trigger ->
-                    // Reassert EXACT existing OEM Control11 once without using
-                    // navigationSend's up-to-eight failed-send retries. Sending
-                    // active=true is not proof that an already-active HU
-                    // CarLinkSensorMgr restarted its Android gps subscription.
-                    val connection = session
-                    val activation = IccoaNavigation.sensorActivation(
-                        latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
-                    val bytes = IccoaNavigation.encode(activation)
-                    val rearmEpoch = generation
-                    val queued = connection != null &&
-                        connection.verifiedReceiverId != null && activation.active &&
-                        runCatching {
-                            connection.sendControl(IccoaNavigation.CONTROL_METHOD, bytes,
-                                onWritten = {
-                                    // The callback fires after socket.flush() on the
-                                    // ICCOA sender thread; marshal it to main AFTER
-                                    // controlQueueResult has recorded queue admission.
-                                    // Old car epochs cannot contaminate the new report.
-                                    main.post {
-                                        if (generation == rearmEpoch &&
-                                            session === connection &&
-                                            gpsActivationRecovery.controlSocketFlushed()) {
-                                            DiagLog.i("ICCOA",
-                                                "ICCOA_GPS_CONTROL11_SOCKET_FLUSHED " +
-                                                "huAck=UNKNOWN gpsRestart=UNPROVEN")
-                                        }
-                                    }
-                                })
-                        }.getOrDefault(false)
-                    gpsActivationRecovery.controlQueueResult(queued)
-                    if (queued) navigationGate.accepted(
-                        bytes, android.os.SystemClock.elapsedRealtime())
-                    DiagLog.w("ICCOA", "ICCOA_GPS_CONTROL11_REARM kind=${trigger.kind} " +
-                        "silenceReceiptMs=${trigger.elapsedMs} " +
-                        "control11Queued=$queued queuedNotSocketFlushed=true " +
-                        "oemGpsProducerRestart=UNPROVEN satellitesLost=UNKNOWN")
+                // FT190: sensor silence during motion can mean a tunnel or
+                // underground parking, NOT a failed Carlink producer. Do not
+                // spam OEM CONTROL11(true) while the HU may lack satellites.
+                // Continue the existing TinyEKF observational model instead.
+                val estimate = CarTunnelRuntime.onGear(observed?.gearSpeedRaw,
+                    observed?.gearRaw, gearReceiptMonoMs)
+                if (estimate != null && (estimate.gpsReceiptGapMs in 3_000L..4_000L ||
+                    estimate.gpsReceiptGapMs in 30_000L..31_000L)) {
+                    DiagLog.i("ICCOA", "CAR_TUNNEL_KALMAN mode=${estimate.mode} " +
+                        "gpsReceiptGapMs=${estimate.gpsReceiptGapMs} " +
+                        "modelStdMetres=${estimate.modelStdMetres.toInt()} " +
+                        "realYawAvailable=false forwardToAA=false")
                 }
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
@@ -343,6 +311,9 @@ class IccoaService : Service() {
                 pdopRaw = fix.pdop.takeIf { fix.pdopPresent },
                 deviceTimestampRaw = fix.timestampRaw.takeIf { fix.timestampPresent }
                 ))
+                VehicleTelemetry.current.value?.let {
+                    CarTunnelRuntime.onGps(it, gpsReceiptMonoMs)
+                }
             } else if (sensorLiveness.gpsFrames <= 3L ||
                 sensorLiveness.gpsFrames and (sensorLiveness.gpsFrames - 1L) == 0L) {
                 DiagLog.w("ICCOA", "OEM GPS decoded but NOT usable for navigation: " +
@@ -542,6 +513,8 @@ class IccoaService : Service() {
         endConnection()
         DrPathEvidence.beginSession()
         IccoaDrSourceGapEvidence.beginSession()
+        // Continuous GPS/Gear Kalman is active for the entire ICCOA session.
+        CarTunnelRuntime.beginSession()
         gpsActivationRecovery.beginSession()
         IccoaDrInputBridge.beginSession(DrPathEvidence.sessionId())
         // A stopped in-progress scan publishes SCAN_COMPLETE. Mark ourselves
@@ -884,6 +857,7 @@ class IccoaService : Service() {
         // Freeze a still-open OEM GPS blackout at this exact disconnect
         // so the later field ZIP does not count offline phone time as loss.
         IccoaDrSourceGapEvidence.endSession(android.os.SystemClock.elapsedRealtime())
+        CarTunnelRuntime.endSession()
         gpsActivationRecovery.endSession()
         DrPathEvidence.endSession()
         IccoaTouchWelcome.cancel()
