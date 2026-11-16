@@ -1,7 +1,7 @@
 package app.ft.iccoa
 
 import app.ft.projection.VideoPlan
-import org.junit.Assert.assertEquals
+import org.junit.Assert.*
 import org.junit.Test
 
 class IccoaInputCoordinateSpaceTest {
@@ -10,6 +10,33 @@ class IccoaInputCoordinateSpaceTest {
         streamWidth = 1280, streamHeight = 720,
         fps = 30, bitrate = 3_555_000, preserveAspect = true
     )
+
+    @Test fun centreOnlyCandidateNeverCountsAsRememberedVerifiedMode() {
+        val gate = UibcCoordinateModeCandidate()
+        val carA = "verified_" + "a".repeat(64) + ":uibc-domain-v187"
+        val carB = "verified_" + "b".repeat(64) + ":uibc-domain-v187"
+        assertFalse(gate.stage(carA, IccoaInputCoordinateSpace.Mode.UNKNOWN))
+        assertEquals(IccoaInputCoordinateSpace.Mode.UNKNOWN, gate.forReceiver(carA))
+        assertTrue(gate.stage(carA, IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+        assertEquals(IccoaInputCoordinateSpace.Mode.VIDEO_STREAM, gate.forReceiver(carA))
+        // A different authenticated HU never inherits another receiver's
+        // centre-only guess, even if both stream video at 1280x720.
+        assertEquals(IccoaInputCoordinateSpace.Mode.UNKNOWN, gate.forReceiver(carB))
+        gate.clear() // disconnect / new geometry / failed spatial check
+        assertEquals(IccoaInputCoordinateSpace.Mode.UNKNOWN, gate.forReceiver(carA))
+    }
+
+    @Test fun twoDifferentValidCoordinateModesCanBeReprobedWithoutPersistingGuess() {
+        val gate = UibcCoordinateModeCandidate()
+        val receiver = "verified_" + "c".repeat(64) + ":uibc-domain-v187"
+        assertTrue(gate.stage(receiver, IccoaInputCoordinateSpace.Mode.NATIVE_DISPLAY))
+        assertEquals(IccoaInputCoordinateSpace.Mode.NATIVE_DISPLAY,
+            gate.forReceiver(receiver))
+        gate.clear()
+        assertTrue(gate.stage(receiver, IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+        assertEquals(IccoaInputCoordinateSpace.Mode.VIDEO_STREAM,
+            gate.forReceiver(receiver))
+    }
 
     @Test fun oldWelcomeFlagCannotSkipUnverifiedCoordinateDomainOnReconnect() {
         // Regression: FT186 persisted welcome=true, but FT187's VIDEO_STREAM
