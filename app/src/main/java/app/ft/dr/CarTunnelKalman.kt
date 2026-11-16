@@ -102,6 +102,7 @@ internal class CarTunnelKalman {
     private var modelDistance = 0.0
     private var lastMode = Mode.NO_GPS
     private var lastGapMs = 0L
+    private var lastReportedModelStdMetres: Double? = null
 
     @Synchronized fun beginSession() {
         ekf.reset()
@@ -119,6 +120,7 @@ internal class CarTunnelKalman {
         modelDistance = 0.0
         lastMode = Mode.NO_GPS
         lastGapMs = 0L
+        lastReportedModelStdMetres = null
         _current.value = null
     }
 
@@ -247,6 +249,7 @@ internal class CarTunnelKalman {
             mode = lastMode,
             lastCarGpsAtMonoMs = lastGpsMonoMs
         )
+        lastReportedModelStdMetres = next.modelStdMetres
         _current.value = next
         return next
     }
@@ -266,7 +269,7 @@ internal class CarTunnelKalman {
         predictedForwardIntervals = predictedCount,
         noHeadingOrDirectionIntervals = heldCount, gearTimeGaps = discontinuityCount,
         lastGpsReceiptGapMs = lastGapMs,
-        lastModelStdMetres = _current.value?.modelStdMetres,
+        lastModelStdMetres = lastReportedModelStdMetres,
         travelledModelMetres = modelDistance, active = active
     )
 }
