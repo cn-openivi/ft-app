@@ -63,3 +63,50 @@ NEXT_EDGE: проверить терминальный exact SHA CI; испра�
 - Полный сравнительный отчёт в OpenIVI/80_FIELD_EVIDENCE: https://docs.google.com/document/d/1cIpc5uc0WKFwZWnvcufgeH12_-WJkMUe9MM_HY6kovw/edit
 
 NEXT_EDGE: terminal JUnit receipt; затем одна проверка реальных CENTER+EDGE, AA Direct углов, rotation и composited margins. Не изменять FTMP master, HU permissions, CAN/VHAL, GPS или route к телефону. APK FT190 пока не создавался/не подписывался.
+
+
+## FT190 — пакет исправлений по полевым логам 15 ноября (16.11.2026)
+
+Владелец разрешил продолжить **правки исходников FT190** после ранее установленной паузы.
+Ограничение на выпуск/подпись/установку APK не снималось. Результаты ниже относятся к
+исходному коду и тестам; физическая приёмка FAW RAV4 XA60 НЕ проведена.
+
+1. **AA MediaCodec obsolete Surface**: синхронизация setOutputSurface с выводом
+   releaseOutputBuffer; обязательная проверка валидности целевой поверхности;
+   при TextureView.onSurfaceTextureDestroyed возврат false и владение SurfaceTexture
+   сохраняется до асинхронного завершения codec retirement. AaVideoSink вызывает
+   retireSurface текущего AaVideoDecoder напрямую, не ожидая задержанной доставки
+   StateFlow.surface=null. Добавлен тест, удерживающий in-flight releaseOutputBuffer
+   и запрещающий ранний callback освобождения. Случаи Direct↔Composited, экран/поворот,
+   долгий путь всё ещё требуют физической проверки.
+2. **Diagnostic blind spot**: при выключенной записи координат logcat теперь
+   экспортирует ТОЛЬКО заранее перечисленные системные теги + типы событий + время
+   и pid/tid, без текста сообщений, трассировок, GPS, Bluetooth payload или имён
+   сторонних приложений. При включённом согласии сохранён старый подробный режим.
+   Новый SystemLogcatSummaryTest проверяет, что GPS/почта/номер/текст не попадают
+   в архив. Это безопасная ограниченная сводка, не полноценный сырой logcat.
+3. **AudioRecord -2 while active**: одно ограниченное восстановление экземпляра
+   AudioRecord в рамках действующей MediaProjection; captureEpoch запрещает
+   оживление старого reader после остановки или смены сессии. Две проверки:
+   восстановление активной -2 и отсутствие автоматического перезапуска после stop().
+   Причина конкретного отказа Android пока не измерена на телефоне.
+4. **ICCOA TRUSTED_IDENTITY_MISMATCH**: вместо общей рекомендации «отправьте отчёт»
+   появляется указание на осознанное «Забыть автомобиль» и новый PIN. Автоматического
+   сброса/перезаписи доверенного OEM EC-ключа НЕТ: безопасность сопряжения сохранена.
+   Исправлено сообщение пользователю, но не доказан полный автоматический recovery.
+5. **Не менялись намеренно**: автомобильная частота GPS, км/ч GearInfo, существующий
+   CarTunnelKalman, профиль Direct-first и запрет двойного кодирования, настройки
+   BT/AA identity, адаптивная геометрия касаний, FTMP master и воркеры.
+   Нельзя объявлять закрытыми без полевых данных no-slot drop, 1080p Direct,
+   BT HFP/A2DP, полные повороты DR, SmartVideoPacer/thermal, 1.5–2s stalls и
+   Voice/UIBC на машине. Существующий unit CI не доказывает field PASS.
+
+В коммитах: 8c04fcb, 00498d4, 6990f5a, e5ced7a (Surface/AA);
+cc6fe79, eb428b7, c57125b, 3a1b837 (logcat);
+3a1a3ee, c08df40 (AudioRecord);
+cf937d3, 6502ce2, d32f54b (ICCOA user guidance).
+Новый полный source-only GitHub Actions run 43930898186 (точный код SHA
+d32f54ba41ba3efe386751ed206bb3dd1dcc96ef), автозапущен уже существующим
+push-триггером CI. Дождаться терминального результата до присвоения SOURCE PASS.
+APK/подпись/полевая установка запрещены без отдельной команды владельца.
+
