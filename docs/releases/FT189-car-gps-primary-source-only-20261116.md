@@ -22,7 +22,7 @@
 
 - Точный OEM wire для `CONTROL11` / `isNavigating`: метод 11, protobuf field1 bool; пустая инструкция содержит `08 01 1A 00 22 01 6D 32 00`. Отдельный unit-test `IccoaGpsActivationRecoveryTest` покрывает эту байтовую схему, 64s GPS blackout с Gear, восстановление, reconnect, stationary, invalid/reversed/noncontiguous Gear.
 - Полный source-only CI: workflow `.github/workflows/ft189-car-gps-primary-source-only.yml`, self-hosted; Kotlin compile + `:app:testUnsignedTransitUnitTest` + XML min1040 тестов, 0 failures/errors/skipped, запрет создания APK.
-- CI начальный run: https://github.com/cn-openivi/ft-app/actions/runs/43813214100. На момент составления этого документа был **IN_PROGRESS**; терминальная проверка обязательна.
+- CI полный терминальный run: https://github.com/cn-openivi/ft-app/actions/runs/43813214100, exact source SHA `22f6b71204f06f1b69a0d42580d1553976c5506f`: **SUCCESS, Kotlin BUILD SUCCESSFUL, 1040 JUnit / 0 failures / 0 errors / 0 skipped**, `FULL_JUNIT=PASS`, `SIGNED_APK=NOT_BUILT`, `HU_FIELD=NOT_TESTED`. Дальнейшие изменения документации не затрагивают исходники приложения.
 - В будущем одна совмещённая поездка только для оставшихся действительно новых P0-полевых проверок: GPS producer при naturally occurring gap, CONTROL12 руль, Direct PAUSE/RESUME. Отдельно фиксировать для каждого PASS/FAIL, ни один не заявлять заранее.
 
 ## Ограничения
