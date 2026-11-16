@@ -135,3 +135,15 @@ internal class IccoaGpsActivationRecovery {
         lastReason, lastSilenceMs, !active
     )
 }
+
+/** Keeps the latest connection's tiny, coordinate-free evidence for field ZIPs. */
+internal object IccoaGpsActivationRecoveryEvidence {
+    @Volatile private var observer: IccoaGpsActivationRecovery? = null
+
+    fun attach(recovery: IccoaGpsActivationRecovery) {
+        observer = recovery
+    }
+
+    fun snapshot(): String = observer?.evidence()?.reportLine()
+        ?: "format=ICCOA_GPS_ACTIVATION_RECOVERY_V1\nstatus=NO_SESSION\n"
+}
