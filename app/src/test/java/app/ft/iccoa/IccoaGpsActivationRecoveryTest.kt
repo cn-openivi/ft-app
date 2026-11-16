@@ -132,12 +132,21 @@ class IccoaGpsActivationRecoveryTest {
         assertEquals(0, evidence.controlQueueFailed)
         assertEquals(0, evidence.gpsReceiptsAfterAttempt)
         assertEquals(0, evidence.gpsReceiptsAfterQueuedControl)
-        assertTrue(evidence.reportLine().contains("controlQueueSuccessIsNotHuAck=true"))
+        assertEquals(0, evidence.controlSocketWritten)
+        assertFalse(evidence.controlOutcomePending)
+        assertTrue(evidence.reportLine().contains("controlQueueSuccessIsNotSocketWriteOrHuAck=true"))
+        assertTrue(recovery.controlSocketFlushed())
+        assertFalse(recovery.controlSocketFlushed()) // no duplicate socket evidence
+        evidence = recovery.evidence()
+        assertEquals(1, evidence.controlSocketWritten)
+        assertEquals(0, evidence.gpsReceiptsAfterWrittenControl)
+        assertTrue(evidence.reportLine().contains("socketFlushIsNotHuAck=true"))
 
         recovery.onGps(21_000L)
         evidence = recovery.evidence()
         assertEquals(1, evidence.gpsReceiptsAfterAttempt)
         assertEquals(1, evidence.gpsReceiptsAfterQueuedControl)
+        assertEquals(1, evidence.gpsReceiptsAfterWrittenControl)
         assertTrue(evidence.reportLine().contains(
             "gpsResumeAfterQueueIsTemporalCorrelationNotCausation=true"))
     }
@@ -152,17 +161,21 @@ class IccoaGpsActivationRecoveryTest {
         }
         assertTrue(recovery.controlQueueResult(false))
         assertFalse(recovery.controlQueueResult(false))
+        assertFalse(recovery.controlSocketFlushed()) // rejected queue cannot flush
         for (t in 21_000L..73_000L step 1_000L) {
             assertNull(recovery.onGear(12L, t, true))
         }
         assertEquals(1, recovery.evidence().attempts)
         assertEquals(0, recovery.evidence().controlQueueSucceeded)
         assertEquals(1, recovery.evidence().controlQueueFailed)
+        assertEquals(0, recovery.evidence().controlSocketWritten)
         recovery.onGps(74_000L) // unrelated resumption, no causal assertion
         assertEquals(1, recovery.evidence().gpsReceiptsAfterAttempt)
         assertEquals(0, recovery.evidence().gpsReceiptsAfterQueuedControl)
+        assertEquals(0, recovery.evidence().gpsReceiptsAfterWrittenControl)
         recovery.endSession()
         assertFalse(recovery.controlQueueResult(true))
+        assertFalse(recovery.controlSocketFlushed())
         recovery.beginSession()
         assertEquals(0, recovery.evidence().controlQueueFailed)
     }
