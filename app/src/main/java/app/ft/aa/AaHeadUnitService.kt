@@ -153,10 +153,15 @@ class AaHeadUnitService : Service() {
         val port = app.prefs.aaPort
         val dec = AaVideoDecoder(app.prefs.aaWidth, app.prefs.aaHeight)
         decoder = dec
+        AaVideoSink.bind(dec)
         val run = connections.start()
         disconnectHelp.start()
         surfaceJob = scope.launch {
-            AaVideoSink.surface.collect { s -> dec.setSurface(s) }
+            AaVideoSink.surface.collect { s ->
+                // A queued StateFlow emission must not revive a SurfaceTexture
+                // that has already been destroyed by TextureView.
+                dec.setSurface(if (s == null || AaVideoSink.surface.value === s) s else null)
+            }
         }
         if (bluetooth && bt == null) {
             DiagLog.i(tag, "advertising the Android Auto wireless service so it can find this head unit")
@@ -298,6 +303,7 @@ class AaHeadUnitService : Service() {
         bt?.stop()
         bt = null
         decoder?.reset()
+        AaVideoSink.bind(null)
         decoder = null
         _state.value = AaState()
     }
