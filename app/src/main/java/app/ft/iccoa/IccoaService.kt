@@ -249,17 +249,33 @@ class IccoaService : Service() {
                     val activation = IccoaNavigation.sensorActivation(
                         latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
                     val bytes = IccoaNavigation.encode(activation)
+                    val rearmEpoch = generation
                     val queued = connection != null &&
                         connection.verifiedReceiverId != null && activation.active &&
                         runCatching {
-                            connection.sendControl(IccoaNavigation.CONTROL_METHOD, bytes)
+                            connection.sendControl(IccoaNavigation.CONTROL_METHOD, bytes,
+                                onWritten = {
+                                    // The callback fires after socket.flush() on the
+                                    // ICCOA sender thread; marshal it to main AFTER
+                                    // controlQueueResult has recorded queue admission.
+                                    // Old car epochs cannot contaminate the new report.
+                                    main.post {
+                                        if (generation == rearmEpoch &&
+                                            session === connection &&
+                                            gpsActivationRecovery.controlSocketFlushed()) {
+                                            DiagLog.i("ICCOA",
+                                                "ICCOA_GPS_CONTROL11_SOCKET_FLUSHED " +
+                                                "huAck=UNKNOWN gpsRestart=UNPROVEN")
+                                        }
+                                    }
+                                })
                         }.getOrDefault(false)
                     gpsActivationRecovery.controlQueueResult(queued)
                     if (queued) navigationGate.accepted(
                         bytes, android.os.SystemClock.elapsedRealtime())
                     DiagLog.w("ICCOA", "ICCOA_GPS_CONTROL11_REARM kind=${trigger.kind} " +
                         "silenceReceiptMs=${trigger.elapsedMs} " +
-                        "control11Queued=$queued queueNotHuAck=true " +
+                        "control11Queued=$queued queuedNotSocketFlushed=true " +
                         "oemGpsProducerRestart=UNPROVEN satellitesLost=UNKNOWN")
                 }
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
