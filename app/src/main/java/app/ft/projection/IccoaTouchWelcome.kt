@@ -56,6 +56,7 @@ internal object IccoaTouchWelcome {
         val prefs = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
         prefs.edit().putString(LAST, key).apply()
         swallowUntilUp = false
+        app.ft.iccoa.IccoaInputCoordinateSpace.clearUnverifiedCandidate()
         // A pre-187 'welcome verified' flag is NOT proof of how the current
         // input connection interprets x0/y0. If no verified domain was saved,
         // show the center check again, rather than silently using PANEL_PIXELS.
@@ -91,7 +92,14 @@ internal object IccoaTouchWelcome {
                 DiagLog.i("ICCOA", "UIBC_CENTER_PROBE=PASS; spatial_probe=PENDING; not verified")
                 return TouchResult(consumed = true)
             }
-            val stored = complete(context)
+            // A centre-only hypothesis must not survive until a later
+            // connection as an allegedly verified coordinate domain.
+            val stored = complete(context, requireSpatialMode = true)
+            if (!stored) {
+                _state.value = State(Phase.CHECK, centerMismatch = true)
+                DiagLog.w("ICCOA", "UIBC_EDGE_PROBE=PASS but DOMAIN_SAVE=FAIL; " +
+                    "retry BOTH spatial probes, no silent verification")
+            }
             DiagLog.i("ICCOA", "UIBC_CENTER_AND_EDGE_VERIFIED=" +
                 (if (stored) "PASS" else "FAIL") + "; saved=$stored")
             return TouchResult(consumed = true, completed = stored)
@@ -142,8 +150,13 @@ internal object IccoaTouchWelcome {
         return stored
     }
 
-    private fun complete(context: Context): Boolean {
+    private fun complete(
+        context: Context, requireSpatialMode: Boolean = false
+    ): Boolean {
         val key = IccoaCalibrationScope.key("welcome") ?: return false
+        if (requireSpatialMode &&
+            !app.ft.iccoa.IccoaInputCoordinateSpace.commitAfterSpatialPass(context))
+            return false
         val ok = context.getSharedPreferences(PREF, Context.MODE_PRIVATE)
             .edit().putBoolean(key, true).putBoolean(key + SPATIAL_SUFFIX, true).commit()
         if (ok) _state.value = State()
@@ -153,7 +166,21 @@ internal object IccoaTouchWelcome {
     /** A lost connection NEVER erases a successful first-time check. */
     fun cancel() {
         swallowUntilUp = false
+        app.ft.iccoa.IccoaInputCoordinateSpace.clearUnverifiedCandidate()
         _state.value = State()
+    }
+
+    /**
+     * A changed raster/producer between centre and edge is not the same
+     * spatial test. Discard the half-completed proof rather than saving it.
+     */
+    fun resetActiveProbesOnGeometryChange() {
+        val previous = _state.value
+        if (previous.phase != Phase.CHECK || !previous.centerChecked) return
+        swallowUntilUp = false
+        app.ft.iccoa.IccoaInputCoordinateSpace.clearUnverifiedCandidate()
+        _state.value = State(Phase.CHECK)
+        DiagLog.i("ICCOA", "UIBC_SPATIAL_PROBE_RESTART geometry changed")
     }
 
     /** Explicit forget resets the last authenticated receiver's welcome and quad. */
