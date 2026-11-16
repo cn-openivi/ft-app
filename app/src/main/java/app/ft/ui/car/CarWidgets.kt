@@ -34,6 +34,7 @@ import app.ft.FTApp
 import app.ft.core.CarProtocol
 import app.ft.core.GpsSourceMode
 import app.ft.dr.FtPositionTelemetry
+import app.ft.dr.CarTunnelRuntime
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -59,6 +60,9 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     // FT is the primary location owner, not Android Auto. The native
     // dashboard receives the same filtered output as the AA serializer.
     val ftPosition by FtPositionTelemetry.current.collectAsState()
+    // The running TinyEKF observer has a SEPARATE provisional source. No
+    // unverified tunnel prediction is submitted to Android Auto LOCATION.
+    val tunnelPrediction by CarTunnelRuntime.current.collectAsState()
     val phoneGps by CarInfo.phoneGps.collectAsState()
     val selector = remember {
         CarGpsSourceSelector(onTransition = { before, after, at ->
@@ -90,6 +94,11 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
             }
         }
         if (showInertial) {
+            if (motionSource == MotionSource.ICCOA) {
+                CarWidgetReadings.tunnelReadout(tunnelPrediction)?.let { readout ->
+                    Chip(CarIcons.Map, readout.value, readout.description, wide = true)
+                }
+            }
             val sensors = inertial[motionSource]
             InertialChip("Гироскоп", CarIcons.Gyro, motionSource, sensors?.gyro, now)
             InertialChip("Акселерометр", CarIcons.Acceleration, motionSource,
