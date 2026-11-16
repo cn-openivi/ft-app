@@ -271,7 +271,11 @@ class IccoaService : Service() {
         val receivedAtMs = System.currentTimeMillis()
         // Each valid newly received ICCOA GPS frame is an event. Carlink's
         // own timestamp marks serialization, not GNSS acquisition time.
-        val frameReceivedAtMs = if (fix != null)
+        // Decoded protobuf alone is not a navigation fix. An OEM (0,0)
+        // placeholder must NOT reset the moving-Gear GPS-loss recovery latch,
+        // clear receipt-gap evidence or be handed to FT/Android Auto.
+        val usableNavigationPosition = IccoaGpsWire.hasNavigationPosition(fix)
+        val frameReceivedAtMs = if (usableNavigationPosition)
             IccoaGpsTimestampGate.observedAtReceiveMs(receivedAtMs) else null
         sensorLiveness.onGps(frameReceivedAtMs != null)
         if (fix != null) {
@@ -310,8 +314,14 @@ class IccoaService : Service() {
                 pdopRaw = fix.pdop.takeIf { fix.pdopPresent },
                 deviceTimestampRaw = fix.timestampRaw.takeIf { fix.timestampPresent }
                 ))
-            } else DiagLog.w("ICCOA", "OEM GPS rejected: invalid local receipt clock; " +
-                "received=$receivedAtMs rawTs=${fix.timestampRaw} (coordinates omitted)")
+            } else if (sensorLiveness.gpsFrames <= 3L ||
+                sensorLiveness.gpsFrames and (sensorLiveness.gpsFrames - 1L) == 0L) {
+                DiagLog.w("ICCOA", "OEM GPS decoded but NOT usable for navigation: " +
+                    "hasPosition=$usableNavigationPosition receiptClockValid=" +
+                    "${IccoaGpsTimestampGate.observedAtReceiveMs(receivedAtMs) != null} " +
+                    "packetCount=${sensorLiveness.gpsFrames}; no FT/AA location " +
+                    "and no GPS recovery reset")
+            }
             if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                 VehicleTraceRecorder.gps(
                     System.currentTimeMillis(), android.os.SystemClock.elapsedRealtimeNanos(),
@@ -325,6 +335,7 @@ class IccoaService : Service() {
         if (gpsFrames <= 3L || gpsFrames and (gpsFrames - 1L) == 0L) {
             DiagLog.i("ICCOA", "SENSOR GPS received=$gpsFrames accepted=${sensorLiveness.acceptedGpsFrames} " +
                 "payloadBytes=${body.size} fixPresent=${fix != null} " +
+                "usableNavigationPosition=$usableNavigationPosition " +
                 "satellitesUsed=${fix?.satellitesUsed ?: -1} " +
                 "satellitesVisible=${fix?.satellitesVisible ?: -1}")
         }
