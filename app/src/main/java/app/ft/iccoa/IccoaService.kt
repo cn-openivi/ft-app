@@ -241,13 +241,26 @@ class IccoaService : Service() {
                         ftProjectionSensorAssist).active
                 gpsActivationRecovery.onGear(observed?.gearSpeedRaw,
                     gearReceiptMonoMs, hasDemand)?.let { trigger ->
+                    // Reassert EXACT existing OEM Control11 once without using
+                    // navigationSend's up-to-eight failed-send retries. Sending
+                    // active=true is not proof that an already-active HU
+                    // CarLinkSensorMgr restarted its Android gps subscription.
+                    val connection = session
+                    val activation = IccoaNavigation.sensorActivation(
+                        latestNavigation, aaSensorAssist, ftProjectionSensorAssist)
+                    val bytes = IccoaNavigation.encode(activation)
+                    val queued = connection != null &&
+                        connection.verifiedReceiverId != null && activation.active &&
+                        runCatching {
+                            connection.sendControl(IccoaNavigation.CONTROL_METHOD, bytes)
+                        }.getOrDefault(false)
+                    gpsActivationRecovery.controlQueueResult(queued)
+                    if (queued) navigationGate.accepted(
+                        bytes, android.os.SystemClock.elapsedRealtime())
                     DiagLog.w("ICCOA", "ICCOA_GPS_CONTROL11_REARM kind=${trigger.kind} " +
-                        "silenceReceiptMs=${trigger.elapsedMs} attempt=1/1 " +
-                        "gpsProducerOutcome=UNKNOWN satellitesLost=UNKNOWN")
-                    navigationGate.reset()
-                    navigationRetries = 0
-                    main.removeCallbacks(navigationSend)
-                    navigationSend.run()
+                        "silenceReceiptMs=${trigger.elapsedMs} " +
+                        "control11Queued=$queued queueNotHuAck=true " +
+                        "oemGpsProducerRestart=UNPROVEN satellitesLost=UNKNOWN")
                 }
                 if (FTApp.instance.prefs.vehicleCoordinateLogging) {
                     val current = VehicleTelemetry.current.value
