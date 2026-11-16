@@ -75,6 +75,39 @@ internal class DeadReckoningEkf {
     }
 
     /**
+     * Initialize the SAME TinyEKF as an *observational* car-GPS filter.
+     * The OEM ICCOA protocol does not transmit GNSS horizontal accuracy or
+     * acquisition time; modelStdMetres is an explicit engineering assumption
+     * for filter covariance, NEVER a verified receiver accuracy.
+     * If the car GPS has not supplied a moving course yet, internal heading
+     * zero is only a matrix initialization; the wrapper MUST block travel
+     * estimates until an actual course has been observed.
+     */
+    fun anchorUnverifiedGps(
+        eastMetres: Double, northMetres: Double,
+        courseDegrees: Double?, modelStdMetres: Double
+    ): Boolean {
+        if (initialized || !eastMetres.isFinite() || !northMetres.isFinite() ||
+            !modelStdMetres.isFinite() || modelStdMetres !in 5.0..200.0 ||
+            (courseDegrees != null &&
+                (!courseDegrees.isFinite() || courseDegrees !in 0.0..359.9999))) return false
+        val heading = (courseDegrees ?: 0.0) * PI / 180.0
+        filter.reset(
+            doubleArrayOf(eastMetres, northMetres, heading, 0.0),
+            doubleArrayOf(
+                sq(modelStdMetres), sq(modelStdMetres),
+                if (courseDegrees == null) sq(PI) else sq(20.0 * PI / 180.0),
+                sq(0.02)
+            )
+        )
+        initialized = true
+        secondsWithoutGnss = 0.0
+        previousWheelSpeedMetresPerSecond = null
+        unobservedMotion = true
+        return true
+    }
+
+    /**
      * Prediction must be explicitly authorised by verified/calibrated wheel
      * SIGNED speed and verified mapped OEM yaw. Negative speed is permitted
      * only when the upstream adapter has independently verified a fresh
