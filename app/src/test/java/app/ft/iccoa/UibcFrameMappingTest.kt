@@ -67,6 +67,30 @@ class UibcFrameMappingTest {
         assertEquals(719, nearBottomDirect.second)
     }
 
+    @Test fun openHeadunitActualTouchSurfaceDimensionsMatchOurSinglePassNativeMapping() {
+        // Cross-checked against public Open Headunit
+        // TouchCoordinateMapperTest: inputSurface=1748x720, raw=1740,715,
+        // AA video=1280x720, FILL, no margin => 1274,715.
+        // Display metrics 1920x642 are NOT the touch input surface!
+        val actual = VideoContentTransform(1748, 720, 1280, 720, false)
+        assertEquals(1274 to 715,
+            UibcFrameMapping.toStream(1740.0, 715.0, 1748, 720, actual))
+        val wrong = VideoContentTransform(1920, 642, 1280, 720, false)
+        assertNotEquals(1274 to 715,
+            UibcFrameMapping.toStream(1740.0, 715.0, 1920, 642, wrong))
+    }
+
+    @Test fun oemPreMappedCarlinkStreamPixelsMustNotUsePanelWidthDenominator() {
+        val video = VideoContentTransform(2422, 1272, 1280, 720, true)
+        // REAL OEM b3 transform sends WFD x0/y0 already mapped, even though
+        // the accompanying JSON width/height describe the 2421x1272 view.
+        assertEquals(640 to 360,
+            UibcFrameMapping.fromStream(640.0, 360.0, 1280, 720))
+        assertEquals(338 to 214,
+            UibcFrameMapping.toStream(640.0, 360.0, 2421, 1272, video))
+        // The two routes must never be silently composed together.
+    }
+
     @Test fun inputOutsideDeclaredWindowCannotBecomeAClickOnEdge() {
         assertNull(UibcFrameMapping.toStream(-1.0, 636.0, 2421, 1272, frame))
         assertNull(UibcFrameMapping.toStream(5000.0, 636.0, 2421, 1272, frame))
