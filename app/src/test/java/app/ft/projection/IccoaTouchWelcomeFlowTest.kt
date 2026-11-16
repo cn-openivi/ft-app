@@ -71,6 +71,43 @@ class IccoaTouchWelcomeFlowTest {
         assertFalse(IccoaTouchWelcome.awaiting)
     }
 
+    @Test fun firstCenterStagesDomainButOnlyOffCenterProbeCommitsToPrefs() {
+        Mockito.`when`(modePrefs.edit()).thenReturn(editor)
+        IccoaTouchWelcome.begin(context, 2422, 1272)
+        assertTrue(app.ft.iccoa.IccoaInputCoordinateSpace.stageCenterCandidate(
+            context, app.ft.iccoa.IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+        val first = IccoaTouchWelcome.consume(context, CarTouch.DOWN,
+            1211, 636, 2422, 1272)
+        assertTrue(first.consumed)
+        assertFalse(first.completed)
+        // The former bug persisted VIDEO_STREAM *before* this point.
+        Mockito.verify(modePrefs, Mockito.never()).edit()
+        assertFalse(stored[verified + ":spatial-check-v1"] ?: false)
+
+        IccoaTouchWelcome.consume(context, CarTouch.UP, 1211, 636, 2422, 1272)
+        val second = IccoaTouchWelcome.consume(context, CarTouch.DOWN,
+            IccoaWelcomeTarget.rightX(2422), IccoaWelcomeTarget.rightY(1272),
+            2422, 1272)
+        assertTrue(second.completed)
+        Mockito.verify(modePrefs, Mockito.times(1)).edit()
+        assertTrue(stored[verified + ":spatial-check-v1"] == true)
+    }
+
+    @Test fun geometryChangeBetweenSpatialProbesRestartsAtCentreAndDiscardsCandidate() {
+        Mockito.`when`(modePrefs.getString(Mockito.anyString(), Mockito.isNull()))
+            .thenReturn(null)
+        IccoaTouchWelcome.begin(context, 2422, 1272)
+        assertTrue(app.ft.iccoa.IccoaInputCoordinateSpace.stageCenterCandidate(
+            context, app.ft.iccoa.IccoaInputCoordinateSpace.Mode.VIDEO_STREAM))
+        IccoaTouchWelcome.consume(context, CarTouch.DOWN, 1211, 636, 2422, 1272)
+        assertTrue(IccoaTouchWelcome.state.value.centerChecked)
+        IccoaTouchWelcome.resetActiveProbesOnGeometryChange()
+        assertFalse(IccoaTouchWelcome.state.value.centerChecked)
+        assertEquals(IccoaTouchWelcome.Phase.CHECK, IccoaTouchWelcome.state.value.phase)
+        Mockito.verify(modePrefs, Mockito.never()).edit()
+        assertFalse(stored[verified + ":spatial-check-v1"] ?: false)
+    }
+
     @Test fun twoFailedCenterHitsStartExistingFourPointOnHeadUnit() {
         IccoaTouchWelcome.begin(context, 2422, 1272)
         IccoaTouchWelcome.consume(context, CarTouch.DOWN, 200, 200, 2422, 1272)
