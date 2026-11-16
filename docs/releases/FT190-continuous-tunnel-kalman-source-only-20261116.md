@@ -110,3 +110,20 @@ d32f54ba41ba3efe386751ed206bb3dd1dcc96ef), автозапущен уже сущ�
 push-триггером CI. Дождаться терминального результата до присвоения SOURCE PASS.
 APK/подпись/полевая установка запрещены без отдельной команды владельца.
 
+
+
+### FT190 source race follow-up / точная последняя проверка
+
+Доказанная race при переключении Surface: раньше `setSurface(new)` записывал
+новую цель **до** получения `outputLock` и `MediaCodec.setOutputSurface(new)`.
+В это окно callback уничтожения прежней TextureView мог принять старую
+поверхность за уже неиспользуемую и освободить её при продолжающемся рендере.
+Исправлено в `AaVideoDecoder.setSurface`: publish новой поверхности только
+после успешного перехода либо после остановки старого codec. Коммит
+`e69300e8c2ed9bfa8fc2a0ae473df2638c17e1a5`.
+
+Автоматический unsigned source-only JUnit workflow от существующего
+`push: app/**` триггера: https://github.com/cn-openivi/ft-app/actions/runs/43932114916,
+exact executable SHA `e69300e8c2ed9bfa8fc2a0ae473df2638c17e1a5`.
+Финальный результат не записывается как PASS, пока GitHub Actions не вернул
+terminal SUCCESS. Нет подписанного APK и аппаратной приёмки.
