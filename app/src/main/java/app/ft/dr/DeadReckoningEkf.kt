@@ -211,12 +211,16 @@ internal class DeadReckoningEkf {
         f[EAST * STATE_SIZE + HEADING] = distance * cos(x[HEADING])
         f[NORTH * STATE_SIZE + HEADING] = -distance * sin(x[HEADING])
         val q = DoubleArray(STATE_SIZE * STATE_SIZE)
-        val perStepPositionStd = 0.75 + abs(distance) * 0.12
-        q[EAST * STATE_SIZE + EAST] = sq(perStepPositionStd)
-        q[NORTH * STATE_SIZE + NORTH] = sq(perStepPositionStd)
-        // No observed turn rate. 0.4 rad/s model variance represents a
-        // possible unobserved bend; it is NOT an OEM gyro measurement.
-        q[HEADING * STATE_SIZE + HEADING] = sq(0.4 * dtSeconds)
+        // Diffusion per elapsed time, NOT fixed per received packet.
+        // The vehicle may deliver GearInfo at 1Hz or 10Hz; changing its
+        // report rate must not magically change the model's uncertainty.
+        val positionVariancePerSecond = sq(2.0 + 0.12 * carSpeedMetresPerSecond)
+        q[EAST * STATE_SIZE + EAST] = positionVariancePerSecond * dtSeconds
+        q[NORTH * STATE_SIZE + NORTH] = positionVariancePerSecond * dtSeconds
+        // Unknown turn rate is uncertainty in the *motion model*, not a
+        // fabricated zero-rate gyro measurement. This spectral density
+        // yields coherent growth independent of the GearInfo packet rate.
+        q[HEADING * STATE_SIZE + HEADING] = sq(0.4) * dtSeconds
         q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
         filter.predict(next, f, q)
         previousWheelSpeedMetresPerSecond = null
