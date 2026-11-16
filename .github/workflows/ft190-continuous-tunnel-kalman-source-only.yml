@@ -45,6 +45,8 @@ jobs:
           test -f app/src/test/java/app/ft/iccoa/IccoaDrInputBridgeTest.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaGpsActivationRecoveryTest.kt
           test -f app/src/test/java/app/ft/dr/CarTunnelKalmanTest.kt
+          test -f app/src/test/java/app/ft/ui/car/CarTunnelWidgetReadingsTest.kt
+          grep -Fq 'CarTunnelRuntime.current.collectAsState()' app/src/main/java/app/ft/ui/car/CarWidgets.kt
           grep -Fq 'CarTunnelRuntime.onGear' app/src/main/java/app/ft/iccoa/IccoaService.kt
           ! grep -Fq 'gpsActivationRecovery.onGear(' app/src/main/java/app/ft/iccoa/IccoaService.kt
           grep -Fq 'carlinkFaultInferredFromSilence=NO' app/src/main/java/app/ft/dr/CarTunnelKalman.kt
@@ -85,7 +87,7 @@ jobs:
           from pathlib import Path
           import xml.etree.ElementTree as ET
           folder=Path('app/build/test-results/testUnsignedTransitUnitTest')
-          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest','IccoaDrInputBridgeTest','StringsTest','IccoaMediaTest','IccoaWfdAvcTest','CarUiViewportTest','FtUiScaleStepTest','IccoaGpsActivationRecoveryTest','CarTunnelKalmanTest')
+          names=('IccoaDirectRecoveryPolicyTest','IccoaOemWheelKeyTest','IccoaDrSourceGapEvidenceTest','IccoaDrInputBridgeTest','StringsTest','IccoaMediaTest','IccoaWfdAvcTest','CarUiViewportTest','FtUiScaleStepTest','IccoaGpsActivationRecoveryTest','CarTunnelKalmanTest','CarTunnelWidgetReadingsTest')
           paths=[]
           for name in names:
             matches=list(folder.glob('*'+name+'*.xml'))
@@ -97,7 +99,7 @@ jobs:
           totals={k:sum(int(s.get(k,0)) for s in suites) for k in ('tests','failures','errors','skipped')}
           print('FT190_FULL_UNSIGNED_JUNIT='+str(totals))
           print('FT190_REQUIRED_TEST_CLASSES='+str(names))
-          assert totals['tests'] >= 1049 and totals['failures'] == 0 and totals['errors'] == 0 and totals['skipped'] == 0
+          assert totals['tests'] >= 1052 and totals['failures'] == 0 and totals['errors'] == 0 and totals['skipped'] == 0
           PY
           if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
             echo 'Source-only test MUST NOT produce an APK' >&2
