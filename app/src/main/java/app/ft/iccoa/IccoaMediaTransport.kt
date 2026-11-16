@@ -303,6 +303,12 @@ internal class IccoaMediaTransport(
                     "${plan.streamWidth}x${plan.streamHeight}:${plan.preserveAspect}:" +
                     "direct=${directFramesEnabled}:uibc=${sourceW}x${sourceH}"
                 if (geometryKey != lastVideoGeometry) {
+                    if (lastVideoGeometry.isNotEmpty()) {
+                        // A receiver mode inferred for a previous raster is
+                        // not a verified centre+edge test on this new raster.
+                        IccoaInputCoordinateSpace.clearUnverifiedCandidate()
+                        app.ft.projection.IccoaTouchWelcome.resetActiveProbesOnGeometryChange()
+                    }
                     lastVideoGeometry = geometryKey
                     // The previous socket-local mode was lost on every
                     // reconnect. Load the independently center-verified UIBC
@@ -331,11 +337,15 @@ internal class IccoaMediaTransport(
                         event.optDouble("y0", Double.NaN),
                         sourceW, sourceH, frame
                     )
-                    val saved = IccoaInputCoordinateSpace.rememberVerified(
+                    val staged = IccoaInputCoordinateSpace.stageCenterCandidate(
                         app.ft.FTApp.instance, undimensionedSpace)
+                    // The second off-centre probe owns the final commit. A
+                    // single centre OK can pass while AA Direct edges are
+                    // offset by renderer scale/letterbox/crop.
                     DiagLog.i("ICCOA", "UIBC_COORDINATE_SPACE first_center=" +
                         "${undimensionedSpace.name} dimensions_explicit=${!dimensionsMissing}" +
-                        " receiver_scoped_saved=$saved oem_premapped_wfd_candidate=true")
+                        " receiver_scoped_staged=$staged saved=false " +
+                        "spatial_probe=PENDING")
                 }
                 fun toStream(index: Int): Pair<Int, Int>? {
                     val rawX = event.optDouble("x$index", Double.NaN)
