@@ -25,6 +25,10 @@ internal class IccoaGpsActivationRecovery {
     data class Evidence(
         val attempts: Int,
         val gpsReceiptsAfterAttempt: Int,
+        val gpsReceiptsAfterQueuedControl: Int,
+        val controlQueueSucceeded: Int,
+        val controlQueueFailed: Int,
+        val controlOutcomePending: Boolean,
         val initialAttempts: Int,
         val postFixAttempts: Int,
         val lastReason: String,
@@ -37,10 +41,15 @@ internal class IccoaGpsActivationRecovery {
             "attempts=$attempts",
             "initialAttempts=$initialAttempts postFixAttempts=$postFixAttempts",
             "gpsReceiptsAfterAttempt=$gpsReceiptsAfterAttempt",
+            "gpsReceiptsAfterQueuedControl=$gpsReceiptsAfterQueuedControl",
+            "controlQueueSucceeded=$controlQueueSucceeded controlQueueFailed=$controlQueueFailed",
+            "controlOutcomePending=$controlOutcomePending",
             "lastReason=$lastReason lastSilenceMs=$lastSilenceMs",
             "frozenAtDisconnect=$frozen",
             "outgoingControl=EXISTING_OEM_CONTROL11_ONLY",
-            "controlQueueSuccessAndHuEffect=REQUIRES_FIELD_LOGS",
+            "controlQueueSuccessIsNotHuAck=true",
+            "gpsResumeAfterQueueIsTemporalCorrelationNotCausation=true",
+            "oemGpsProducerRestartProven=NO",
             "satellitesActuallyLost=UNKNOWN",
             "oemDeadReckoningInjected=NO"
         ).joinToString("\n", postfix = "\n")
@@ -56,6 +65,11 @@ internal class IccoaGpsActivationRecovery {
     private var initialAttempts = 0
     private var postFixAttempts = 0
     private var gpsReceiptsAfterAttempt = 0
+    private var gpsReceiptsAfterQueuedControl = 0
+    private var controlQueueSucceeded = 0
+    private var controlQueueFailed = 0
+    private var controlOutcomePending = false
+    private var lastAttemptQueued = false
     private var lastReason = "NONE"
     private var lastSilenceMs = 0L
 
@@ -70,6 +84,11 @@ internal class IccoaGpsActivationRecovery {
         initialAttempts = 0
         postFixAttempts = 0
         gpsReceiptsAfterAttempt = 0
+        gpsReceiptsAfterQueuedControl = 0
+        controlQueueSucceeded = 0
+        controlQueueFailed = 0
+        controlOutcomePending = false
+        lastAttemptQueued = false
         lastReason = "NONE"
         lastSilenceMs = 0L
     }
@@ -82,12 +101,17 @@ internal class IccoaGpsActivationRecovery {
     @Synchronized fun onGps(receiptMonoMs: Long) {
         if (!active || receiptMonoMs <= 0L) return
         if (lastGpsReceiptMonoMs > receiptMonoMs) return
-        if (attemptedCurrentGap) gpsReceiptsAfterAttempt++
+        if (attemptedCurrentGap) {
+            gpsReceiptsAfterAttempt++
+            if (lastAttemptQueued) gpsReceiptsAfterQueuedControl++
+        }
         lastGpsReceiptMonoMs = receiptMonoMs
         movingSinceMonoMs = 0L
         lastMovingMonoMs = 0L
         movingSamples = 0
         attemptedCurrentGap = false
+        controlOutcomePending = false
+        lastAttemptQueued = false
     }
 
     /**
@@ -120,6 +144,8 @@ internal class IccoaGpsActivationRecovery {
             receiptMonoMs - baseline < GPS_SILENCE_REARM_MS) return null
 
         attemptedCurrentGap = true
+        controlOutcomePending = true
+        lastAttemptQueued = false
         attempts++
         lastSilenceMs = receiptMonoMs - baseline
         val kind = if (lastGpsReceiptMonoMs > 0L)
@@ -130,9 +156,24 @@ internal class IccoaGpsActivationRecovery {
         return Trigger(kind, lastSilenceMs)
     }
 
+    /**
+     * True means an ICCOA CONTROL11 frame was QUEUED in this phone process.
+     * It is not an acknowledgement from the Toyota HU, and GPS resumption
+     * after this event does not establish that CONTROL11 caused it.
+     * Never retroactively record a result for a previous session or attempt.
+     */
+    @Synchronized fun controlQueueResult(queued: Boolean): Boolean {
+        if (!active || !attemptedCurrentGap || !controlOutcomePending) return false
+        controlOutcomePending = false
+        lastAttemptQueued = queued
+        if (queued) controlQueueSucceeded++ else controlQueueFailed++
+        return true
+    }
+
     @Synchronized fun evidence(): Evidence = Evidence(
-        attempts, gpsReceiptsAfterAttempt, initialAttempts, postFixAttempts,
-        lastReason, lastSilenceMs, !active
+        attempts, gpsReceiptsAfterAttempt, gpsReceiptsAfterQueuedControl,
+        controlQueueSucceeded, controlQueueFailed, controlOutcomePending,
+        initialAttempts, postFixAttempts, lastReason, lastSilenceMs, !active
     )
 }
 
