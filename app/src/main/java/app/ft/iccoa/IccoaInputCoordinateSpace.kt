@@ -21,7 +21,11 @@ internal object IccoaInputCoordinateSpace {
     // This is the meaning of UIBC coordinates for one VERIFIED receiver,
     // not a vehicle/phone model profile or a calibration transform.
     private const val PROFILE_PREF = "ft-iccoa-uibc-domain"
-    private const val PROFILE_KEY = "uibc-domain-v187"
+    // v187 persisted CENTER-only guesses before the edge probe. Treat that
+    // profile as UNVERIFIED: one new two-point check is necessary, not every
+    // subsequent connection. Do not silently trust its old value.
+    private const val PROFILE_KEY = "uibc-domain-v190-spatial"
+    private const val LEGACY_CENTER_ONLY_KEY = "uibc-domain-v187"
 
     /**
      * This receiver's first CENTER probe gives a provisional hypothesis,
@@ -73,9 +77,10 @@ internal object IccoaInputCoordinateSpace {
 
     fun forgetReceiver(context: Context, verifiedWelcomeKey: String): Boolean {
         if (!Regex("^verified_[0-9a-f]{64}:welcome$").matches(verifiedWelcomeKey)) return false
-        val key = verifiedWelcomeKey.removeSuffix("welcome") + PROFILE_KEY
+        val prefix = verifiedWelcomeKey.removeSuffix("welcome")
         return context.getSharedPreferences(PROFILE_PREF, Context.MODE_PRIVATE)
-            .edit().remove(key).commit()
+            .edit().remove(prefix + PROFILE_KEY)
+            .remove(prefix + LEGACY_CENTER_ONLY_KEY).commit()
     }
 
     /**
