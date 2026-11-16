@@ -28,3 +28,12 @@
 ## Ограничения
 
 Нет изменения FTMP master/пяти воркеров, архитектуры, HU permissions, CAN/VHAL, SELinux/AVB или установленного APK. Нет авто-fallback на телефон и синтетических координат. Только исходники, юнит-тесты, диагностика и рабочая ветка. Отчёт: «было → сделал → доказательство → NEXT_EDGE».
+
+## Продолжение FT189 от 16.11.2026 — GPS ingress alignment
+
+- При анализе кодового пути `ICCOA SENSOR Gps → VehicleTelemetry → FtPositionTelemetry → AA SENSOR_LOCATION` устранена конкретная ошибка: декодированный пакет с OEM-позицией (0,0) ранее засчитывался как возобновление GPS для `sensorLiveness`, `IccoaDrSourceGapEvidence` и `IccoaGpsActivationRecovery`, хотя FT/AA уже отвергали Null Island.
+- Новый `IccoaGpsWire.hasNavigationPosition` задаёт единую пригодность исходной WGS84 позиции и не вводит спорных age/dedupe-фильтров. (0,37), (55,0), неизменные последовательные координаты, спутники=0 остаются допустимыми. Сырые непригодные сообщения попадают в разреженный счётчик/лог, но не в FT/AA GPS.
+- Дополнительные точные wire/regression тесты `IccoaGpsWireTest` и `IccoaGpsActivationRecoveryTest` подтверждают, что (0,0) не закрывает 64-секундную дыру при продолжающемся Gear и только новая действительная позиция закрывает восстановление.
+- Источник OEM схемы: <https://drive.google.com/file/d/1euc4KHkJkVBuZFU3MTX_cxPWnUbi-tYZ/view>, оригинальный FAW `CarLinkAdapter$5.onNavigationInfoReceived` с `CONTROL11/isNavigating` и `CarLinkSensorMgr.onStart`. Повторная активация — source-only hint, не подтверждённый фактический рестарт HU `gps` provider.
+- <https://github.com/cn-openivi/ft-app/actions/runs/43825733545> — новый полный unsigned CI, exact source SHA `c704c4e73855aa7b3f8a5cbdf8e01f7c510892d4`; результат фиксировать только после терминального readback.
+- Отдельная краткая матрица проверки GPS и AA: [FT189-GPS-ICCOA-AA-ACCEPTANCE-20261116.md](../field/FT189-GPS-ICCOA-AA-ACCEPTANCE-20261116.md). В поле пока нет новых PASS, signed APK не создан.
