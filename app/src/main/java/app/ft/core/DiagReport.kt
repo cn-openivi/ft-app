@@ -53,6 +53,10 @@ object DiagReport {
             // later inter-GPS receipt gap. Receipt is not real GNSS fix time.
             put("dr-source-gaps.txt", app.ft.iccoa.IccoaDrSourceGapEvidence.snapshot(
                     android.os.SystemClock.elapsedRealtime()).reportLine())
+            // One-shot OEM Control11 producer re-arm results, without any
+            // coordinates and without claiming the OEM HU actually restarted GPS.
+            put("gps-activation-recovery.txt",
+                app.ft.iccoa.IccoaGpsActivationRecoveryEvidence.snapshot())
             put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
                 "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))
