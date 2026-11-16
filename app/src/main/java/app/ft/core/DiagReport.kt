@@ -93,7 +93,11 @@ object DiagReport {
                     put("logcat-system-filtered.txt", all.lineSequence().filter { SYSTEM_TAGS.containsMatchIn(it) }.joinToString("\n").takeLast(LOGCAT_LIMIT))
                 }
             } else {
-                put("logcat-ft.txt", "System logcat excluded: coordinate recording is disabled in FT settings.\n")
+                // Without opt-in, retain only timestamps, fixed Android system tags
+                // and bounded event enums. Never export arbitrary logcat messages:
+                // OEM/system lines may contain exact GPS and user identifiers.
+                put("logcat-ft.txt", SystemLogcatSummary.summarize(
+                    logcat(arrayOf("logcat", "-d", "-v", "threadtime"))))
             }
         }
         DiagLog.i("Report", "report ready: $name (${out.length() / 1024} KB)")
