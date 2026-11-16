@@ -627,6 +627,7 @@
     <string name="iccoa_err_internal_car">Автомобиль сообщил о внутренней ошибке</string>
     <string name="iccoa_err_mode_rejected">Автомобиль отклонил режим подключения</string>
     <string name="iccoa_err_connection_rejected">Автомобиль отклонил подключение</string>
+    <string name="iccoa_err_trust_reenroll">Ключ безопасности автомобиля не совпадает с сохранённым. FT не изменил доверенный ключ. Если это ваш автомобиль, выберите «Забыть автомобиль» и повторите сопряжение с новым PIN.</string>
     <string name="iccoa_err_report">Отправьте отчёт из FT</string>
     <string name="iccoa_err_auth_stage">Сбой ICCOA на этапе %1$s (%2$s). %3$s</string>
     <string name="iccoa_err_lane_closed">Канал ICCOA %1$d закрыт (%2$s)</string>
