@@ -152,6 +152,71 @@ internal class DeadReckoningEkf {
     }
 
     /**
+     * FT190 observational model for the CURRENT FAW ICCOA inputs, not the
+     * verified wheel/yaw DR path above. GearInfo km/h is field-confirmed;
+     * OEM gyro XYZ was Math.floor() quantised and is NOT a usable yaw rate.
+     *
+     * This is continuous course-hold prediction with growing covariance:
+     * never represent a held heading as a measured turn. The caller MUST
+     * keep this model's estimate provisional and must NOT promote it to
+     * AA FUSED/verified motion merely because this method returned a point.
+     */
+    fun predictUnverifiedYaw(
+        dtSeconds: Double, carSpeedMetresPerSecond: Double
+    ): Estimate? {
+        if (!initialized || !dtSeconds.isFinite() || dtSeconds !in 0.001..2.0 ||
+            !carSpeedMetresPerSecond.isFinite() ||
+            carSpeedMetresPerSecond !in 0.0..65.0) return null
+        val x = filter.state()
+        val distance = carSpeedMetresPerSecond * dtSeconds
+        val next = x.copyOf()
+        next[EAST] += distance * sin(x[HEADING])
+        next[NORTH] += distance * cos(x[HEADING])
+        val f = DoubleArray(STATE_SIZE * STATE_SIZE) { i ->
+            if (i / STATE_SIZE == i % STATE_SIZE) 1.0 else 0.0
+        }
+        f[EAST * STATE_SIZE + HEADING] = distance * cos(x[HEADING])
+        f[NORTH * STATE_SIZE + HEADING] = -distance * sin(x[HEADING])
+        val q = DoubleArray(STATE_SIZE * STATE_SIZE)
+        val perStepPositionStd = 0.75 + abs(distance) * 0.12
+        q[EAST * STATE_SIZE + EAST] = sq(perStepPositionStd)
+        q[NORTH * STATE_SIZE + NORTH] = sq(perStepPositionStd)
+        // No observed turn rate. 0.4 rad/s model variance represents a
+        // possible unobserved bend; it is NOT an OEM gyro measurement.
+        q[HEADING * STATE_SIZE + HEADING] = sq(0.4 * dtSeconds)
+        q[GYRO_BIAS * STATE_SIZE + GYRO_BIAS] = sq(0.0002) * dtSeconds
+        filter.predict(next, f, q)
+        previousWheelSpeedMetresPerSecond = null
+        unobservedMotion = true
+        secondsWithoutGnss += dtSeconds
+        return estimate()
+    }
+
+    /**
+     * The car GPS provider reports course-over-ground while MOVING, not
+     * physical vehicle-nose yaw. This is a *model* observation with explicit
+     * uncertainty, usable only to adjust an advisory filter. TinyEKF was
+     * initialized with a 2-D observation dimension; the second zero-Jacobian
+     * row is an independent null observation and changes no state.
+     */
+    fun correctObservedCourse(courseDegrees: Double, courseStdDegrees: Double = 20.0): Boolean {
+        if (!initialized || !courseDegrees.isFinite() ||
+            courseDegrees !in 0.0..359.9999 ||
+            !courseStdDegrees.isFinite() ||
+            courseStdDegrees !in 1.0..180.0) return false
+        val x = filter.state()
+        val target = courseDegrees * PI / 180.0
+        val innovation = normalize(target - x[HEADING])
+        val h = DoubleArray(GPS_MEASUREMENTS * STATE_SIZE)
+        h[HEADING] = 1.0
+        val r = doubleArrayOf(sq(courseStdDegrees * PI / 180.0), 0.0, 0.0, 1.0)
+        return filter.update(
+            doubleArrayOf(x[HEADING] + innovation, 0.0),
+            doubleArrayOf(x[HEADING], 0.0), h, r
+        )
+    }
+
+    /**
      * Explicit coasting step when either wheel speed or mapped yaw is NOT
      * independently verified. Freeze position and heading, never integrate
      * guessed motion, but increase covariance and GNSS-outage age.
