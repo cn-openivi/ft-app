@@ -1,6 +1,7 @@
 package app.ft.iccoa
 
 import app.ft.core.NavigationInfo
+import app.ft.core.ProtoWriter
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -26,6 +27,30 @@ class IccoaGpsActivationRecoveryTest {
         assertEquals(0, evidence.gpsReceiptsAfterAttempt)
         assertTrue(evidence.reportLine().contains("CAR_GPS_PRIMARY_NO_PHONE_FALLBACK"))
         assertTrue(evidence.reportLine().contains("satellitesActuallyLost=UNKNOWN"))
+    }
+
+    @Test fun decodedZeroZeroOemPacketDoesNotMaskMovingGpsBlackout() {
+        val recovery = IccoaGpsActivationRecovery()
+        recovery.beginSession()
+        recovery.onGps(10_000L)
+        val placeholderBytes = ProtoWriter()
+            .fixed64(2, 0.0.toBits()).fixed64(3, 0.0.toBits()).toByteArray()
+        val placeholder = IccoaGpsWire.decode(placeholderBytes)
+        assertNotNull(placeholder)
+        assertFalse(IccoaGpsWire.hasNavigationPosition(placeholder))
+        for (t in 11_000L..23_000L step 1_000L) {
+            if (t == 15_000L && IccoaGpsWire.hasNavigationPosition(placeholder)) {
+                recovery.onGps(t) // same condition as ICCOA production callback
+            }
+            val trigger = recovery.onGear(35L, t, true)
+            assertEquals("unexpected CONTROL11 at $t", t == 20_000L, trigger != null)
+        }
+        assertEquals(1, recovery.evidence().attempts)
+        val genuine = IccoaGpsWire.decode(ProtoWriter()
+            .fixed64(2, 55.7.toBits()).fixed64(3, 37.6.toBits()).toByteArray())
+        assertTrue(IccoaGpsWire.hasNavigationPosition(genuine))
+        recovery.onGps(24_000L)
+        assertEquals(1, recovery.evidence().gpsReceiptsAfterAttempt)
     }
 
     @Test fun nextRealCarGpsPacketClosesGapAndPermitsOneLaterRearm() {
