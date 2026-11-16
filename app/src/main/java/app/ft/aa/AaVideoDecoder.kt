@@ -78,19 +78,21 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
         synchronized(lock) {
             if (s === surface) return
             val had = surface != null
-            surface = s
-            if (s != null) DiagLog.i(tag, "Android Auto's picture is drawn on the car screen")
-            else if (had) DiagLog.i(tag, "Android Auto's picture has nowhere to be drawn")
             if (s == null) {
-                stopLocked()
-                return
-            }
-            if (mediaTek && !s.isValid) {
-                DiagLog.w(tag, "the new car screen is already gone, waiting for the next one")
                 surface = null
+                if (had) DiagLog.i(tag, "Android Auto's picture has nowhere to be drawn")
                 stopLocked()
                 return
             }
+            if (!s.isValid) {
+                DiagLog.w(tag, "the new car screen is already gone, waiting for the next one")
+                stopLocked()
+                surface = null
+                return
+            }
+            // Do NOT publish the new Surface before setOutputSurface acquires
+            // outputLock. The old TextureView's destruction may run meanwhile
+            // and must still recognize the old target as currently in use.
             val c = codec
             if (running.get() && c != null) {
                 if (!mediaTek) {
@@ -104,6 +106,7 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                         outputLock.unlock()
                     }
                     if (moved.isSuccess) {
+                        surface = s
                         DiagLog.i(tag, "decoder moved onto the new car screen surface")
                         return
                     }
@@ -112,6 +115,8 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                 stopLocked()
                 missed++
             }
+            surface = s
+            DiagLog.i(tag, "Android Auto's picture is drawn on the car screen")
             if (!running.get() && config != null) startLocked()
         }
     }
