@@ -74,6 +74,29 @@ class IccoaGpsWireTest {
         assertNull(IccoaGpsUnits.headingDegrees(360L))
     }
 
+    @Test fun decodedNullIslandIsNotAUsableNavigationFixOrGpsRecoveryReset() {
+        val initial = IccoaGpsWire.decode(data(0.0, 0.0))
+        // The protobuf and its wire types are valid, but the OEM position
+        // is an uninitialized placeholder. FT/AA must not see coordinates.
+        assertNotNull(initial)
+        assertFalse(IccoaGpsWire.hasNavigationPosition(initial))
+        assertFalse(IccoaGpsWire.hasNavigationPosition(null))
+        assertTrue(IccoaGpsWire.hasNavigationPosition(
+            IccoaGpsWire.decode(data(0.0, 37.617299))))
+        assertTrue(IccoaGpsWire.hasNavigationPosition(
+            IccoaGpsWire.decode(data(55.755826, 0.0))))
+    }
+
+    @Test fun realIdenticalSuccessiveOemCoordinatesAndZeroSatellitesRemainValid() {
+        val original = IccoaGpsWire.decode(data(55.755826, 37.617299))!!
+        val sameFixAgain = IccoaGpsWire.decode(data(55.755826, 37.617299))!!
+        assertTrue(IccoaGpsWire.hasNavigationPosition(original))
+        assertTrue(IccoaGpsWire.hasNavigationPosition(sameFixAgain))
+        assertTrue(IccoaGpsWire.hasNavigationPosition(
+            original.copy(satellitesUsed = 0L, satellitesVisible = 0L)))
+        // No fabricated GNSS loss merely because satellite counters are zero.
+    }
+
     @Test fun rejectsOutOfRangeCoordinates() {
         assertNull(IccoaGpsWire.decode(data(91.0, 37.0)))
         assertNull(IccoaGpsWire.decode(data(55.0, 190.0)))
