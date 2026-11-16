@@ -776,6 +776,11 @@ class IccoaSession(
             DiagLog.w("ICCOA", "AUTH failed stage=$stage reason=$reason at=$location")
             val hint = when ((e as? IccoaHandshakeException)?.reason) {
                 IccoaHandshakeException.Reason.PIN_MAC -> Lang.str(R.string.iccoa_err_pin_mismatch)
+                // Authentication must fail closed on a changed OEM server EC key.
+                // Make the manual recovery explicit; never erase/overwrite trust
+                // automatically, and never reinterpret a mismatch as a Wi-Fi timeout.
+                IccoaHandshakeException.Reason.TRUSTED_IDENTITY_MISMATCH ->
+                    Lang.str(R.string.iccoa_err_trust_reenroll)
                 IccoaHandshakeException.Reason.RESPONSE_RESULT -> when (e.result) {
                     1L -> Lang.str(R.string.iccoa_err_new_code)
                     2L -> Lang.str(R.string.iccoa_err_confirm_car)
