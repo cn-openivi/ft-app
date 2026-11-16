@@ -57,6 +57,7 @@ object DiagReport {
             // coordinates and without claiming the OEM HU actually restarted GPS.
             put("gps-activation-recovery.txt",
                 app.ft.iccoa.IccoaGpsActivationRecoveryEvidence.snapshot())
+            put("car-tunnel-kalman.txt", app.ft.dr.CarTunnelRuntime.evidence())
             put("log-completeness.txt", "durable_flush=$durableFlush\n$logCompleteness\n" +
                 "A missing event in incomplete logs is NOT proof that the event never occurred.\n")
             zip.putNextEntry(ZipEntry("ft-log.txt"))
