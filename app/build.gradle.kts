@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 189
-        versionName = "3.9.75-xa60-ft189-candidate"
+        versionCode = 190
+        versionName = "3.9.76-xa60-ft190-tunnel-kalman-candidate"
     }
 
     signingConfigs {
