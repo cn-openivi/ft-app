@@ -41,10 +41,16 @@ class AaVideoView(context: Context) : TextureView(context), TextureView.SurfaceT
     }
 
     override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-        AaVideoSink.detach(output)
-        output?.release()
+        val retiring = output
         output = null
-        return true
+        // Returning false retains ownership of the SurfaceTexture. The decoder
+        // stops/drains on its own thread; only then may Android's old surface be
+        // released. Otherwise MediaCodec may render to an obsolete Surface.
+        AaVideoSink.retire(retiring) {
+            retiring?.release()
+            texture.release()
+        }
+        return false
     }
 
     override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
