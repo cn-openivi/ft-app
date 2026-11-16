@@ -118,6 +118,30 @@ class CarTunnelKalmanTest {
         assertTrue(f.evidence().reportLine().contains("carlinkFaultInferredFromSilence=NO"))
     }
 
+    @Test fun tunnelCovarianceIsNotDrivenByHowOftenGearPacketsArrive() {
+        val a = DeadReckoningEkf()
+        val b = DeadReckoningEkf()
+        assertTrue(a.anchorUnverifiedGps(0.0, 0.0, 90.0, 30.0))
+        assertTrue(b.anchorUnverifiedGps(0.0, 0.0, 90.0, 30.0))
+        // Same actual 10 s at 36 km/h, but at 1 Hz versus 10 Hz.
+        repeat(10) { assertNotNull(a.predictUnverifiedYaw(1.0, 10.0)) }
+        repeat(100) { assertNotNull(b.predictUnverifiedYaw(0.1, 10.0)) }
+        val x = a.estimate()!!
+        val y = b.estimate()!!
+        assertEquals(100.0, x.eastMetres, 1e-6)
+        assertEquals(100.0, y.eastMetres, 1e-6)
+        assertEquals(0.0, x.northMetres, 1e-6)
+        assertEquals(0.0, y.northMetres, 1e-6)
+        assertTrue(x.horizontalUncertaintyMetres > 30.0)
+        assertTrue(y.horizontalUncertaintyMetres > 30.0)
+        val diff = kotlin.math.abs(
+            x.horizontalUncertaintyMetres - y.horizontalUncertaintyMetres)
+        val scale = kotlin.math.max(
+            x.horizontalUncertaintyMetres, y.horizontalUncertaintyMetres)
+        assertTrue("Gear report rate changed Kalman uncertainty too much",
+            diff / scale < 0.35)
+    }
+
     @Test fun newGpsWithNoNewDistanceCanUpdateKalmanWithoutUnverifiedYawPromotion() {
         val f = CarTunnelKalman()
         f.beginSession()
