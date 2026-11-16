@@ -347,10 +347,17 @@ class IccoaSession(
     fun decryptInput(body: ByteArray): ByteArray =
         (cipher ?: error("ICCOA authentication is not complete")).decryptUibc(body)
 
-    fun sendControl(method: Int, body: ByteArray): Boolean = current?.let { send(it, 1, method, body, 1) } ?: false
+    fun sendControl(
+        method: Int, body: ByteArray, onWritten: (() -> Unit)? = null
+    ): Boolean = current?.let {
+        send(it, 1, method, body, 1, onWritten)
+    } ?: false
     fun sendAudio(method: Int, body: ByteArray): Boolean = current?.let { send(it, 4, method, body, 0) } ?: false
 
-    private fun send(attempt: Attempt, category: Int, method: Int, body: ByteArray, format: Int): Boolean {
+    private fun send(
+        attempt: Attempt, category: Int, method: Int, body: ByteArray,
+        format: Int, onWritten: (() -> Unit)? = null
+    ): Boolean {
         if (!active(attempt)) return false
         val socket = (if (category == 4) attempt.audio else attempt.control) ?: return false
         val key = attempt.cipher ?: return false
@@ -363,6 +370,11 @@ class IccoaSession(
                     val frame = IccoaControl.frame(category, method, 0, key.encrypt(copy), attempt.sequence.getAndIncrement(), format)
                     if (category == 4) attempt.audioWritingAt = System.nanoTime() else attempt.controlWritingAt = System.nanoTime()
                     socket.getOutputStream().run { write(frame); flush() }
+                    // A positive sendControl() only means an asynchronous
+                    // executor accepted the frame. Notify interested callers
+                    // separately after an actual socket flush; still NOT a HU
+                    // acknowledgement or proof that OEM GPS restarted.
+                    runCatching { onWritten?.invoke() }
                     if (category == 1 && method == 1 && !attempt.firstHeartbeatWritten) {
                         attempt.firstHeartbeatWritten = true
                         DiagLog.i("ICCOA", "CONTROL first-heartbeat written")
