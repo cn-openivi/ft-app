@@ -432,6 +432,61 @@ class AudioCaptureTest {
         verify(record, times(1)).release()
     }
 
+    @Test fun activeBadValueMinusTwoRestartsRecorderOnlyOnceInSameProjection() {
+        val broken = mock(AudioRecord::class.java)
+        val recovered = mock(AudioRecord::class.java)
+        val secondReading = CountDownLatch(1)
+        val allowSecondReturn = CountDownLatch(1)
+        val delivered = AtomicInteger()
+        `when`(broken.read(any(ByteArray::class.java), anyInt(), anyInt()))
+            .thenReturn(AudioRecord.ERROR_BAD_VALUE)
+        `when`(recovered.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            secondReading.countDown()
+            await(allowSecondReturn)
+            AudioRecord.ERROR_DEAD_OBJECT
+        }
+        val records = ArrayDeque(listOf(broken, recovered))
+        val capture = AudioCapture({ records.removeFirst() }, { delivered.incrementAndGet() })
+        try {
+            assertTrue(capture.start(projection))
+            await(secondReading)
+            assertTrue("active -2 should recover once", capture.active)
+            assertEquals(0, delivered.get())
+        } finally {
+            capture.stop()
+            allowSecondReturn.countDown()
+        }
+        verify(broken, times(1)).release()
+        verify(recovered, times(1)).release()
+    }
+
+    @Test fun stoppedRecorderBadValueCannotResurrectAudioAfterOwnerStop() {
+        val record = mock(AudioRecord::class.java)
+        val inRead = CountDownLatch(1)
+        val returnError = CountDownLatch(1)
+        val readFinished = CountDownLatch(1)
+        `when`(record.read(any(ByteArray::class.java), anyInt(), anyInt())).thenAnswer {
+            inRead.countDown()
+            await(returnError)
+            readFinished.countDown()
+            AudioRecord.ERROR_BAD_VALUE
+        }
+        val factories = AtomicInteger()
+        val capture = AudioCapture({ factories.incrementAndGet(); record }, {})
+        try {
+            assertTrue(capture.start(projection))
+            await(inRead)
+            capture.stop()
+        } finally {
+            returnError.countDown()
+        }
+        await(readFinished)
+        // Wait for the read thread to run its final owner check.
+        verify(record, timeout(5000).times(1)).release()
+        assertEquals("intentional stop must not trigger another AudioRecord", 1, factories.get())
+        assertFalse(capture.active)
+    }
+
     @Test fun negativeReadClearsActiveAndReleasesRecord() = failure(false)
     @Test fun throwingReadClearsActiveAndReleasesRecord() = failure(true)
 
