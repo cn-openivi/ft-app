@@ -54,6 +54,8 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
     val motionSource = when (FTApp.instance.prefs.carProtocol) {
         CarProtocol.ICCOA -> MotionSource.ICCOA
         CarProtocol.CARLIFE -> MotionSource.BAIDU
+        // Never label old Baidu/ICCOA inertial readings as CarPlay evidence.
+        CarProtocol.CARPLAY -> null
     }
     if (style.widgets.isEmpty() && !showInertial) return
     val inertial by VehicleMotionTelemetry.current.collectAsState()
@@ -93,7 +95,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
             }
         }
-        if (showInertial) {
+        if (showInertial && motionSource != null) {
             if (motionSource == MotionSource.ICCOA) {
                 CarWidgetReadings.tunnelReadout(tunnelPrediction)?.let { readout ->
                     Chip(CarIcons.Map, readout.value, readout.description, wide = true)
