@@ -47,8 +47,9 @@ jobs:
           grep -Fq 'versionName = "3.9.76-xa60-ft190-tunnel-kalman-candidate"' app/build.gradle.kts
           echo "SOURCE_SHA=1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746"
           echo "WORKFLOW_SHA=$GITHUB_SHA"
-          free="$(df --output=avail -B1 / | tail -1 | tr -d ' ')"
-          test "$free" -ge "$((6*1024*1024*1024))" || { echo 'NEED_6_GiB_FREE' >&2; exit 1; }
+          # Existing FT181 signed runner did not require an invented 6GiB gate.
+          # Observe real disk availability without deleting caches or bypassing build validation.
+          df -h /
       - name: JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
