@@ -1,0 +1,192 @@
+name: FT190 signed APK with Russian GitHub and Drive delivery
+
+on:
+  push:
+    branches:
+      - openivi/ft190-continuous-tunnel-kalman-20261116
+    paths:
+      - '.github/workflows/ft190-owner-signed-release-20261117.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ft190-owner-signed-release-20261117
+  cancel-in-progress: false
+
+jobs:
+  verify-owner-signed:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 120
+    steps:
+      - name: Checkout exact validation commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify FT190 source-only candidate and branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft190-continuous-tunnel-kalman-20261116'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor 1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746 "$GITHUB_SHA"
+          while IFS= read -r changed; do
+            case "$changed" in
+              docs/releases/FT190-owner-signed-20261117.md|scripts/ft190_owner_release_publish.py|.github/workflows/ft190-owner-signed-release-20261117.yml) ;;
+              *) echo "Unexpected post-source change $changed" >&2; exit 1 ;;
+            esac
+          done < <(git diff --name-only 1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746 "$GITHUB_SHA")
+          test -s docs/releases/FT190-owner-signed-20261117.md
+          test -s scripts/ft190_owner_release_publish.py
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 190' app/build.gradle.kts
+          grep -Fq 'versionName = "3.9.76-xa60-ft190-tunnel-kalman-candidate"' app/build.gradle.kts
+          echo "SOURCE_SHA=1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746"
+          echo "WORKFLOW_SHA=$GITHUB_SHA"
+          free="$(df --output=avail -B1 / | tail -1 | tr -d ' ')"
+          test "$free" -ge "$((6*1024*1024*1024))" || { echo 'NEED_6_GiB_FREE' >&2; exit 1; }
+      - name: JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK 36
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - name: Restore existing FT owner signing bundle from GitHub Secrets
+        shell: bash
+        env:
+          FT_XA60_SIGNING_BUNDLE_JSON: ${{ secrets.FT_XA60_SIGNING_BUNDLE_JSON }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, sys
+          raw = os.environ.get("FT_XA60_SIGNING_BUNDLE_JSON", "")
+          if not raw:
+              sys.exit("Required existing FT_XA60_SIGNING_BUNDLE_JSON is not available to this run")
+          bundle = json.loads(raw)
+          assert bundle["format"] == "openivi-ft-xa60-pkcs12-v1"
+          assert bundle["alias"] == "openivi_ft_xa60"
+          key = base64.b64decode(bundle["keystore_b64"], validate=True)
+          assert hashlib.sha256(key).hexdigest() == bundle["keystore_sha256"]
+          password = bundle["store_password"]
+          assert password and all(c in "0123456789abcdef" for c in password)
+          private = pathlib.Path(".ft-xa60")
+          private.mkdir(mode=0o700, exist_ok=True)
+          keystore = private / "ft-xa60-owner.p12"
+          keystore.write_bytes(key)
+          keystore.chmod(0o600)
+          pw_file = private / "password.txt"
+          pw_file.write_text(password)
+          pw_file.chmod(0o600)
+          props = pathlib.Path("ft-xa60-signing.properties")
+          props.write_text("storeFile=.ft-xa60/ft-xa60-owner.p12\nstorePassword="+password+
+                          "\nkeyAlias=openivi_ft_xa60\nkeyPassword="+password+"\n")
+          props.chmod(0o600)
+          PY
+          actual="$(keytool -exportcert -alias openivi_ft_xa60 -keystore .ft-xa60/ft-xa60-owner.p12 -storepass:file .ft-xa60/password.txt | sha256sum | awk '{print $1}')"
+          expected=e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+          test "$actual" = "$expected"
+          echo "FT_XA60_PINNED_SIGNER_SHA256=$actual" >> "$GITHUB_ENV"
+          echo "Existing FT owner cert matched the historical FT173/174 certificate."
+      - name: Run FT190 release tests, release lint and assemble signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon --max-workers=1 -Dorg.gradle.parallel=false \
+            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
+            -Dkotlin.compiler.execution.strategy=in-process \
+            :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease
+      - name: Verify full release JUnit totals
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          paths=list(Path('app/build/test-results/testReleaseUnitTest').glob('TEST-*.xml'))
+          assert paths, 'No release XML'
+          runs=[ET.parse(f).getroot() for f in paths]
+          totals={k:sum(int(r.get(k,0)) for r in runs) for k in ('tests','failures','errors','skipped')}
+          print('FT190_RELEASE_JUNIT='+str(totals))
+          assert totals['tests']>=1061 and all(totals[k]==0 for k in ('failures','errors','skipped'))
+          PY
+      - name: Verify FT190 upgrade identity, permanent owner certificate and APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          test "$(stat -c%s "$apk")" -gt 1000000
+          unzip -t "$apk" >/dev/null
+          unzip -Z1 "$apk" | grep -Fxq 'classes.dex'
+          unzip -Z1 "$apk" | grep -Fxq 'AndroidManifest.xml'
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          BT="$SDK/build-tools/36.0.0"
+          "$BT/aapt" dump badging "$apk" | tee apk-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='190'" apk-badging.txt
+          if grep -q '^application-debuggable' apk-badging.txt; then
+            echo 'Refusing debuggable APK' >&2
+            exit 1
+          fi
+          "$BT/apksigner" verify --verbose --print-certs "$apk" | tee apksigner.txt
+          grep -iq "$FT_XA60_PINNED_SIGNER_SHA256" apksigner.txt
+          mkdir -p verified
+          cp "$apk" verified/FT190_XA60_OWNER_SIGNED_1e92273f.apk
+          cp apk-badging.txt apksigner.txt verified/
+          (cd verified && sha256sum FT190_XA60_OWNER_SIGNED_1e92273f.apk > SHA256SUMS)
+          printf 'SOURCE_SHA=1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746\nCI_SHA=%s\nVERSION_CODE=190\nAPP_ID=app.ft.xa60\nSIGNATURE=OWNER_SIGNED\nCERT_SHA256=%s\nFIELD=NOT_TESTED\n' "$GITHUB_SHA" "$FT_XA60_PINNED_SIGNER_SHA256" > verified/PROVENANCE.txt
+      - name: Deliver signed FT190 APK to existing Google Drive rclone remote and verify bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          local="verified/FT190_XA60_OWNER_SIGNED_1e92273f.apk"
+          target="openivi-drive:FT190_XA60_OWNER_SIGNED_1e92273f.apk"
+          # Remote openivi-drive: is already rooted at verified CI_BUILDS folder.
+          opts=(--tpslimit 0.5 --tpslimit-burst 1 --drive-pacer-min-sleep 2s --drive-pacer-burst 1 --retries 12 --retries-sleep 30s --low-level-retries 20)
+          rclone copyto "$local" "$target" "${opts[@]}"
+          expected="$(sha256sum "$local" | cut -d' ' -f1)"
+          received="$(rclone cat "$target" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+          test "$expected" = "$received"
+          test "$(rclone size "$target" --json "${opts[@]}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["bytes"])')" = "$(stat -c%s "$local")"
+          for name in SHA256SUMS PROVENANCE.txt apk-badging.txt apksigner.txt; do
+            rclone copyto "verified/$name" "openivi-drive:FT190_1e92273f_$name" "${opts[@]}"
+            test "$(sha256sum "verified/$name" | cut -d' ' -f1)" = "$(rclone cat "openivi-drive:FT190_1e92273f_$name" "${opts[@]}" | sha256sum | cut -d' ' -f1)"
+          done
+          echo "FT190_DRIVE_SIGNED_APK_PATH=$target"
+          echo "FT190_SIGNED_APK_SHA256=$expected"
+          echo 'FT190_DRIVE_READBACK_SHA256=PASS'
+      - name: Publish signed APK to GitHub with Russian prerelease notes and SHA256 readback
+        shell: bash
+        env:
+          SOURCE_SHA: 1e92273f67f1c2a630d9a2deb4fdb1a8e9fa4746
+          CERT_SHA: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
+          RELEASE_TAG: xa60-ft190-1e92273f
+          APK_NAME: FT190_XA60_OWNER_SIGNED_1e92273f.apk
+          GH_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ft190_owner_release_publish.py
+      - name: Remove only local FT190 build outputs after Drive and GitHub SHA readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in app/build server/build verified; do
+            test ! -L "$p"
+            if test -d "$p"; then rm -rf -- "$p"; fi
+          done
+          rm -f apk-badging.txt apksigner.txt
+          echo "FT190_VPS_BUILD_CLEANUP_AFTER_DRIVE_READBACK=PASS"
+      - name: Remove only ephemeral restored signing material
+        if: always()
+        shell: bash
+        run: |
+          rm -f ft-xa60-signing.properties .ft-xa60/ft-xa60-owner.p12 .ft-xa60/password.txt
