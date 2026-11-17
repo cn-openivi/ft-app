@@ -627,6 +627,7 @@
     <string name="iccoa_err_internal_car">Car reported an internal error</string>
     <string name="iccoa_err_mode_rejected">Car rejected the connection mode</string>
     <string name="iccoa_err_connection_rejected">Car rejected connection</string>
+    <string name="iccoa_err_trust_reenroll">کلیلی ئاسایشی ئۆتۆمبێلەکە لەگەڵ کلیلی پاشەکەوتکراو ناگونجێت. FT کلیلی متمانەپێکراوی نەگۆڕیوە. ئەگەر ئەم ئۆتۆمبێلە دەناسیت، «لەبیرکردنی ئۆتۆمبێل» هەڵبژێرە و بە PIN ـی نوێ دووبارە پەیوەندی بدە.</string>
     <string name="iccoa_err_report">Send a report from FT</string>
     <string name="iccoa_err_auth_stage">ICCOA failed at %1$s (%2$s). %3$s</string>
     <string name="iccoa_err_lane_closed">ICCOA channel %1$d closed (%2$s)</string>
