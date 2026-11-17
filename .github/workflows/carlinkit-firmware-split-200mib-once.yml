@@ -39,8 +39,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export RCLONE_TPSLIMIT=1
+          export RCLONE_TPSLIMIT_BURST=1
+          export RCLONE_DRIVE_CHUNK_SIZE=32M
           python3 - <<'PY'
-          import hashlib, json, math, os, pathlib, subprocess, tempfile, sys
+          import hashlib, json, math, os, pathlib, subprocess, tempfile, sys, time
 
           SRC_ROOT = "1qmQp30edAPTSZAFOy8is8ic_bZqlmLzk"
           DEST_ROOT = "1jq6X7EFHoTnqAG203qgq1dRn_fVLnXll"
@@ -54,34 +57,34 @@ jobs:
           )
 
           def rclone(*args, timeout=600):
-              cp = subprocess.run(("rclone",) + args, capture_output=True, timeout=timeout)
-              if cp.returncode:
-                  raise RuntimeError("rclone failed (%s): %s" % (cp.returncode,
-                      cp.stderr.decode("utf-8", "replace")[-600:]))
-              return cp.stdout
+              for attempt in range(1, 6):
+                  cp = subprocess.run(("rclone",) + args, capture_output=True, timeout=timeout)
+                  if cp.returncode == 0:
+                      return cp.stdout
+                  message = cp.stderr.decode("utf-8", "replace")[-1400:]
+                  rate = any(t in message.lower() for t in (
+                      "ratelimitexceeded", "rate_limit_exceeded",
+                      "quota exceeded", "429 too many requests"))
+                  if rate and attempt < 5:
+                      delay = 50 * attempt
+                      print(f"DRIVE_RATE_LIMIT_BACKOFF attempt={attempt} seconds={delay}", flush=True)
+                      time.sleep(delay)
+                      continue
+                  raise RuntimeError(f"rclone failed attempt={attempt} exit={cp.returncode}: " +
+                                     message[-600:])
+              raise AssertionError("Unreachable retry gate")
 
-          def remote_hash(name):
-              cmd = ["rclone", "cat", "openivi-drive:" + name,
-                     "--drive-root-folder-id", DEST_ROOT]
-              process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-              h = hashlib.sha256()
-              size = 0
-              try:
-                  while True:
-                      b = process.stdout.read(BUFFER)
-                      if not b:
-                          break
-                      h.update(b)
-                      size += len(b)
-                  err = process.stderr.read()
-                  if process.wait(timeout=120) != 0:
-                      raise RuntimeError("Drive hash readback: " +
-                                         err.decode("utf-8", "replace")[-500:])
-              finally:
-                  if process.poll() is None:
-                      process.kill()
-                      process.wait()
-              return size, h.hexdigest()
+          def remote_md5(name):
+              path = "openivi-drive:" + name
+              size = json.loads(rclone("size", path, "--json",
+                         "--drive-root-folder-id", DEST_ROOT))["bytes"]
+              raw = rclone("md5sum", path, "--drive-root-folder-id", DEST_ROOT)
+              line = raw.decode("utf-8", "replace").strip()
+              digest = line.split()[0] if line else ""
+              if len(digest) != 32 or any(c not in "0123456789abcdef"
+                                            for c in digest.lower()):
+                  raise RuntimeError("No provider MD5 for " + name)
+              return size, digest.lower()
 
           entries = json.loads(rclone("lsjson", "openivi-drive:",
                                       "--drive-root-folder-id", DEST_ROOT,
@@ -123,12 +126,14 @@ jobs:
                       if local.stat().st_size != count:
                           raise RuntimeError("Wrong source chunk length: " + part)
                       part_sha = hashlib.sha256()
+                      part_md5 = hashlib.md5()
                       with local.open("rb") as f:
                           while True:
                               b = f.read(BUFFER)
                               if not b:
                                   break
                               part_sha.update(b)
+                              part_md5.update(b)
                               sha_full.update(b)
                       digest = part_sha.hexdigest()
                       if part in existing:
@@ -139,8 +144,8 @@ jobs:
                                  "--drive-root-folder-id", DEST_ROOT,
                                  "--retries", "3", "--low-level-retries", "3",
                                  timeout=1000)
-                      remote_size, remote_sha = remote_hash(part)
-                      if remote_size != count or remote_sha != digest:
+                      remote_size, remote_md5_value = remote_md5(part)
+                      if remote_size != count or remote_md5_value != part_md5.hexdigest():
                           raise RuntimeError("DRIVE_PART_READBACK_MISMATCH=" + part)
                       print(f"VERIFIED_PART={part} size={count} sha256={digest}", flush=True)
                       part_records.append({"name":part, "index":i, "offset":offset,
@@ -176,8 +181,8 @@ jobs:
                   if manifest_name not in existing:
                       rclone("copyto", pathname, target,
                              "--drive-root-folder-id", DEST_ROOT)
-                  n, digest = remote_hash(manifest_name)
-                  if n != len(raw) or digest != hashlib.sha256(raw).hexdigest():
+                  n, digest = remote_md5(manifest_name)
+                  if n != len(raw) or digest != hashlib.md5(raw).hexdigest():
                       raise RuntimeError("Manifest readback mismatch: " + label)
               finally:
                   pathlib.Path(pathname).unlink(missing_ok=True)
@@ -195,8 +200,8 @@ jobs:
               if "SHA256SUMS" not in existing:
                   rclone("copyto", pathname, "openivi-drive:SHA256SUMS",
                          "--drive-root-folder-id", DEST_ROOT)
-              n, digest = remote_hash("SHA256SUMS")
-              if n != len(sums_raw) or digest != hashlib.sha256(sums_raw).hexdigest():
+              n, digest = remote_md5("SHA256SUMS")
+              if n != len(sums_raw) or digest != hashlib.md5(sums_raw).hexdigest():
                   raise RuntimeError("SHA256SUMS readback mismatch")
           finally:
               pathlib.Path(pathname).unlink(missing_ok=True)
