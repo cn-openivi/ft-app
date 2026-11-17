@@ -261,6 +261,11 @@ private fun PageContent(page: SettingsPage) {
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                CarProtocol.CARPLAY -> {
+                    Text("CarPlay audio route unavailable until a real iAP2 session is implemented",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             BoolSetting(stringResource(R.string.sound_bluetooth), p.soundOverBluetooth) { p.soundOverBluetooth = it }
             BoolSetting(stringResource(R.string.sound_silence_phone), p.muteWhileProjecting) { p.muteWhileProjecting = it }
@@ -483,7 +488,11 @@ private fun PageContent(page: SettingsPage) {
             // Both connection backends already select their own sockets in CarConnection.
             // The ordinary settings screen must not pretend that CarLife's ports configure ICCOA.
             val selectedProtocol = rememberCarProtocol()
-            val protocolLabel = if (selectedProtocol == CarProtocol.ICCOA) "ICCOA" else "Baidu CarLife"
+            val protocolLabel = when (selectedProtocol) {
+                CarProtocol.CARLIFE -> "Baidu CarLife"
+                CarProtocol.ICCOA -> "ICCOA"
+                CarProtocol.CARPLAY -> "Apple CarPlay"
+            }
             var networkChannelsVisible by remember { mutableStateOf(false) }
             var editCarLifePorts by remember { mutableStateOf(false) }
             TextButton(onClick = { networkChannelsVisible = !networkChannelsVisible }) {
@@ -521,6 +530,12 @@ private fun PageContent(page: SettingsPage) {
                         // RTP is negotiated by the receiver and cannot be set with CarLife port prefs.
                         Text(stringResource(R.string.adv_iccoa_channel_map),
                             style = MaterialTheme.typography.bodySmall)
+                    }
+                    CarProtocol.CARPLAY -> {
+                        // Never present Baidu port preferences as CarPlay iAP2/AirPlay settings.
+                        Text("CarPlay iAP2 and AirPlay channels are not available yet",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -699,6 +714,11 @@ private fun PictureSettings() {
     when (rememberCarProtocol()) {
         CarProtocol.CARLIFE -> CarLifePictureSettings()
         CarProtocol.ICCOA -> IccoaPictureSettings()
+        CarProtocol.CARPLAY -> Text(
+            "CarPlay video settings are unavailable until the transport is implemented",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
