@@ -1,10 +1,17 @@
 package app.ft.core
 
-/** Stable preference IDs, independent of the CarLife transport (hotspot/direct/USB). */
-enum class CarProtocol(val id: String) {
-    CARLIFE("carlife"), ICCOA("iccoa");
+/**
+ * Stable OEM projection transport IDs. Android Auto is content, not a fourth HU transport.
+ * A declared protocol is NOT proof that its real wire adapter is ready.
+ */
+enum class CarProtocol(val id: String, val connectionReady: Boolean = true) {
+    CARLIFE("carlife"), ICCOA("iccoa"), CARPLAY("carplay", connectionReady = false);
 
     companion object {
-        fun fromId(id: String?) = entries.firstOrNull { it.id == id } ?: CARLIFE
+        /** Strict explicit parsing; unknown transports must never be dispatched as Baidu. */
+        fun fromExplicitId(id: String?): CarProtocol? = entries.firstOrNull { it.id == id }
+
+        /** Legacy preference/backup migration only; older defaults remain unchanged. */
+        fun fromId(id: String?): CarProtocol = fromExplicitId(id) ?: CARLIFE
     }
 }
