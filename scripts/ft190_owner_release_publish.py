@@ -57,11 +57,23 @@ body += "- SHA-256 APK: " + digest + "\n"
 body += "- Сертификат владельца SHA-256: " + os.environ["CERT_SHA"] + "\n"
 body += "- Полевой статус: **на ГУ не проверено**.\n"
 title = "OpenIVI FT190 — подписанная тестовая сборка XA60"
-release = jreq(base + "/releases/tags/" + quote(tag, safe=""))
+# GitHub does NOT create a tag for a draft release. Create a pinned
+# lightweight ref first, then perform the draft->assets->publish flow.
+# With an existing tag, target_commitish is intentionally unused.
+tag_ref = jreq(base + "/git/ref/tags/" + quote(tag, safe=""))
+if tag_ref is None:
+    tag_ref = jreq(base + "/git/refs", "POST", {
+        "ref": "refs/tags/" + tag, "sha": head,
+    })
+if not tag_ref or tag_ref["object"]["sha"] != head:
+    raise SystemExit("Release tag does not match exact build commit")
+# A draft may not resolve through /releases/tags yet: inspect list too.
+all_releases = jreq(base + "/releases?per_page=100") or []
+release = next((item for item in all_releases
+                if item.get("tag_name") == tag), None)
 if release is None:
     release = jreq(base + "/releases", "POST", {
         "tag_name": tag,
-        "target_commitish": head,
         "name": title,
         "body": body,
         "draft": True,
