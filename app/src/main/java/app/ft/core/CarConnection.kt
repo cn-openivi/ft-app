@@ -11,6 +11,11 @@ object CarConnection {
     fun startAuto(context: Context) {
         val prefs = FTApp.instance.prefs
         if (!prefs.autoConnect) return
+        // Never silently route a stored CarPlay preference to Baidu/ICCOA before iAP2 exists.
+        if (!prefs.carProtocol.connectionReady) {
+            DiagLog.i("Connection", "CarPlay transport not yet available; no OEM session started")
+            return
+        }
         val missing = ConnectionPermissions.missing(context)
         if (missing.isNotEmpty()) {
             DiagLog.w("Connection", "automatic connection paused: ${missing.size} mandatory runtime permissions missing")
@@ -24,6 +29,10 @@ object CarConnection {
             CarProtocol.ICCOA -> {
                 if (CarLifeService.state.value.running) CarLifeService.stop(context)
                 IccoaService.start(context)
+            }
+            CarProtocol.CARPLAY -> {
+                // CarPlay is an explicit protocol identity, not a working adapter yet.
+                DiagLog.i("Connection", "CarPlay connection unavailable")
             }
         }
     }
@@ -42,6 +51,11 @@ object CarConnection {
 
     fun selectProtocol(context: Context, protocol: CarProtocol) {
         val prefs = FTApp.instance.prefs
+        // Refuse unavailable selections before stopping an existing working session.
+        if (!protocol.connectionReady) {
+            DiagLog.i("Connection", "Requested ${protocol.id} is not yet available")
+            return
+        }
         if (prefs.carProtocol == protocol) return
         val wasOn = prefs.autoConnect || CarLifeService.state.value.running || IccoaService.state.value.running
         prefs.carProtocol = protocol
