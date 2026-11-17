@@ -51,7 +51,12 @@ import androidx.compose.ui.unit.dp
 import app.ft.ui.theme.Localized
 import kotlinx.coroutines.launch
 
-data class Option(val label: String, val detail: String? = null, val icon: ImageVector? = null)
+data class Option(
+    val label: String,
+    val detail: String? = null,
+    val icon: ImageVector? = null,
+    val enabled: Boolean = true
+)
 
 @Composable
 fun OptionRow(title: String, value: String, modifier: Modifier = Modifier, detail: String? = null, enabled: Boolean = true, onClick: () -> Unit) {
@@ -130,18 +135,22 @@ fun OptionSheet(
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 56.dp)
-                                .selectable(selected = index == chosen, role = Role.RadioButton) { close { onPick(index) } }
+                                .selectable(selected = index == chosen, enabled = option.enabled, role = Role.RadioButton) { close { onPick(index) } }
                                 .padding(horizontal = 24.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            RadioButton(selected = index == chosen, onClick = null)
+                            RadioButton(selected = index == chosen, enabled = option.enabled, onClick = null)
                             Spacer(Modifier.width(16.dp))
                             if (option.icon != null) {
                                 Icon(option.icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.width(16.dp))
                             }
                             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(option.label, style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    option.label,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = if (option.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                                 if (option.detail != null) {
                                     Text(option.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
