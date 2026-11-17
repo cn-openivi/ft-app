@@ -1,0 +1,205 @@
+name: Carlinkit firmware ZIP bounded 200MiB split (owner one-shot)
+
+on:
+  push:
+    branches:
+      - artifacts/carlinkit-200mib-20261117
+    paths:
+      - '.github/workflows/carlinkit-firmware-split-200mib-once.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: carlinkit-firmware-split-20261117
+  cancel-in-progress: false
+
+jobs:
+  split-originals:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 140
+    steps:
+      - name: Verify specific owner request and existing unprivileged rclone runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "artifacts/carlinkit-200mib-20261117"
+          test "$(id -u)" -ne 0
+          if sudo -n true >/dev/null 2>&1; then
+            echo "Refusing passwordless sudo runner" >&2
+            exit 1
+          fi
+          command -v python3
+          command -v rclone
+          rclone listremotes | grep -Fxq 'openivi-drive:'
+          echo "CARLINKIT_RUNNER_PREFLIGHT=PASS"
+
+      - name: Read only two exact Drive originals, create 200MiB parts and verify Drive readback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, math, os, pathlib, subprocess, tempfile, sys
+
+          SRC_ROOT = "1qmQp30edAPTSZAFOy8is8ic_bZqlmLzk"
+          DEST_ROOT = "1jq6X7EFHoTnqAG203qgq1dRn_fVLnXll"
+          CHUNK = 200 * 1024 * 1024
+          BUFFER = 4 * 1024 * 1024
+          FILES = (
+              ("SLM927", "update_x15_slm927_A13_chelianyi-led-2025-05-29-17-05.zip",
+               2245151719, "1aDlvh13pcPVMCJSq0WQgG35UR211qBmx"),
+              ("SC218", "CarlinKit_Tbox Ambient＆UHD_SC218_2025-04-01_update (1).zip",
+               1999380410, "1dNegkPKDW6SYiR_5UlOUuKLRve1WTvPD"),
+          )
+
+          def rclone(*args, timeout=600):
+              cp = subprocess.run(("rclone",) + args, capture_output=True, timeout=timeout)
+              if cp.returncode:
+                  raise RuntimeError("rclone failed (%s): %s" % (cp.returncode,
+                      cp.stderr.decode("utf-8", "replace")[-600:]))
+              return cp.stdout
+
+          def remote_hash(name):
+              cmd = ["rclone", "cat", "openivi-drive:" + name,
+                     "--drive-root-folder-id", DEST_ROOT]
+              process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+              h = hashlib.sha256()
+              size = 0
+              try:
+                  while True:
+                      b = process.stdout.read(BUFFER)
+                      if not b:
+                          break
+                      h.update(b)
+                      size += len(b)
+                  err = process.stderr.read()
+                  if process.wait(timeout=120) != 0:
+                      raise RuntimeError("Drive hash readback: " +
+                                         err.decode("utf-8", "replace")[-500:])
+              finally:
+                  if process.poll() is None:
+                      process.kill()
+                      process.wait()
+              return size, h.hexdigest()
+
+          entries = json.loads(rclone("lsjson", "openivi-drive:",
+                                      "--drive-root-folder-id", DEST_ROOT,
+                                      "--files-only"))
+          existing = {e["Name"]: e for e in entries}
+          all_part_lines = []
+          all_metadata = []
+          print("ORIGINAL_SOURCE_FOLDER_ID=" + SRC_ROOT, flush=True)
+          print("NEW_PARTS_FOLDER_ID=" + DEST_ROOT, flush=True)
+
+          for label, filename, expected_size, file_id in FILES:
+              source_path = "openivi-drive:" + filename
+              source_size = json.loads(rclone(
+                  "size", source_path, "--json",
+                  "--drive-root-folder-id", SRC_ROOT))["bytes"]
+              if source_size != expected_size:
+                  raise RuntimeError("Original size mismatch for " + label)
+              expected_parts = math.ceil(expected_size / CHUNK)
+              sha_full = hashlib.sha256()
+              part_records = []
+              for i in range(expected_parts):
+                  offset = i * CHUNK
+                  count = min(CHUNK, expected_size - offset)
+                  part = f"{label}.zip.part{i:03d}"
+                  with tempfile.NamedTemporaryFile(
+                      prefix="openivi_carlinkit_", suffix=".part",
+                      dir=os.getenv("RUNNER_TEMP", "/tmp"), delete=False
+                  ) as tmp:
+                      local = pathlib.Path(tmp.name)
+                      result = subprocess.run([
+                          "rclone", "cat", source_path,
+                          "--offset", str(offset), "--count", str(count),
+                          "--drive-root-folder-id", SRC_ROOT
+                      ], stdout=tmp, stderr=subprocess.PIPE, timeout=900)
+                  try:
+                      if result.returncode != 0:
+                          raise RuntimeError("Source chunk read: " +
+                              result.stderr.decode("utf-8", "replace")[-500:])
+                      if local.stat().st_size != count:
+                          raise RuntimeError("Wrong source chunk length: " + part)
+                      part_sha = hashlib.sha256()
+                      with local.open("rb") as f:
+                          while True:
+                              b = f.read(BUFFER)
+                              if not b:
+                                  break
+                              part_sha.update(b)
+                              sha_full.update(b)
+                      digest = part_sha.hexdigest()
+                      if part in existing:
+                          if existing[part].get("Size") != count:
+                              raise RuntimeError("Existing part wrong size: " + part)
+                      else:
+                          rclone("copyto", str(local), "openivi-drive:" + part,
+                                 "--drive-root-folder-id", DEST_ROOT,
+                                 "--retries", "3", "--low-level-retries", "3",
+                                 timeout=1000)
+                      remote_size, remote_sha = remote_hash(part)
+                      if remote_size != count or remote_sha != digest:
+                          raise RuntimeError("DRIVE_PART_READBACK_MISMATCH=" + part)
+                      print(f"VERIFIED_PART={part} size={count} sha256={digest}", flush=True)
+                      part_records.append({"name":part, "index":i, "offset":offset,
+                                            "size":count, "sha256":digest})
+                      all_part_lines.append(digest + "  " + part)
+                      existing[part] = {"Name":part,"Size":count}
+                  finally:
+                      local.unlink(missing_ok=True)
+
+              original_sha = sha_full.hexdigest()
+              manifest = {
+                  "schema":"OPENIVI_CARLINKIT_SPLIT_V1",
+                  "original_name":filename,
+                  "original_drive_file_id":file_id,
+                  "original_size":expected_size,
+                  "original_sha256":original_sha,
+                  "chunk_bytes":CHUNK,
+                  "part_count":len(part_records),
+                  "parts":part_records,
+                  "rebuild":"cat " + label + ".zip.part* > reconstructed.zip",
+                  "original_unchanged":True,
+                  "source_folder_id":SRC_ROOT,
+                  "parts_folder_id":DEST_ROOT
+              }
+              manifest_name = f"{label}.manifest.json"
+              raw = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
+              with tempfile.NamedTemporaryFile(prefix="openivi_manifest_", delete=False,
+                                                dir=os.getenv("RUNNER_TEMP", "/tmp")) as t:
+                  t.write(raw)
+                  pathname = t.name
+              try:
+                  target = "openivi-drive:" + manifest_name
+                  if manifest_name not in existing:
+                      rclone("copyto", pathname, target,
+                             "--drive-root-folder-id", DEST_ROOT)
+                  n, digest = remote_hash(manifest_name)
+                  if n != len(raw) or digest != hashlib.sha256(raw).hexdigest():
+                      raise RuntimeError("Manifest readback mismatch: " + label)
+              finally:
+                  pathlib.Path(pathname).unlink(missing_ok=True)
+              all_metadata.append({"label":label, "size":expected_size,
+                                   "sha256":original_sha, "parts":expected_parts})
+              print(f"VERIFIED_ARCHIVE={label} original_sha256={original_sha} count={expected_parts}",
+                    flush=True)
+
+          sums_raw = ("\n".join(all_part_lines) + "\n").encode("utf-8")
+          with tempfile.NamedTemporaryFile(prefix="openivi_sha256s_", delete=False,
+                                            dir=os.getenv("RUNNER_TEMP", "/tmp")) as t:
+              t.write(sums_raw)
+              pathname = t.name
+          try:
+              if "SHA256SUMS" not in existing:
+                  rclone("copyto", pathname, "openivi-drive:SHA256SUMS",
+                         "--drive-root-folder-id", DEST_ROOT)
+              n, digest = remote_hash("SHA256SUMS")
+              if n != len(sums_raw) or digest != hashlib.sha256(sums_raw).hexdigest():
+                  raise RuntimeError("SHA256SUMS readback mismatch")
+          finally:
+              pathlib.Path(pathname).unlink(missing_ok=True)
+          print("CARLINKIT_200MIB_PARTS_VERIFIED=PASS", flush=True)
+          print("RESULT_JSON=" + json.dumps(all_metadata, ensure_ascii=False), flush=True)
+          PY
