@@ -1,6 +1,9 @@
 package app.ft.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -23,4 +26,20 @@ class CarProtocolFt200CompatibilityTest {
         assertEquals(CarProtocol.CARLIFE, CarProtocol.fromId(""))
         assertEquals(CarProtocol.CARLIFE, CarProtocol.fromId("invalid-protocol"))
     }
+    @Test fun thirdProtocolHasStableIdButCannotStartBeforeRealHandshake() {
+        assertEquals("carplay", CarProtocol.CARPLAY.id)
+        assertEquals(CarProtocol.CARPLAY, CarProtocol.fromExplicitId("carplay"))
+        assertEquals(CarProtocol.CARPLAY, CarProtocol.fromId("carplay"))
+        assertFalse(CarProtocol.CARPLAY.connectionReady)
+        assertTrue(CarProtocol.CARLIFE.connectionReady)
+        assertTrue(CarProtocol.ICCOA.connectionReady)
+    }
+
+    @Test fun invalidExplicitSelectionDoesNotSilentlyUseBaidu() {
+        assertNull(CarProtocol.fromExplicitId(null))
+        assertNull(CarProtocol.fromExplicitId(""))
+        assertNull(CarProtocol.fromExplicitId("CARPLAY"))
+        assertNull(CarProtocol.fromExplicitId("future"))
+    }
 }
+
