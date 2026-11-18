@@ -25,6 +25,7 @@ class CarPlayNmeaSentencesTest {
         assertEquals("\$GPRMC,123456.000,A,5206.0000,N,00424.0000,E,19.44,271.0,191124,,,A*68\r\n",
             result.rmc)
         assertFalse(result.toString().contains("5206"))
+        assertFalse(fix.toString().contains("52.1"))
     }
 
     @Test fun signedLatitudeLongitudeAndTalkerGnArePreserved() {
