@@ -11,10 +11,15 @@ package app.ft.carplay
  * CatPlay/Carlinkit implementation. No packets are sent from this observer.
  */
 internal class Iap2PhoneWireObserver {
-    data class Observation(
+    class Observation(
         val detectSeen: Boolean,
-        val linkFrameCount: Int
-    )
+        /** Valid frames are private process memory; never serialize or log payload. */
+        val frames: List<Iap2LinkFrameCodec.Frame>
+    ) {
+        val linkFrameCount: Int get() = frames.size
+        override fun toString(): String =
+            "Observation(detectSeen=$"+"detectSeen, linkFrameCount=$"+"linkFrameCount)"
+    }
 
     companion object {
         private val DETECT = byteArrayOf(
@@ -41,7 +46,7 @@ internal class Iap2PhoneWireObserver {
         }
         tail = joined.takeLast(TAIL_BYTES).toByteArray()
         val frames = link.accept(bytes)
-        return Observation(detect, frames.size)
+        return Observation(detect, frames)
     }
 
     fun reset() {
