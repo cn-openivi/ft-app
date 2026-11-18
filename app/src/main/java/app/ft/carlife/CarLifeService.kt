@@ -831,7 +831,17 @@ class CarLifeService : Service() {
             ),
             refuse = { socket -> wrongWay(socket) },
             onBusy = { port -> portBusy(port) },
-            onBound = { port -> portBound(port) }
+            onBound = { port -> portBound(port) },
+            bindAddress = {
+                // These are the existing P2P/group or hotspot interfaces,
+                // not the process default route (which may be mobile/VPN).
+                val ip = when (mode) {
+                    1 -> NetUtil.wifiDirectIpv4(p2pIface)
+                    0 -> NetUtil.hotspotIpv4(this)
+                    else -> null
+                }
+                ip?.let { runCatching { java.net.InetAddress.getByName(it) }.getOrNull() }
+            }
         )
         wifiLink = l
         _state.update { it.copy(listening = true) }
