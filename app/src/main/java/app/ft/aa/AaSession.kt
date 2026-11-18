@@ -56,6 +56,11 @@ class AaSession(
     private var locationCharacterizationAtDiscovery =
         AaLocationCharacterization.RAW_GNSS_ONLY
     private val audioRouteAudit = AaAudioRouteAudit()
+    private val systemAudioFocus = AaSystemAudioFocus(context) { state ->
+        if (lifecycle.running)
+            sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
+                AaMessages.audioFocusNotification(state))
+    }
     @Volatile private var sensorChannelOpened = false
 
     /** Channel CLOSE invalidates *both* active stream subscriptions. */
@@ -83,6 +88,7 @@ class AaSession(
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
             DiagLog.i(tag, "AA actual audio arrival at shutdown: ${audioRouteAudit.summary()}")
             sensorSubscriptions.reset()
+            systemAudioFocus.close()
             microphoneInput.close()
             runCatching { mic.stop() }
             if (micWanted) {
@@ -340,8 +346,11 @@ class AaSession(
             AaProtocol.PING_RESPONSE -> Unit
             AaProtocol.AUDIO_FOCUS_REQUEST -> {
                 val req = AaMessages.audioFocusRequestType(body)
-                val state = if (req == AaProtocol.AUDIO_REQUEST_RELEASE) AaProtocol.AUDIO_FOCUS_LOSS else AaProtocol.AUDIO_FOCUS_GAIN
-                sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION, AaMessages.audioFocusNotification(state))
+                val state = systemAudioFocus.request(req)
+                DiagLog.i(tag, "AA_AUDIO_FOCUS_REQUEST request=$req state=$state " +
+                    "system_policy_checked=true")
+                sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
+                    AaMessages.audioFocusNotification(state))
             }
             AaProtocol.NAV_FOCUS_REQUEST -> sendEnc(AaProtocol.CH_CONTROL, AaProtocol.NAV_FOCUS_NOTIFICATION, AaMessages.navFocusNotification(AaProtocol.NAV_FOCUS_PROJECTED))
             AaProtocol.BYEBYE_REQUEST -> {
