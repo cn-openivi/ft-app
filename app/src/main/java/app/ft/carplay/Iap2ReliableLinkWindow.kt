@@ -1,0 +1,139 @@
+package app.ft.carplay
+
+/**
+ * Pure, bounded stop-and-wait bookkeeping for an already negotiated iAP2 LINK.
+ *
+ * A correctly framed packet is NOT proof of Apple authentication or legitimate
+ * CarPlay. This component never opens sockets or sends on its own. Link/window
+ * options beyond the one-outstanding-packet profile are explicitly unsupported
+ * until actual Toyota evidence is available.
+ */
+internal class Iap2ReliableLinkWindow(
+    private val confirmed: Iap2LinkNegotiator.ConfirmedLink,
+    private val maxRetries: Int = 3
+) {
+    init {
+        require(maxRetries in 0..30)
+        require(confirmed.nextPhoneSequence in 0..255)
+        require(confirmed.lastAccessorySequence in 0..255)
+        require(confirmed.sessions.map { it.id }.distinct().size ==
+            confirmed.sessions.size)
+    }
+
+    enum class Status {
+        ACCEPTED_IN_ORDER, DUPLICATE, OUT_OF_ORDER, EMPTY_ACK,
+        UNKNOWN_SESSION, MALFORMED_HEADER
+    }
+
+    data class Incoming(
+        val status: Status,
+        val ackOfOutstanding: Boolean = false,
+        /** Expose payload ONLY to the in-memory CONTROL parser, never to logs. */
+        val payload: ByteArray? = null,
+        val sessionId: Int? = null,
+        val cumulativeAck: Int? = null
+    )
+
+    enum class SendStatus {
+        READY, BUSY, INVALID_SESSION, INVALID_FRAME,
+        RETRY, RETRY_EXHAUSTED, NOTHING_PENDING
+    }
+
+    data class Outgoing(
+        val status: SendStatus,
+        /** Pass directly to caller-owned socket, never persist in diagnostics. */
+        val wire: ByteArray? = null
+    )
+
+    private data class Outstanding(
+        val sequence: Int,
+        val wire: ByteArray,
+        var retries: Int
+    )
+
+    private var receivedSequence = confirmed.lastAccessorySequence
+    private var sendingSequence = confirmed.nextPhoneSequence
+    private var outstanding: Outstanding? = null
+
+    fun pendingCount(): Int = if (outstanding == null) 0 else 1
+
+    /**
+     * Prepare a single encrypted-or-clear higher-level CONTROL payload only
+     * after a *separately verified* authentication/feature state. There is no
+     * implicit CarPlay activation here. Exactly one packet may be in flight.
+     */
+    fun prepareData(sessionId: Int, payload: ByteArray): Outgoing {
+        if (outstanding != null) return Outgoing(SendStatus.BUSY)
+        if (confirmed.sessions.none { it.id == sessionId }) {
+            return Outgoing(SendStatus.INVALID_SESSION)
+        }
+        if (payload.isEmpty() ||
+            payload.size > Iap2LinkFrameCodec.MAX_FRAME_BYTES -
+                Iap2LinkFrameCodec.HEADER_BYTES - 1) {
+            return Outgoing(SendStatus.INVALID_FRAME)
+        }
+        val wire = Iap2LinkFrameCodec.encode(
+            control = 0x40,
+            sequence = sendingSequence,
+            acknowledgement = receivedSequence,
+            session = sessionId,
+            payload = payload
+        )
+        outstanding = Outstanding(sendingSequence, wire, 0)
+        sendingSequence = (sendingSequence + 1) and 0xff
+        return Outgoing(SendStatus.READY, wire)
+    }
+
+    /**
+     * Never overwrite an outstanding frame, and NEVER mutate the retry bytes.
+     * Caller chooses timeout policy; this class never starts a background job.
+     */
+    fun retryOutstanding(): Outgoing {
+        val current = outstanding ?: return Outgoing(SendStatus.NOTHING_PENDING)
+        if (current.retries >= maxRetries) {
+            return Outgoing(SendStatus.RETRY_EXHAUSTED)
+        }
+        current.retries++
+        return Outgoing(SendStatus.RETRY, current.wire.copyOf())
+    }
+
+    /**
+     * Acknowledge only the exact outstanding send sequence. Receive sequence is
+     * modulo-256, including 255 -> 0 wrap. Repeated frames are not delivered a
+     * second time and gaps cannot advance the expected sequence.
+     */
+    fun observe(frame: Iap2LinkFrameCodec.Frame): Incoming {
+        if (frame.sequence !in 0..255 ||
+            frame.acknowledgement !in 0..255 ||
+            frame.control !in 0..255) return Incoming(Status.MALFORMED_HEADER)
+        val matched = outstanding?.sequence == frame.acknowledgement &&
+            frame.control and 0x40 != 0
+        if (matched) outstanding = null
+
+        if (frame.payload.isEmpty()) {
+            return Incoming(Status.EMPTY_ACK, ackOfOutstanding = matched,
+                cumulativeAck = receivedSequence)
+        }
+        if (confirmed.sessions.none { it.id == frame.session }) {
+            return Incoming(Status.UNKNOWN_SESSION, ackOfOutstanding = matched,
+                cumulativeAck = receivedSequence)
+        }
+        val distance = (frame.sequence - receivedSequence) and 0xff
+        return when (distance) {
+            1 -> {
+                receivedSequence = frame.sequence
+                Incoming(Status.ACCEPTED_IN_ORDER, matched,
+                    frame.payload.copyOf(), frame.session, receivedSequence)
+            }
+            0 -> Incoming(Status.DUPLICATE, matched, cumulativeAck = receivedSequence)
+            else -> Incoming(Status.OUT_OF_ORDER, matched,
+                cumulativeAck = receivedSequence)
+        }
+    }
+
+    fun reset() {
+        outstanding = null
+        receivedSequence = confirmed.lastAccessorySequence
+        sendingSequence = confirmed.nextPhoneSequence
+    }
+}
