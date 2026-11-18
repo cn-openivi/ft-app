@@ -47,6 +47,8 @@ internal class IccoaDirectVideo(
     @Volatile private var rearmPending = false
     @Volatile private var restartGraceAtMs = 0L
     @Volatile private var receiverPaused = false
+    @Volatile private var parkedForFtHome = false
+    @Volatile private var returningFromFtHome = false
     private var observedGopDrops = 0L
     private var gopLostAtMs = 0L
     private var directKeyWritesAtLoss = 0L
@@ -277,6 +279,7 @@ internal class IccoaDirectVideo(
     }
 
     override fun onFrame(source: AaSession, frame: ByteArray, timestamp: Long): Boolean {
+        if (parkedForFtHome) return false // AA remains connected, but FT owns visible RTP.
         if (!sourceValid(source) || source !== this.source || failed || frame.isEmpty()) return false
         if (receiverPaused || rearmPending) return active // Ignore old or not-yet-rearmed GOP.
         val csd = compatibleConfig ?: return active // Direct pending new AA SPS; do not decode again.
@@ -313,6 +316,8 @@ internal class IccoaDirectVideo(
 
     private fun activate(retained: IccoaFirstIdrHandoff.Frame) {
         pending = false
+        returningFromFtHome = false
+        parkedForFtHome = false
         if (!projection.beginDirectVideo(plan, aaWidth, aaHeight)) {
             failed = true
             onStatus("Direct AA requires the full-screen Android Auto view")
@@ -365,6 +370,12 @@ internal class IccoaDirectVideo(
     override fun onStop(source: AaSession) {
         if (source !== this.source || closed) return
         compatibleConfig = null
+        if (parkedForFtHome || returningFromFtHome) {
+            // NATIVE focus may legitimately stop AA video while keeping the
+            // encrypted phone session and vehicle bond intact.
+            DiagLog.i("ICCOA", "DIRECT_VIDEO_AA_STOP_DURING_FT_RETURN retained_session=true")
+            return
+        }
         // AV_STOP often precedes a new AV_START during surface changes. Wait
         // briefly for a real restart before showing the native FT compositor.
         if (active) {
@@ -440,6 +451,52 @@ internal class IccoaDirectVideo(
         }
     }
 
+    /**
+     * Move only the visible RTP picture to FT's own composited launcher.
+     * Do not disconnect Android Auto, ICCOA or Bluetooth, and never reencode
+     * AA frames. FT's native UI is the sole encoder while parked.
+     */
+    fun parkForFtHome(): Boolean {
+        if (closed || failed || !active || !projection.directVideoActive) return false
+        parkedForFtHome = true
+        returningFromFtHome = false
+        active = false
+        pending = false
+        resumeEpoch++
+        receiverPaused = false
+        awaitingResumeRtpIdr = false
+        main.removeCallbacks(watchdog)
+        output.pause()
+        output.selectDirectFrames(false)
+        projection.showFtHomeKeepingAa()
+        projection.resumeCompositedVideo(plan, output::configure, output::frame)
+        output.resume(requestNewKeyframe = false)
+        projection.requestKeyFrame()
+        val focusQueued = source?.setVehicleVideoFocus(false) == true
+        DiagLog.i("ICCOA", "DIRECT_FT_HOME_SWITCHED AA_session_kept=true " +
+            "nativeFocusQueued=$focusQueued FT_compositor_only=true")
+        onStatus("FT home on car; AA session retained")
+        onModeChanged(false, "FT home chosen by user; Direct AA available on return")
+        return true
+    }
+
+    /** Re-enter AA on the SAME connection; composition remains visible until
+     * a fresh original AA IDR is verified and Direct takes over again.
+     */
+    fun returnToAaFromFtHome(): Boolean {
+        if (closed || failed || !parkedForFtHome) return false
+        parkedForFtHome = false
+        returningFromFtHome = true
+        pending = false
+        val aa = source?.takeIf { AaHeadUnitService.current === it }
+        val focusQueued = aa?.setVehicleVideoFocus(true) == true
+        if (aa?.phase?.value == AaSession.Phase.STREAMING) aa.askForAFreshPicture()
+        DiagLog.i("ICCOA", "DIRECT_FT_HOME_RETURN_TO_AA focusQueued=$focusQueued " +
+            "waiting_original_IDR=true composition_until_IDR=true")
+        onStatus("Android Auto returning; waiting for original H.264 IDR")
+        return true
+    }
+
     fun disconnected() {
         if (active || pending) fallback("Android Auto disconnected")
     }
@@ -453,6 +510,8 @@ internal class IccoaDirectVideo(
     private fun fallback(reason: String, resumeTransport: Boolean = true) {
         if (closed || failed) return
         failed = true // no re-entry until the next ICCOA connection
+        parkedForFtHome = false
+        returningFromFtHome = false
         resumeEpoch++
         pending = false
         active = false
@@ -499,6 +558,8 @@ internal class IccoaDirectVideo(
     fun close() {
         output.selectDirectFrames(false)
         resumeEpoch++
+        parkedForFtHome = false
+        returningFromFtHome = false
         closed = true
         failed = true
         active = false
