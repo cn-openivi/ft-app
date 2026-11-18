@@ -23,6 +23,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 data class HotspotInfo(val ssid: String, val password: String, val ip: String)
 
+// The Wi-Fi credential response must never reach raw TX diagnostics,
+// including opt-in packet tracing. This does not change the wire packet.
+internal object AaBluetoothLogPolicy {
+    fun mayLogPayload(type: Int): Boolean = type != AaProtocol.BT_WIFI_INFO_RESPONSE
+}
+
 @SuppressLint("MissingPermission")
 class AaBluetoothAdvertiser(private val context: Context, private val port: Int) {
     private val tag = "AA-BT"
@@ -142,7 +148,11 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
         Bytes.putU16(body.size, f, 0)
         Bytes.putU16(type, f, 2)
         System.arraycopy(body, 0, f, 4, body.size)
-        DiagLog.tx(tag, "bt type=$type", body)
+        if (AaBluetoothLogPolicy.mayLogPayload(type)) {
+            DiagLog.tx(tag, "bt type=$type", body)
+        } else {
+            DiagLog.d(tag, "TX bt type=$type bytes=${body.size} payload=REDACTED_WIFI_PASSWORD")
+        }
         o.write(f)
         o.flush()
     }
