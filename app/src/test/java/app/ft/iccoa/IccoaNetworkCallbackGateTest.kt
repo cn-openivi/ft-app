@@ -75,7 +75,7 @@ class IccoaNetworkCallbackGateTest {
         val gate = IccoaNetworkCallbackGate<String>()
         gate.onAvailable("wifi-A")
         try {
-            gate.createIfCurrent("wifi-A") { throw java.io.IOException("factory refused") as Nothing }
+            gate.createIfCurrent("wifi-A") { throw java.io.IOException("factory refused") }
             fail("A factory failure must propagate; no default Socket fallback")
         } catch (_: java.io.IOException) {
             assertTrue(gate.isCurrent("wifi-A"))
