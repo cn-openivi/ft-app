@@ -735,7 +735,10 @@ class IccoaService : Service() {
         }
         main.removeCallbacks(connectionTimeout)
         directVideo?.resumed()
-        output.resume()
+        // Direct mode owns AA keyframe recovery via NATIVE -> PROJECTED.
+        // Do not send the old one-shot focus request while AA is still NATIVE:
+        // the queued PROJECTED edge runs after this RTP resume.
+        output.resume(requestNewKeyframe = directVideo?.active != true)
         audioPlayerState.play()
         flushAudioState()
         if (!configScheduled) {
