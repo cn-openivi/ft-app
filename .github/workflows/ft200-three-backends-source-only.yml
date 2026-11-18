@@ -78,7 +78,8 @@ jobs:
           names = (
               'CarProtocolFt200CompatibilityTest', 'CarPlayPhoneIdentityTest',
               'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
-              'Iap2ControlSessionCodecTest', 'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
+              'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
+              'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
