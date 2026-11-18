@@ -102,7 +102,7 @@ jobs:
               'Iap2PhoneIdentificationProbeTest', 'Iap2IdentificationInfoInspectorTest', 'Iap2CarPlayStartSchemaTest',
               'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
               'Iap2SynPayloadParserTest', 'Iap2ReliableLinkWindowTest', 'Iap2RetryDeadlineTest',
-              'Iap2Ft200SafetyPolicyTest', 'Iap2CertificatePathFixtureTest', 'CarPlayMediaPreflightTest', 'CarPlayNmeaSentencesTest',
+              'Iap2Ft200SafetyPolicyTest', 'Iap2CertificatePathFixtureTest', 'CarPlayMediaPreflightTest', 'CarPlayNmeaSentencesTest', 'CarPlayRtspCodecTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
