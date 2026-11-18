@@ -776,7 +776,8 @@ class IccoaSession(
             val reason = (e as? IccoaHandshakeException)?.diagnostic ?: e.javaClass.simpleName
             val location = e.stackTrace.firstOrNull { it.className.startsWith("app.ft.iccoa.") }
                 ?.let { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }.orEmpty()
-            DiagLog.w("ICCOA", "AUTH failed stage=$stage reason=$reason at=$location")
+            val bindCode = if (stage == "tcp-bind") IccoaBindFailureReason.classify(e) else "NA"
+            DiagLog.w("ICCOA", "AUTH failed stage=$stage reason=$reason bindCode=$bindCode at=$location")
             val hint = when ((e as? IccoaHandshakeException)?.reason) {
                 IccoaHandshakeException.Reason.PIN_MAC -> Lang.str(R.string.iccoa_err_pin_mismatch)
                 // Authentication must fail closed on a changed OEM server EC key.
