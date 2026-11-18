@@ -65,21 +65,26 @@ class CarLifeCrypto {
         return c.doFinal(payload)
     }
 
-    fun decryptIn(payload: ByteArray): ByteArray {
+    fun decryptIn(payload: ByteArray, allowPlainHandshake: Boolean = false): ByteArray {
         if (payload.isEmpty()) return payload
-        val k = synchronized(this) { if (incoming) key else null } ?: return payload
+        val state = synchronized(this) { Triple(incoming, outgoing, key) }
+        if (!state.first) return payload // Negotiated plaintext mode or pre-key exchange.
+        val k = state.third ?: throw IllegalStateException("Baidu incoming AES armed without key")
         return try {
             val c = Cipher.getInstance("AES/ECB/PKCS5Padding")
             c.init(Cipher.DECRYPT_MODE, k)
             c.doFinal(payload)
         } catch (e: java.security.GeneralSecurityException) {
+            // Only the OEM's AES-receipt acknowledgement may be plaintext
+            // between key-send and ENCRYPT_READY. After READY, ALL corrupt
+            // encrypted command/control frames fail closed.
+            if (allowPlainHandshake && !state.second) return payload
             val report = synchronized(this) {
                 if (key !== k || decryptFailureLogged) false
                 else { decryptFailureLogged = true; true }
             }
-            // Handshake replies can still be plaintext after incoming AES is armed.
-            if (report) DiagLog.d("CarLife", "incoming AES did not decode ${payload.size} bytes (${e.javaClass.simpleName}); trying plaintext")
-            payload
+            if (report) DiagLog.w("CarLife", "incoming AES rejected: ${e.javaClass.simpleName}; no plaintext fallback")
+            throw e
         }
     }
 }
