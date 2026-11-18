@@ -15,7 +15,7 @@ internal class IccoaTwoFingerReturnGesture(
 ) {
     enum class Decision { PASS, START_HOLD, HOLDING, RESTART_PRIMARY, CONSUME }
 
-    private enum class Phase { IDLE, ARMED, SUPPRESS, COMPLETED }
+    private enum class Phase { IDLE, ARMED, SUPPRESS, COMPLETED, PASS_THROUGH }
     private var phase = Phase.IDLE
     private var startMs = 0L
     private var firstX = 0
@@ -44,6 +44,12 @@ internal class IccoaTwoFingerReturnGesture(
             return Decision.START_HOLD
         }
         if (touch.action == CarTouch.DOWN) return Decision.PASS
+        if (phase == Phase.PASS_THROUGH) {
+            // After a pinch/drag began, do not re-arm the 2.5 s hold from
+            // another multi-contact MOVE within this same touch sequence.
+            if (touch.action == CarTouch.UP || touch.action == CarTouch.CANCEL) reset()
+            return Decision.PASS
+        }
 
         if (phase == Phase.IDLE) return Decision.PASS
         if (touch.action == CarTouch.UP || touch.action == CarTouch.CANCEL) {
@@ -63,7 +69,7 @@ internal class IccoaTwoFingerReturnGesture(
                 kotlin.math.abs(touch.y2 - secondY) > slopPx)) {
             // Restore an ordinary one-finger AA gesture after a moving
             // two-finger attempt; never turn it into a held FT return.
-            reset()
+            phase = Phase.PASS_THROUGH
             return Decision.RESTART_PRIMARY
         }
         return Decision.HOLDING
