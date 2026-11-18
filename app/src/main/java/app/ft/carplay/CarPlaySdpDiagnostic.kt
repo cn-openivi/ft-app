@@ -33,12 +33,15 @@ import app.ft.core.DiagLog
 internal fun CarPlaySdpDiagnostic() {
     val context = LocalContext.current
     val probe = remember(context) { CarPlayBluetoothSdpProbe(context) }
+    val incoming = remember(context) { CarPlayIncomingIapProbe(context) }
     var visible by remember { mutableStateOf(false) }
     var candidates by remember { mutableStateOf<List<PairedDevice>>(emptyList()) }
+    var selected by remember { mutableStateOf<PairedDevice?>(null) }
+    var incomingEvents by remember { mutableStateOf<List<CarPlayIncomingIapProbe.Event>>(emptyList()) }
     var notice by remember { mutableStateOf("CarPlay отключён: требуется штатная Toyota и реальный iAP2.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
-    DisposableEffect(probe) { onDispose { probe.close() } }
+    DisposableEffect(probe, incoming) { onDispose { probe.close(); incoming.close() } }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -46,6 +49,9 @@ internal fun CarPlaySdpDiagnostic() {
     ) {
         OutlinedButton(onClick = {
             probe.close()
+            incoming.close()
+            incomingEvents = emptyList()
+            selected = null
             observed = emptyList()
             val inventory = readPairedDevices(context)
             candidates = inventory.second
@@ -60,6 +66,9 @@ internal fun CarPlaySdpDiagnostic() {
             candidates.forEach { item ->
                 OutlinedButton(onClick = {
                     observed = emptyList()
+                    selected = item
+                    incoming.close()
+                    incomingEvents = emptyList()
                     notice = "Проверяем выбранную BT-пару: ${item.name} (${item.shortAddress})"
                     probe.start(item.address) { observation ->
                         // No MAC, SSID, passphrase or raw packet bytes in durable logs.
@@ -69,6 +78,29 @@ internal fun CarPlaySdpDiagnostic() {
                 }) {
                     Text("${item.name} · ${item.shortAddress}")
                 }
+            }
+            selected?.let { item ->
+                OutlinedButton(onClick = {
+                    incoming.close()
+                    incomingEvents = emptyList()
+                    // Register an actual phone-side RFCOMM SDP service on Samsung.
+                    // This is a physical, owner-triggered diagnostic, not a CarPlay session.
+                    val result = incoming.listen(item.address) { event ->
+                        incomingEvents = (incomingEvents + event).takeLast(12)
+                        DiagLog.i("FT200.IAP2", "incoming=${event.status} linkFrames=${event.validLinkFrames} CarPlay=UNVERIFIED")
+                    }
+                    DiagLog.i("FT200.IAP2", "listenStart=$result CarPlay=UNVERIFIED")
+                    if (result != CarPlayIncomingIapProbe.Observation.SDP_LISTENER_READY) {
+                        incomingEvents = listOf(CarPlayIncomingIapProbe.Event(result))
+                    }
+                }) { Text("Проверить входящий iAP2 от Toyota (15 с)") }
+                OutlinedButton(onClick = {
+                    incoming.close()
+                }) { Text("Остановить проверку iAP2") }
+                incomingEvents.forEach { e ->
+                    Text("Toyota→Samsung: ${e.status} · iAP2 LINK frames: ${e.validLinkFrames}")
+                }
+                Text("Результат теста: не подтверждает MFi, Wi-Fi, AirPlay или звонки.")
             }
             observed.forEach { item ->
                 Text("${item.result}: ${item.remoteUuidStrings.size} service UUID(s); fresh SDP signal=${item.completedFreshSdp}")
