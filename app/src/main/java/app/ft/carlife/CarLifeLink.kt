@@ -32,12 +32,14 @@ class WifiChannelLink(
     private val ports: Map<Int, Int>,
     private val refuse: (Socket) -> String? = { null },
     private val onBusy: (Int) -> Unit = {},
-    private val onBound: (Int) -> Unit = {}
+    private val onBound: (Int) -> Unit = {},
+    private val bindAddress: (() -> InetAddress?)? = null
 ) : CarLifeLink {
     override val name = "WiFi"
     private val tag = "Link"
     private val running = AtomicBoolean(false)
     private val servers = HashMap<Int, ServerSocket>()
+    @Volatile private var selectedPeer: InetAddress? = null
     private val sockets = HashMap<Int, Socket>()
     private val writers = HashMap<Int, CarLifeWriter<ByteArray>>()
     private val jobs = ArrayList<Job>()
@@ -54,7 +56,18 @@ class WifiChannelLink(
         for ((channel, port) in ports) {
             jobs += scope.launch(Dispatchers.IO) {
                 try {
-                    val ss = NetUtil.listen(port, { onBusy(port) }) { running.get() } ?: return@launch
+                    // P2P group or hotspot may appear after the six listener
+                    // jobs start. Never bind wildcard while that happens.
+                    var bind: InetAddress? = null
+                    if (bindAddress != null) {
+                        while (isActive && running.get()) {
+                            bind = bindAddress.invoke()
+                            if (bind != null) break
+                            delay(500L)
+                        }
+                        if (bind == null) return@launch
+                    }
+                    val ss = NetUtil.listen(port, { onBusy(port) }, bind) { running.get() } ?: return@launch
                     synchronized(servers) { servers[channel] = ss }
                     if (!running.get()) {
                         runCatching { ss.close() }
@@ -64,7 +77,10 @@ class WifiChannelLink(
                     onEvent("WIFI ${CarLifeProtocol.channelName(channel)} listening on $port")
                     while (isActive && running.get()) {
                         val s = ss.accept()
-                        if (refuse(s) != null) {
+                        val scoped = bindAddress?.invoke()
+                        if ((bindAddress != null && (scoped == null || s.localAddress != scoped)) ||
+                            (selectedPeer != null && s.inetAddress != selectedPeer) ||
+                            refuse(s) != null) {
                             runCatching { s.close() }
                             continue
                         }
@@ -92,6 +108,16 @@ class WifiChannelLink(
                         }
                         onEvent("WIFI ${CarLifeProtocol.channelName(channel)} connected from ${s.inetAddress.hostAddress}")
                         if (channel == CarLifeProtocol.CH_CMD) {
+                            selectedPeer = s.inetAddress
+                            // Auxiliary lanes may arrive before CMD; reject any
+                            // foreign address that sneaked in before peer pinning.
+                            synchronized(sockets) {
+                                sockets.filter { it.key != CarLifeProtocol.CH_CMD &&
+                                    it.value.inetAddress != selectedPeer }.keys.toList().forEach { key ->
+                                    runCatching { sockets.remove(key)?.close() }
+                                    writers.remove(key)?.close()
+                                }
+                            }
                             onConnected()
                             watchCar(scope, s)
                         }
@@ -153,6 +179,7 @@ class WifiChannelLink(
             list
         }
         watch?.cancel()
+        selectedPeer = null
         all.first.forEach { runCatching { it.close() } }
         all.second.forEach { it.close() }
         return true
@@ -240,6 +267,7 @@ class WifiChannelLink(
 
     override fun stop() {
         running.set(false)
+        selectedPeer = null
         watch?.cancel()
         dropAll()
         synchronized(servers) { servers.values.forEach { runCatching { it.close() } }; servers.clear() }
@@ -260,13 +288,15 @@ class WifiChannelLink(
 }
 
 object NetUtil {
-    suspend fun listen(port: Int, onBusy: (() -> Unit)? = null, alive: () -> Boolean): ServerSocket? {
+    suspend fun listen(port: Int, onBusy: (() -> Unit)? = null,
+                       bindAddress: InetAddress? = null, alive: () -> Boolean): ServerSocket? {
         var tries = 0
         while (alive()) {
             val ss = ServerSocket()
             try {
                 ss.reuseAddress = true
-                ss.bind(InetSocketAddress(port))
+                ss.bind(if (bindAddress != null) InetSocketAddress(bindAddress, port)
+                    else InetSocketAddress(port))
                 return ss
             } catch (e: BindException) {
                 runCatching { ss.close() }
