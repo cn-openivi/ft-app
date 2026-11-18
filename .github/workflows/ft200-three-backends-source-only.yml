@@ -39,6 +39,7 @@ jobs:
           grep -Fq 'enabled = option.enabled' app/src/main/java/app/ft/ui/components/OptionSheet.kt
           grep -Fq 'enabled = false' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
+          grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaDirectRecoveryPolicyTest.kt
           test -f app/src/test/java/app/ft/dr/CarTunnelKalmanTest.kt
@@ -77,6 +78,7 @@ jobs:
           names = (
               'CarProtocolFt200CompatibilityTest', 'CarPlayPhoneIdentityTest',
               'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
+              'Iap2ControlSessionCodecTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
