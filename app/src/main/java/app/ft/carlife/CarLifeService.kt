@@ -36,6 +36,7 @@ import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
 import app.ft.core.CarBluetoothReconnect
 import app.ft.core.DiagLog
+import app.ft.core.ServiceForegroundPolicy
 import app.ft.core.MirrorPanelSaver
 import app.ft.core.MirrorOrientationLock
 import app.ft.core.CarProtocol
@@ -550,7 +551,7 @@ class CarLifeService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_AUDIO -> {
-                foreground(note, projection = true, microphone = canRecord())
+                if (!foreground(note, projection = true, microphone = canRecord())) return START_NOT_STICKY
                 val pending = pendingLaunch
                 pendingLaunch = null
                 if (pending == null) _state.update { it.copy(waitingForShare = false, shareForSound = false) }
@@ -591,7 +592,7 @@ class CarLifeService : Service() {
                     useUsb(acc)
                 } else {
                     DiagLog.w(tag, "USB: Android did not pass on the car's accessory")
-                    foreground(note)
+                    if (!foreground(note)) return START_NOT_STICKY
                     if (mode == -1) startChosenWay()
                 }
             }
@@ -625,7 +626,7 @@ class CarLifeService : Service() {
     private fun startChosenWay() {
         listenForTestCable()
         if (mode == 2 && usbLink != null) {
-            foreground(note)
+            if (!foreground(note)) return
             DiagLog.i(tag, "the car is on the USB cable, staying on it")
             return
         }
@@ -641,14 +642,14 @@ class CarLifeService : Service() {
         }
         if (wanted == 2) {
             mode = 2
-            foreground(waitingNote())
+            if (!foreground(waitingNote())) return
             _state.update { it.copy(direct = false, usb = true) }
             step("Plug the phone into the car's USB and open CarLife on the car")
             return
         }
         val fresh = mode != wanted || wifiLink == null
         mode = wanted
-        foreground(if (fresh) waitingNote() else note)
+        if (!foreground(if (fresh) waitingNote() else note)) return
         _state.update { it.copy(direct = wanted == 1, usb = false) }
         startWifiLink()
         if (fresh) {
@@ -712,7 +713,7 @@ class CarLifeService : Service() {
         mode = 2
         usbAccessory = acc
         usbStartedAt = android.os.SystemClock.elapsedRealtime()
-        foreground({ Lang.str(R.string.note_usb_connected) })
+        if (!foreground({ Lang.str(R.string.note_usb_connected) })) return
         _state.update { it.copy(direct = false, usb = true, listening = true) }
         val l = AccessoryLink("USB", what, open)
         usbLink = l
@@ -769,7 +770,7 @@ class CarLifeService : Service() {
         }
     }
 
-    private fun foreground(text: () -> String, projection: Boolean = false, microphone: Boolean = false) {
+    private fun foreground(text: () -> String, projection: Boolean = false, microphone: Boolean = false): Boolean {
         note = text
         val keepProjection = projection || this.projection != null
         val keepMicrophone = microphone || audio.active
@@ -778,13 +779,22 @@ class CarLifeService : Service() {
         if (keepMicrophone) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         val built = notification(text())
         val fallback = type and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE.inv()
-        runCatching { startForeground(NOTIFICATION_ID, built, type) }
-            .onFailure { t ->
-                DiagLog.w(tag, "foreground type $type refused (${t.message}), continuing without the microphone type")
-                runCatching { startForeground(NOTIFICATION_ID, built, fallback) }
-            }
+        val accepted = ServiceForegroundPolicy.acceptedType(type, fallback) { requested ->
+            runCatching { startForeground(NOTIFICATION_ID, built, requested) }
+                .onFailure { DiagLog.w(tag, "foreground type=$requested denied ${it.javaClass.simpleName}") }
+                .isSuccess
+        }
+        if (accepted == null) {
+            DiagLog.w(tag, "FOREGROUND_START_FAILED; open FT to retry with granted permissions")
+            _state.update { it.copy(running = false, listening = false, step = "Open FT and allow foreground permissions") }
+            stopSelf()
+            return false
+        }
+        if (keepMicrophone && accepted and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE == 0)
+            DiagLog.w(tag, "FOREGROUND_NO_MICROPHONE; audio capture unavailable until permission granted")
         awake()
         _state.update { it.copy(running = true, ip = NetUtil.localIpv4()) }
+        return true
     }
 
     private fun holdWifiSteady() {
@@ -2095,7 +2105,7 @@ class CarLifeService : Service() {
                 return null
             }
             try {
-                foreground(reason, projection = true, microphone = canRecord())
+                if (!foreground(reason, projection = true, microphone = canRecord())) return null
                 val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 val mp = mpm.getMediaProjection(code, data)
                 forgetGrant(data)
