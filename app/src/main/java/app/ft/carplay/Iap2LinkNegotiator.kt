@@ -1,5 +1,7 @@
 package app.ft.carplay
 
+import java.security.SecureRandom
+
 /**
  * Independently authored, bounded iAP2 LINK SYN exchange.
  *
@@ -11,7 +13,10 @@ package app.ft.carplay
  * This class is never wired into CarConnection auto-start. The physical probe
  * may call it only after an owner-initiated, authenticated Bluetooth bond check.
  */
-internal class Iap2LinkNegotiator {
+internal class Iap2LinkNegotiator(
+    private val senderInitialSequence: Int = SecureRandom().nextInt(256)
+) {
+    init { require(senderInitialSequence in 0..255) }
     enum class Phase { AWAITING_ACCESSORY_SYN, AWAITING_ACCESSORY_ACK, LINK_NEGOTIATED, REJECTED }
     enum class Failure {
         NONE, NOT_SYN, UNSUPPORTED_SYN, MISSING_CONTROL_SESSION,
@@ -38,9 +43,8 @@ internal class Iap2LinkNegotiator {
     var sessions: List<Session> = emptyList()
         private set
 
-    // A real sender may start at any sequence number. A constant local initial
-    // number is not a device identity, security credential or fake response.
-    private val senderInitialSequence = 0x9d
+    // A freshly selected sender sequence is link state, not a BT identity or
+    // MFi credential. Injection permits reproducible wire-format unit tests.
     private var lastAccessorySequence: Int? = null
 
     /** No session ID, sequence or ACK is guessed before the physical LINK ACK. */
