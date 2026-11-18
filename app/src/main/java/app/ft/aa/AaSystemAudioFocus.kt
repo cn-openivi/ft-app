@@ -72,7 +72,9 @@ internal class AaSystemAudioFocus(
             return AaProtocol.AUDIO_FOCUS_LOSS
         }
         active = request
-        return if (type == 2) AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT
+        // AA navigation (type 3) is a transient duck-compatible grant,
+        // not a permanent media GAIN.
+        return if (type == 2 || type == 3) AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT
             else AaProtocol.AUDIO_FOCUS_GAIN
     }
 
