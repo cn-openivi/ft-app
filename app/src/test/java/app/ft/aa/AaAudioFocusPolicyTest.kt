@@ -13,6 +13,13 @@ class AaAudioFocusPolicyTest {
         assertNull(AaAudioFocusPolicy.androidGain(999))
     }
 
+    @Test fun AA_DuckNavigationDoesNotClaimPermanentMediaFocus() {
+        assertEquals(AaProtocol.AUDIO_FOCUS_GAIN, AaAudioFocusPolicy.grantedState(1))
+        assertEquals(AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT, AaAudioFocusPolicy.grantedState(2))
+        assertEquals(AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT, AaAudioFocusPolicy.grantedState(3))
+        assertEquals(AaProtocol.AUDIO_FOCUS_LOSS, AaAudioFocusPolicy.grantedState(4))
+    }
+
     @Test fun androidFocusLossAndDuckHaveCorrectPhoneNotifications() {
         assertEquals(AaProtocol.AUDIO_FOCUS_GAIN,
             AaAudioFocusPolicy.notification(AudioManager.AUDIOFOCUS_GAIN))
