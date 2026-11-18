@@ -33,7 +33,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         PERMISSION_MISSING, ADAPTER_MISSING, ADAPTER_OFF, INVALID_ADDRESS,
         NOT_BONDED, ALREADY_LISTENING, SDP_LISTENER_READY, ACCEPT_TIMEOUT,
         ACTUAL_TOYOTA_RFCOMM_CONNECTED, PEER_NOT_SELECTED_TOYOTA,
-        REAL_LINK_FRAME_SEEN, NO_IAP2_LINK_FRAME, IO_FAILURE,
+        IAP2_DETECT_SEEN, REAL_LINK_FRAME_SEEN, NO_IAP2_LINK_FRAME, IO_FAILURE,
         CANCELLED
     }
 
@@ -117,7 +117,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 emit(Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED)
                 // A genuine link frame (not a fake ACK) is the first positive protocol
                 // signal. A peer can still be incompatible or unauthenticated.
-                val parser = Iap2LinkStreamParser()
+                val observer = Iap2PhoneWireObserver()
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
@@ -129,9 +129,13 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                     val count = connection.inputStream.read(received)
                     if (count <= 0) break
                     bytesSeen += count
-                    val frames = parser.accept(received.copyOf(count))
-                    if (frames.isNotEmpty()) {
-                        emit(Observation.REAL_LINK_FRAME_SEEN, frames.size)
+                    val event = observer.accept(received.copyOf(count))
+                    if (event.detectSeen) {
+                        emit(Observation.IAP2_DETECT_SEEN)
+                        found = true
+                    }
+                    if (event.linkFrameCount > 0) {
+                        emit(Observation.REAL_LINK_FRAME_SEEN, event.linkFrameCount)
                         found = true
                         break
                     }
