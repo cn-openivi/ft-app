@@ -38,6 +38,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         NO_IAP2_LINK_FRAME, LINK_ACK_NOT_OBSERVED,
         CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
+        IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
+        IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
         PROBE_TIMEOUT, IO_FAILURE, CANCELLED
     }
 
@@ -187,14 +189,29 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                     .firstOrNull { it.type == 0 }?.id
                                 if (frame.session == controlSessionId && frame.payload.isNotEmpty()) {
                                     for (message in control.accept(frame.payload)) {
-                                        val start = Iap2ControlSessionCodec.isStructurallyValidStartSession(message)
-                                        emit(
-                                            run,
-                                            if (start) Observation.CARPLAY_START_SESSION_OBSERVED
-                                            else Observation.CONTROL_MESSAGE_OBSERVED,
-                                            messageId = message.id,
-                                            parameterCount = message.parameters.size
-                                        )
+                                        // 0x1D01 carries potentially sensitive Toyota
+                                        // identification values; observe only IDs/count.
+                                        // Never auto-send 0x1D02 or promote to MFi PASS.
+                                        val observation = if (message.id ==
+                                            Iap2IdentificationInfoInspector.IDENTIFICATION_INFORMATION
+                                        ) {
+                                            when (Iap2IdentificationInfoInspector.inspect(message).result) {
+                                                Iap2IdentificationInfoInspector.Result.NO_PARAMETERS ->
+                                                    Observation.IDENTIFICATION_INFO_EMPTY
+                                                Iap2IdentificationInfoInspector.Result.UNKNOWN_PARAMETER_IDS ->
+                                                    Observation.IDENTIFICATION_INFO_UNKNOWN_PARAMETERS
+                                                Iap2IdentificationInfoInspector.Result.STRUCTURE_OBSERVED ->
+                                                    Observation.IDENTIFICATION_INFO_OBSERVED
+                                                Iap2IdentificationInfoInspector.Result.NOT_IDENTIFICATION ->
+                                                    Observation.CONTROL_MESSAGE_OBSERVED
+                                            }
+                                        } else if (Iap2ControlSessionCodec.isStructurallyValidStartSession(message)) {
+                                            Observation.CARPLAY_START_SESSION_OBSERVED
+                                        } else {
+                                            Observation.CONTROL_MESSAGE_OBSERVED
+                                        }
+                                        emit(run, observation, messageId = message.id,
+                                            parameterCount = message.parameters.size)
                                     }
                                 }
                                 continue
