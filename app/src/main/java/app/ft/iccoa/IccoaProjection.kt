@@ -105,6 +105,7 @@ class IccoaProjection(
         }
     }
     private var aaUiParked = false
+    private var lastAaConnected = false
     private var mirrorTouchGestureMap: MirrorTouchMap? = null
     private var mirrorTouchGestureBounds: MirrorTouchBounds? = null
     private fun cancelAaGestureOnRouteChange() {
@@ -744,10 +745,13 @@ class IccoaProjection(
             AaHeadUnitService.state.collect { aa ->
                 val connected = aa.connected
                 val visible = connected && !aaUiParked
-                val changed = mutableState.value.aaOverlay != visible
-                if (changed && !connected) cancelAaGestureOnRouteChange()
+                val connectionChanged = lastAaConnected != connected
+                if (connectionChanged && !connected) cancelAaGestureOnRouteChange()
+                lastAaConnected = connected
                 mutableState.update { it.copy(aaOverlay = visible) }
-                if (changed && !aaUiParked) onAaConnectionChanged(connected)
+                // A visual return to FT must never look like an AA disconnect
+                // to the ICCOA GPS/audio owners; report actual session edges.
+                if (connectionChanged) onAaConnectionChanged(connected)
             }
         }
         aaStartJob?.cancel()
@@ -771,6 +775,7 @@ class IccoaProjection(
 
     private fun stopAa() {
         aaUiParked = false
+        lastAaConnected = false
         directReturnGesture.reset()
         main.removeCallbacks(directReturnFire)
         cancelAaGestureOnRouteChange()
@@ -842,6 +847,7 @@ class IccoaProjection(
         main.removeCallbacks(directReturnFire)
         suppressReturnRelease = false
         aaUiParked = false
+        lastAaConnected = false
         IccoaTouchWelcome.cancel()
         displayEpoch++
         directVideoActive = false
