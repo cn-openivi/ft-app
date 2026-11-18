@@ -28,22 +28,22 @@ internal class IccoaTwoFingerReturnGesture(
     fun reset() { phase = Phase.IDLE }
 
     fun observe(touch: CarTouch, nowMs: Long): Decision {
-        when (touch.action) {
-            CarTouch.DOWN -> {
-                reset()
-                return Decision.PASS
-            }
-            CarTouch.POINTER_DOWN -> {
-                if (phase != Phase.IDLE || touch.x2 < 0 || touch.y2 < 0) return Decision.PASS
-                phase = Phase.ARMED
-                startMs = nowMs
-                firstX = touch.x
-                firstY = touch.y
-                secondX = touch.x2
-                secondY = touch.y2
-                return Decision.START_HOLD
-            }
+        if (touch.action == CarTouch.DOWN) reset()
+        // ICCOA receivers vary: a two-contact sequence can begin with DOWN,
+        // POINTER_DOWN, or a MOVE carrying both coordinates. All three are
+        // bounded by the same stationary hold, never a one-finger shortcut.
+        if (phase == Phase.IDLE &&
+            touch.action in setOf(CarTouch.DOWN, CarTouch.POINTER_DOWN, CarTouch.MOVE) &&
+            touch.x2 >= 0 && touch.y2 >= 0) {
+            phase = Phase.ARMED
+            startMs = nowMs
+            firstX = touch.x
+            firstY = touch.y
+            secondX = touch.x2
+            secondY = touch.y2
+            return Decision.START_HOLD
         }
+        if (touch.action == CarTouch.DOWN) return Decision.PASS
 
         if (phase == Phase.IDLE) return Decision.PASS
         if (touch.action == CarTouch.UP || touch.action == CarTouch.CANCEL) {
