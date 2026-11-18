@@ -65,3 +65,32 @@ Source gate: https://github.com/cn-openivi/ft-app/actions/runs/44147218394
 Detailed status artifact (independent Drive readback): https://docs.google.com/document/d/1dF-udY2wa22P4nljGwuU3M-Vj320ak0jmqCD9dmgEj4/edit
 
 **Next approved edge:** finish the unsigned source CI, independently verify zero compile/JUnit failures, and only then record FT200.1 accepted in canonical Nexus and start FT200.2 original phone-side Bluetooth/iAP2 source behind the disabled transport feature gate. No existing FTMP worker/plan changes.
+
+
+## Owner-approved canonical FT200 master v2 — 2026-11-18
+
+**Canonical authority (current new version):** Nexus DECISION `a0eeccca-f229-4f06-928f-4715ade9c3d7`, key `FT200-DEVELOPMENT-MASTER-PLAN-20261117.v2`. Supersedes historical master v1 decision `dabcb418-3998-45c1-9967-4dc2284378c1` for future FT200 work; keeps exactly seven items and their order. **Full owner-approved text and acceptance matrix:** https://docs.google.com/document/d/1OzPDcipyG4FeOJBH1GmrrhvhjEYfVXgBu5wb_kfrKqM/edit
+
+**Owner change:** Add all useful Carlinkit Ambient 2025-12-02 firmware research findings. Preserve Baidu CarLife, ICCOA, one physical Android phone, and stock Toyota HU. Android Auto remains content, not another transport. No FTMP, FT190 release, worker, vehicle, signing, or permission changes.
+
+Two **strict P0 field gates**, not static code checkmarks:
+- **P0-A REAL HANDSHAKE**: Samsung phone → genuine iAP2 Bluetooth capability/discovery/CarPlayAvailability/CarPlayStartSession → permitted auth → Wi-Fi handover → AirPlay SETUP → **real FAW Toyota CarPlay ACTIVE with visible frames and working touch**. SDP, a fake connection state, a CarPlay button, and source-only tests are not proof.
+- **P0-B REAL BIDIRECTIONAL CARRIER CALLS**: while the same CarPlay session stays active, test both incoming/outgoing cellular calls with **Toyota speakers→driver and Toyota microphone→remote caller** via real system telephony/HFP (or independently proven supported route). Verify ring/answer/mute/hangup, resume, cold/warm reconnect. No fake AT, silent/missing reverse audio, synthetic SCO, unprivileged downlink capture via MediaProjection/Shizuku, or claim based on Carlinkit box permissions.
+- **P0-C ONE PHONE**: exactly one physical BT bond/device in Toyota and matching observed OEM mDeviceAddr/mHFPAddr where HFP is active. **No fake MAC**; Carlinkit includes getFakeLocalBtMac, so it is NOT proof of genuine identity.
+- No CarPlay release/enable until P0-A + P0-B + P0-C and P0 Baidu/ICCOA regression plus license gates all pass.
+
+**Seven original master edges refined, not renumbered:**
+
+| Item | Added research-backed work and acceptance |
+|---|---|
+| FT200.1 | Source-only non-regression with CARPLAY OFF; historical 1075 JUnit PASS, Kotlin/Gradle green at [GitHub run 44147218394](https://github.com/cn-openivi/ft-app/actions/runs/44147218394), zero failures/errors/skipped. **No APK; no HU test; not automatically canonically accepted/advanced.** |
+| FT200.2 | Clean-room Android phone-side iAP2 transport, real SDP/auth, CarPlayAvailability 0x4300 and CarPlayStartSession 0x4301, BT→WiFi→AirPlay, live HU ACTIVE and touch; finite states, exact blockers. Carjack/CatPlay rights and MFi availability checked; no unlicensed code. |
+| FT200.3 | Real Android BT identity, OEM device address vs HFP address, physical one-bond pairing, HFP/A2DP/AVRCP/SCO coexistence during handover, diagnose OEM Wi-Fi call-mode switching. |
+| FT200.4 | P0-B real incoming/outgoing 2-way cellular voice using Toyota mic/speakers with CarPlay ACTIVE. Reject faked HFP/synthetic AT and unprivileged protected call audio capture. |
+| FT200.5 | Adopt conceptual Phone/Music/Siri/Alt separation from SpeedPlay, coordinate real audio-focus/routing, media keys, steering, nav prompts, caller interruptions, music restore and no duplicate audio. |
+| FT200.6 | iAP2 NMEA GGA/RMC→PASCD lifecycle (source must be verified); distinct AA Android Location→reportLocationData; **never infer Toyota DR** from Carlinkit box local GPS. Prefer H.264 compressed repacketization only after negotiated codec proof (no default decode/screen-capture/reencode); touch geometry, FPS/latency/power. |
+| FT200.7 | FAW Toyota + Samsung field acceptance: three transports, calls, identity, GPS, audio, steering, reconnect, reverse/safety, Baidu/ICCOA parity, precise diagnostics and test evidence. |
+
+**Proven Carlinkit static evidence:** [read-only full forensic report](https://drive.google.com/file/d/1dm44kTETLHwYJH3SdPiN0THVhBQ5eZB5/view): `SpeedPlayManager.addNmeaListener` → `iapSendPASCD`, `AndroidAutoJni.reportLocationData`, `ProjectionRenderer MediaCodec video/avc` and separate `sdCarplaySvc startRecordScreen`, HFP/A2DP/AVRCP/SCO, native BT identity, Phone/Music/Siri/Alt streams. **Do not copy proprietary APK/ELF** or claim true HFP calls on a stock Samsung from these symbols.
+
+**Current canonical phase unchanged**: `CURRENT_ITEM=FT200.1`, source CI has terminal PASS; next evidence gate is explicit FT200.1 canonical acceptance then FT200.2. FT200.4 bidirectional calls remain P0 hard-blocker for CarPlay readiness, even if video works. The complete v2 Drive/Nexus master supersedes this GitHub summary wherever different.
