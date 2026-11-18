@@ -19,6 +19,13 @@ internal class Iap2LinkNegotiator {
     }
     data class Session(val id: Int, val type: Int, val version: Int)
 
+    /** Available ONLY after a genuine peer ACK of our SYN+ACK. */
+    data class ConfirmedLink(
+        val sessions: List<Session>,
+        val nextPhoneSequence: Int,
+        val lastAccessorySequence: Int
+    )
+
     data class Step(
         val phase: Phase,
         val failure: Failure = Failure.NONE,
@@ -34,6 +41,14 @@ internal class Iap2LinkNegotiator {
     // A real sender may start at any sequence number. A constant local initial
     // number is not a device identity, security credential or fake response.
     private val senderInitialSequence = 0x9d
+    private var lastAccessorySequence: Int? = null
+
+    /** No session ID, sequence or ACK is guessed before the physical LINK ACK. */
+    fun confirmedLink(): ConfirmedLink? {
+        if (phase != Phase.LINK_NEGOTIATED) return null
+        val sequence = lastAccessorySequence ?: return null
+        return ConfirmedLink(sessions.toList(), (senderInitialSequence + 1) and 0xff, sequence)
+    }
 
     fun onRealLinkFrame(packet: Iap2LinkFrameCodec.Frame): Step = when (phase) {
         Phase.AWAITING_ACCESSORY_SYN -> acceptSyn(packet)
@@ -44,6 +59,7 @@ internal class Iap2LinkNegotiator {
     fun reset() {
         phase = Phase.AWAITING_ACCESSORY_SYN
         sessions = emptyList()
+        lastAccessorySequence = null
     }
 
     private fun acceptSyn(packet: Iap2LinkFrameCodec.Frame): Step {
@@ -83,6 +99,7 @@ internal class Iap2LinkNegotiator {
             packet.control and 0x40 == 0 ||
             packet.session != 0 || packet.acknowledgement != senderInitialSequence ||
             packet.payload.isNotEmpty()) return reject(Failure.WRONG_ACK)
+        lastAccessorySequence = packet.sequence
         phase = Phase.LINK_NEGOTIATED
         return Step(phase)
     }
