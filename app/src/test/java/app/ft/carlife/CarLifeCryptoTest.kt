@@ -52,6 +52,40 @@ class CarLifeCryptoTest {
         assertFalse(crypto.active)
     }
 
+    @Test fun corruptedEncryptedCmdFailsClosedAfterReady() = withBase64 {
+        val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(1024) }.generateKeyPair()
+        val crypto = CarLifeCrypto()
+        assertNotNull(crypto.aesKeyRequest(java.util.Base64.getEncoder().encodeToString(pair.public.encoded)))
+        crypto.armIncoming()
+        assertTrue(crypto.enableOutgoing())
+        assertThrows(java.security.GeneralSecurityException::class.java) {
+            crypto.decryptIn(byteArrayOf(1, 2, 3, 4, 5))
+        }
+    }
+
+    @Test fun plaintextAesReceiptAllowedOnlyDuringKeyNegotiation() = withBase64 {
+        val pair = KeyPairGenerator.getInstance("RSA").apply { initialize(1024) }.generateKeyPair()
+        val crypto = CarLifeCrypto()
+        assertNotNull(crypto.aesKeyRequest(java.util.Base64.getEncoder().encodeToString(pair.public.encoded)))
+        crypto.armIncoming()
+        val ack = byteArrayOf(8, 1, 16, 1, 7)
+        assertArrayEquals(ack, crypto.decryptIn(ack, allowPlainHandshake = true))
+        assertThrows(java.security.GeneralSecurityException::class.java) {
+            crypto.decryptIn(ack)
+        }
+        assertTrue(crypto.enableOutgoing())
+        assertThrows(java.security.GeneralSecurityException::class.java) {
+            crypto.decryptIn(ack, allowPlainHandshake = true)
+        }
+    }
+
+    @Test fun preNegotiationPlaintextPreservedForKnownGoodBaidu() {
+        val crypto = CarLifeCrypto()
+        val plain = byteArrayOf(8, 0, 16, 7)
+        assertArrayEquals(plain, crypto.decryptIn(plain))
+        assertFalse(crypto.active)
+    }
+
     companion object {
         fun withBase64(block: () -> Unit) {
             mockStatic(Base64::class.java).use { base64 ->
