@@ -473,6 +473,7 @@ class CarLifeService : Service() {
         HotspotClients(scope, { NetUtil.hotspotAddresses(this) }, { mode == 0 && wifiLink?.connected != true }) { list -> onHotspotClients(list) }
     }
     private val busyPorts: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val boundWifiPorts: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private val discovery by lazy { CarDiscovery(scope) { from -> sameWay(from) } }
     @Volatile private var p2pIface: String? = null
     @Volatile private var carP2pIp: String? = null
@@ -834,6 +835,7 @@ class CarLifeService : Service() {
     private fun startWifiLink() {
         if (wifiLink != null) return
         val p = app.prefs
+        boundWifiPorts.clear()
         val l = WifiChannelLink(
             mapOf(
                 CarLifeProtocol.CH_CMD to p.cmdPort,
@@ -851,14 +853,17 @@ class CarLifeService : Service() {
                 // not the process default route (which may be mobile/VPN).
                 val ip = when (mode) {
                     1 -> NetUtil.wifiDirectIpv4(p2pIface)
-                    0 -> NetUtil.hotspotIpv4(this)
+                    0 -> NetUtil.hotspotAddresses(this)
+                        .map { it.first.hostAddress }.distinct().singleOrNull()
                     else -> null
                 }
                 ip?.let { runCatching { java.net.InetAddress.getByName(it) }.getOrNull() }
             }
         )
         wifiLink = l
-        _state.update { it.copy(listening = true) }
+        // Six listeners are launched asynchronously. Do not claim listening
+        // before they all bind the verified P2P/hotspot local address.
+        _state.update { it.copy(listening = false) }
         attachSession(l)
         discovery.start()
     }
@@ -901,9 +906,12 @@ class CarLifeService : Service() {
     }
 
     private fun portBound(port: Int) {
-        if (!busyPorts.remove(port) || busyPorts.isNotEmpty()) return
-        DiagLog.i(tag, "CarLife's ports are free again, FT is listening")
-        _state.update { it.copy(blocked = 0) }
+        boundWifiPorts.add(port)
+        busyPorts.remove(port)
+        if (busyPorts.isEmpty() && boundWifiPorts.size >= 6) {
+            DiagLog.i(tag, "CarLife six network-scoped TCP ports bound on selected interface")
+            _state.update { it.copy(blocked = 0, listening = true) }
+        }
     }
 
     private fun installed(pkg: String): Boolean = runCatching { packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)
@@ -1031,6 +1039,7 @@ class CarLifeService : Service() {
         usbAccessory = null
         hotspotClients.stop()
         busyPorts.clear()
+        boundWifiPorts.clear()
         pendingLaunch = null
         carDisplay.stop()
         _state.update {
