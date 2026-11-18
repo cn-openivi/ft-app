@@ -364,6 +364,7 @@ class AaSession(
                     channel == AaProtocol.CH_SPEECH_AUDIO ||
                     channel == AaProtocol.CH_SYSTEM_AUDIO) {
                     if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                    audioRouteAudit.streamBoundary(channel)
                     audioMeasured -= channel
                     DiagLog.i(tag, "AA audio channel closed: ${AaProtocol.channelName(channel)}")
                 }
@@ -647,11 +648,15 @@ class AaSession(
             AaProtocol.AV_START_INDICATION -> {
                 val wasAlreadyActive = !audioSessions.start(channel, AaMessages.startSession(body))
                 audioMeasured -= channel
-                if (!wasAlreadyActive) CarAudioBus.begin(channel)
+                if (!wasAlreadyActive) {
+                    audioRouteAudit.streamBoundary(channel)
+                    CarAudioBus.begin(channel)
+                }
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} started")
             }
             AaProtocol.AV_STOP_INDICATION -> {
                 if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                audioRouteAudit.streamBoundary(channel)
                 audioMeasured -= channel
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} stopped")
             }
@@ -665,7 +670,7 @@ class AaSession(
                 val pcm = if (id == AaProtocol.AV_MEDIA_WITH_TIMESTAMP && body.size > 8) body.copyOfRange(8, body.size) else body
                 sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions.session(channel)))
                 if (pcm.isNotEmpty()) {
-                    audioRouteAudit.pcm(channel, pcm.size)
+                    audioRouteAudit.pcm(channel, pcm.size)?.let { DiagLog.i(tag, it) }
                     val rate = if (channel == AaProtocol.CH_MEDIA_AUDIO) 48000 else 16000
                     val ch = if (channel == AaProtocol.CH_MEDIA_AUDIO) 2 else 1
                     if (audioMeasured.add(channel)) {

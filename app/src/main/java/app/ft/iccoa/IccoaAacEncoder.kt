@@ -3,6 +3,8 @@ package app.ft.iccoa
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
+import app.ft.core.AacOutputTiming
+import app.ft.core.DiagLog
 import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -15,6 +17,7 @@ internal class IccoaAacEncoder(
     private data class Pcm(val data: ByteArray, val atUs: Long, val epoch: Long)
     private val pending = ArrayBlockingQueue<Pcm>(8)
     private val closed = AtomicBoolean(false)
+    private val timing = AacOutputTiming()
     private val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC)
     private val worker = Thread(::encode, "ICCOA-AAC")
 
@@ -43,7 +46,10 @@ internal class IccoaAacEncoder(
             val chunk = Pcm(data.copyOfRange(offset, offset + length),
                 now - (data.size - offset) / 4 * 1_000_000L / 48000, epoch)
             // Preserve the rest of a burst: evict only the oldest PCM chunk.
-            while (!closed.get() && !pending.offer(chunk)) pending.poll()
+            while (!closed.get() && !pending.offer(chunk)) {
+                pending.poll()?.let { timing.evictedPcm(it.data.size) }
+            }
+            timing.queued(pending.size)
             offset += length
         }
     }
@@ -54,6 +60,7 @@ internal class IccoaAacEncoder(
         val epochs = java.util.TreeMap<Long, Long>()
         var chunk: Pcm? = null
         var offset = 0
+        var lastAuditNs = System.nanoTime()
         try {
             while (!closed.get()) {
                 if (chunk == null) { chunk = pending.poll(10, TimeUnit.MILLISECONDS); offset = 0 }
@@ -84,11 +91,17 @@ internal class IccoaAacEncoder(
                             output.position(info.offset); output.limit(info.offset + info.size)
                             val source = epochs.floorEntry(info.presentationTimeUs) ?: epochs.firstEntry()
                             if (source != null) {
+                                timing.aacOutput(info.presentationTimeUs)
                                 onFrame(ByteArray(info.size).also { output.get(it) }, info.presentationTimeUs, source.value)
                                 epochs.headMap(source.key, false).clear()
                             }
                         }
                     } finally { codec.releaseOutputBuffer(index, false) }
+                }
+                val auditNs = System.nanoTime()
+                if (auditNs - lastAuditNs >= 5_000_000_000L) {
+                    lastAuditNs = auditNs
+                    DiagLog.i("ICCOA", "AAC_TIMING " + timing.summary(pending.size))
                 }
             }
         } catch (e: InterruptedException) {
@@ -96,6 +109,7 @@ internal class IccoaAacEncoder(
         } catch (e: Exception) {
             if (!closed.get()) onFailure("AAC encoder: ${e.javaClass.simpleName}")
         } finally {
+            DiagLog.i("ICCOA", "AAC_TIMING_FINAL " + timing.summary(pending.size))
             runCatching { codec.stop() }; runCatching { codec.release() }
         }
     }
