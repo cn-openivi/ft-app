@@ -36,7 +36,8 @@ internal class Iap2ReliableLinkWindow(
 
     enum class SendStatus {
         READY, BUSY, INVALID_SESSION, INVALID_FRAME,
-        RETRY, RETRY_EXHAUSTED, NOTHING_PENDING
+        RETRY, RETRY_EXHAUSTED, NOTHING_PENDING,
+        ACK_READY, ACK_NOT_REQUIRED, WAITING_TIMEOUT
     }
 
     data class Outgoing(
@@ -55,6 +56,7 @@ internal class Iap2ReliableLinkWindow(
     private var sendingSequence = confirmed.nextPhoneSequence
     private var outstanding: Outstanding? = null
 
+    @Synchronized
     fun pendingCount(): Int = if (outstanding == null) 0 else 1
 
     /**
@@ -62,6 +64,7 @@ internal class Iap2ReliableLinkWindow(
      * after a *separately verified* authentication/feature state. There is no
      * implicit CarPlay activation here. Exactly one packet may be in flight.
      */
+    @Synchronized
     fun prepareData(sessionId: Int, payload: ByteArray): Outgoing {
         if (outstanding != null) return Outgoing(SendStatus.BUSY)
         if (confirmed.sessions.none { it.id == sessionId }) {
@@ -88,6 +91,7 @@ internal class Iap2ReliableLinkWindow(
      * Never overwrite an outstanding frame, and NEVER mutate the retry bytes.
      * Caller chooses timeout policy; this class never starts a background job.
      */
+    @Synchronized
     fun retryOutstanding(): Outgoing {
         val current = outstanding ?: return Outgoing(SendStatus.NOTHING_PENDING)
         if (current.retries >= maxRetries) {
@@ -102,12 +106,12 @@ internal class Iap2ReliableLinkWindow(
      * modulo-256, including 255 -> 0 wrap. Repeated frames are not delivered a
      * second time and gaps cannot advance the expected sequence.
      */
+    @Synchronized
     fun observe(frame: Iap2LinkFrameCodec.Frame): Incoming {
         if (frame.sequence !in 0..255 ||
             frame.acknowledgement !in 0..255 ||
             frame.control !in 0..255 ||
-            frame.control and 0x80 != 0 ||
-            frame.control and 0x40 == 0) {
+            frame.control != 0x40) {
             return Incoming(Status.MALFORMED_HEADER)
         }
         // A peer cannot acknowledge our last outbound data by inventing a
@@ -136,6 +140,34 @@ internal class Iap2ReliableLinkWindow(
         }
     }
 
+    /**
+     * Build a cumulative pure ACK only for a decoded inbound DATA frame.
+     * Duplicates and gaps re-advertise the last IN-ORDER receive sequence.
+     * Empty ACK frames never elicit replies (no ACK storm).
+     *
+     * This stop-and-wait sequence choice is source-only until final Toyota
+     * validation. Pure ACK consumes no DATA sequence; it uses the last
+     * locally sent sequence, including negotiated SYN+ACK.
+     */
+    @Synchronized
+    fun prepareCumulativeAck(incoming: Incoming): Outgoing {
+        val needAck = incoming.status == Status.ACCEPTED_IN_ORDER ||
+            incoming.status == Status.DUPLICATE ||
+            incoming.status == Status.OUT_OF_ORDER
+        if (!needAck || incoming.cumulativeAck != receivedSequence)
+            return Outgoing(SendStatus.ACK_NOT_REQUIRED)
+        return Outgoing(
+            SendStatus.ACK_READY,
+            Iap2LinkFrameCodec.encode(
+                control = 0x40,
+                sequence = (sendingSequence - 1) and 0xff,
+                acknowledgement = receivedSequence,
+                session = 0
+            )
+        )
+    }
+
+    @Synchronized
     fun reset() {
         outstanding = null
         receivedSequence = confirmed.lastAccessorySequence

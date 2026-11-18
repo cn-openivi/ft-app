@@ -118,6 +118,50 @@ class Iap2ReliableLinkWindowTest {
             Iap2LinkFrameCodec.decode(state.prepareData(7, byteArrayOf(2)).wire!!)!!.sequence)
     }
 
+    @Test fun pureAckOnlyForInOrderDuplicatesAndGapsNeverForAckOnly() {
+        val state = Iap2ReliableLinkWindow(link())
+        val first = state.observe(inbound(seq = 0x43))
+        val ack = state.prepareCumulativeAck(first)
+        assertEquals(Iap2ReliableLinkWindow.SendStatus.ACK_READY, ack.status)
+        val wire = Iap2LinkFrameCodec.decode(ack.wire!!)!!
+        assertEquals(0x40, wire.control)
+        assertEquals(0, wire.session)
+        assertEquals(0x9d, wire.sequence)
+        assertEquals(0x43, wire.acknowledgement)
+        assertTrue(wire.payload.isEmpty())
+        assertEquals(0, state.pendingCount())
+
+        val duplicate = state.prepareCumulativeAck(state.observe(inbound(seq = 0x43)))
+        assertEquals(Iap2ReliableLinkWindow.SendStatus.ACK_READY, duplicate.status)
+        val gap = state.prepareCumulativeAck(state.observe(inbound(seq = 0x45)))
+        assertEquals(0x43, Iap2LinkFrameCodec.decode(gap.wire!!)!!.acknowledgement)
+
+        val empty = state.prepareCumulativeAck(state.observe(inbound(data = byteArrayOf())))
+        assertEquals(Iap2ReliableLinkWindow.SendStatus.ACK_NOT_REQUIRED, empty.status)
+    }
+
+    @Test fun rejectedFramesCannotTriggerAcksOrClearOurRetransmit() {
+        val state = Iap2ReliableLinkWindow(link())
+        state.prepareData(7, byteArrayOf(1))
+        val foreign = state.observe(inbound(seq = 0x43, ack = 0x9e, session = 8))
+        assertEquals(Iap2ReliableLinkWindow.SendStatus.ACK_NOT_REQUIRED,
+            state.prepareCumulativeAck(foreign).status)
+        assertEquals(1, state.pendingCount())
+        val eak = state.observe(Iap2LinkFrameCodec.Frame(
+            0x60, 0x43, 0x9e, 7, byteArrayOf(4)))
+        assertEquals(Iap2ReliableLinkWindow.Status.MALFORMED_HEADER, eak.status)
+        assertEquals(1, state.pendingCount())
+    }
+
+    @Test fun pureAckDoesNotConsumeNextDataSequence() {
+        val state = Iap2ReliableLinkWindow(link())
+        state.prepareCumulativeAck(state.observe(inbound(seq = 0x43)))
+        val outbound = state.prepareData(7, byteArrayOf(1))
+        assertEquals(0x9e, Iap2LinkFrameCodec.decode(outbound.wire!!)!!.sequence)
+        assertEquals(0x9e, Iap2LinkFrameCodec.decode(
+            state.retryOutstanding().wire!!)!!.sequence)
+    }
+
     @Test fun invalidHeaderNumbersFailWithoutAcknowledgingOutstanding() {
         val state = Iap2ReliableLinkWindow(link())
         assertNotNull(state.prepareData(7, byteArrayOf(1)).wire)

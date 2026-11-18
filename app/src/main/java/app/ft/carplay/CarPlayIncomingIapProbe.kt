@@ -15,6 +15,9 @@ import android.os.Looper
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -43,6 +46,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
         LINK_DUPLICATE_IGNORED, LINK_GAP_IGNORED,
         LINK_UNEXPECTED_SESSION, IDENTIFICATION_REQUEST_ACKED,
+        LINK_DATA_ACK_SENT, LINK_DATA_RETRIED, LINK_DATA_RETRY_EXHAUSTED,
         PROBE_TIMEOUT, IO_FAILURE, CANCELLED
     }
 
@@ -133,6 +137,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         timeout = deadline
         main.postDelayed(deadline, PROBE_TIMEOUT_MS)
         val job = Thread({
+            var retryExecutor: ScheduledExecutorService? = null
             emit(run, Observation.SDP_LISTENER_READY)
             try {
                 val connection = serverSocket.accept(ACCEPT_TIMEOUT_MS)
@@ -153,6 +158,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                     return@Thread
                 }
                 emit(run, Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED)
+                val output = connection.outputStream
                 // A genuine link frame (not a fake ACK) is the first positive protocol
                 // signal. A peer can still be incompatible or unauthenticated.
                 val observer = Iap2PhoneWireObserver()
@@ -192,6 +198,18 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                 val accepted = reliable?.observe(frame)
                                 if (accepted?.ackOfOutstanding == true)
                                     emit(run, Observation.IDENTIFICATION_REQUEST_ACKED)
+                                if (requestIdentification && accepted != null) {
+                                    val ack = reliable?.prepareCumulativeAck(accepted)
+                                    if (ack?.status == Iap2ReliableLinkWindow.SendStatus.ACK_READY &&
+                                        ack.wire != null && active.get() && generation == run
+                                    ) {
+                                        synchronized(output) {
+                                            output.write(ack.wire)
+                                            output.flush()
+                                        }
+                                        emit(run, Observation.LINK_DATA_ACK_SENT)
+                                    }
+                                }
                                 when (accepted?.status) {
                                     Iap2ReliableLinkWindow.Status.DUPLICATE ->
                                         emit(run, Observation.LINK_DUPLICATE_IGNORED)
@@ -281,10 +299,50 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                                 outgoing.wire != null &&
                                                 outgoing.wire.contentEquals(proposal.frame)
                                             ) {
-                                                connection.outputStream.write(outgoing.wire)
-                                                connection.outputStream.flush()
+                                                synchronized(output) {
+                                                    output.write(outgoing.wire)
+                                                    output.flush()
+                                                }
                                                 emit(run, Observation.IDENTIFICATION_REQUEST_SENT,
                                                     messageId = 0x1D00)
+                                                val link = reliable!!
+                                                val timeout = Iap2RetryDeadline(link)
+                                                if (!timeout.onFirstSent(System.nanoTime() / 1_000_000L)) {
+                                                    emit(run, Observation.IO_FAILURE)
+                                                    return@Thread
+                                                }
+                                                // A disposable background worker: never block the
+                                                // main/UI thread while writing Bluetooth bytes.
+                                                retryExecutor = Executors.newSingleThreadScheduledExecutor { work ->
+                                                    Thread(work, "FT200-iap2-retry").apply { isDaemon = true }
+                                                }
+                                                retryExecutor!!.scheduleAtFixedRate({
+                                                    if (active.get() && generation == run) {
+                                                        val resend = timeout.poll(System.nanoTime() / 1_000_000L)
+                                                        when (resend.status) {
+                                                            Iap2ReliableLinkWindow.SendStatus.RETRY -> {
+                                                                try {
+                                                                    val bytes = resend.wire
+                                                                    if (bytes != null) synchronized(output) {
+                                                                        if (active.get() && generation == run) {
+                                                                            output.write(bytes)
+                                                                            output.flush()
+                                                                            emit(run, Observation.LINK_DATA_RETRIED)
+                                                                        }
+                                                                    }
+                                                                } catch (_: IOException) {
+                                                                    emit(run, Observation.IO_FAILURE)
+                                                                    retryExecutor?.shutdown()
+                                                                }
+                                                            }
+                                                            Iap2ReliableLinkWindow.SendStatus.RETRY_EXHAUSTED -> {
+                                                                emit(run, Observation.LINK_DATA_RETRY_EXHAUSTED)
+                                                                retryExecutor?.shutdown()
+                                                            }
+                                                            else -> Unit
+                                                        }
+                                                    }
+                                                }, 300, 300, TimeUnit.MILLISECONDS)
                                             } else {
                                                 emit(run, Observation.IO_FAILURE)
                                                 return@Thread
@@ -317,6 +375,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
             } catch (_: RuntimeException) {
                 if (active.get() && generation == run) emit(run, Observation.IO_FAILURE)
             } finally {
+                retryExecutor?.shutdownNow()
                 synchronized(this@CarPlayIncomingIapProbe) {
                     // An old listener must never close a newer owner-started probe.
                     if (generation == run) close()
