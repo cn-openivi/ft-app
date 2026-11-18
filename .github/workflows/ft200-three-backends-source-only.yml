@@ -79,7 +79,7 @@ jobs:
               'CarProtocolFt200CompatibilityTest', 'CarPlayPhoneIdentityTest',
               'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
               'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
-              'Iap2PhoneIdentificationProbeTest',
+              'Iap2PhoneIdentificationProbeTest', 'Iap2IdentificationInfoInspectorTest',
               'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
