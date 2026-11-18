@@ -390,7 +390,21 @@ class IccoaService : Service() {
                         navigationSend.run()
                     }
                 }
-            })
+            },
+            onDirectReturnRequested = { main.post { showFtHomeOnCar() } },
+            onAaReturnRequested = { main.post { directVideo?.returnToAaFromFtHome() } })
+    }
+
+    /** Called from the phone action, active notification or verified UIBC hold. */
+    private fun showFtHomeOnCar() {
+        if (!_state.value.connected) return
+        if (directVideo?.parkForFtHome() == true) {
+            _state.update { it.copy(effectiveVideoMode = 0,
+                videoFallbackReason = "FT home selected; AA link retained") }
+        } else {
+            // Existing non-direct mode keeps its original Home behavior.
+            projection?.goHome()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -419,6 +433,7 @@ class IccoaService : Service() {
         val wasRunning = _state.value.running
         _state.update { it.copy(running = true) }
         when (intent?.action) {
+            RETURN_TO_FT -> showFtHomeOnCar()
             CONNECT -> intent.getStringExtra("address")?.let { address ->
                 main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
@@ -913,9 +928,17 @@ class IccoaService : Service() {
         if (foregroundMode == withProjection) return
         val launch = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val note = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tile_ft)
+        val builder = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tile_ft)
             .setContentTitle("FT · ICCOA Carlink").setContentText("ICCOA wireless projection")
-            .setContentIntent(launch).setOngoing(true).build()
+            .setContentIntent(launch).setOngoing(true)
+        if (withProjection) {
+            // Notification action works without locating a control inside the app.
+            val returnIntent = Intent(this, IccoaService::class.java).setAction(RETURN_TO_FT)
+            val returnAction = PendingIntent.getForegroundService(this, 91, returnIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            builder.addAction(R.drawable.ic_tile_ft, "Вернуться в FT", returnAction)
+        }
+        val note = builder.build()
         val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
             (if (withProjection) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
         startForeground(NOTIFICATION, note, type)
@@ -957,6 +980,7 @@ class IccoaService : Service() {
         private const val CONNECT_NORMAL = "app.ft.iccoa.CONNECT_NORMAL"
         private const val PIN = "app.ft.iccoa.PIN"
         private const val DISCONNECT = "app.ft.iccoa.DISCONNECT"
+        private const val RETURN_TO_FT = "app.ft.iccoa.RETURN_TO_FT"
         private val _state = MutableStateFlow(IccoaState())
         val state: StateFlow<IccoaState> = _state
         private var instance: IccoaService? = null
@@ -967,6 +991,7 @@ class IccoaService : Service() {
         fun connectNormal(context: Context, address: String) = send(context, CONNECT_NORMAL, address = address)
         fun submitPin(context: Context, pin: String) = send(context, PIN, pin = pin)
         fun disconnect(context: Context) = send(context, DISCONNECT)
+        fun returnToFtHome(context: Context) = send(context, RETURN_TO_FT)
         fun calibrateTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startTouchCalibration() }
         fun resetTouchCalibration() { if (_state.value.connected) instance?.projection?.resetTouchCalibration() }
         fun calibrateMirrorTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startMirrorTouchCalibration() }
