@@ -37,6 +37,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         LINK_SYN_ACK_SENT, LINK_NEGOTIATED, LINK_REJECTED,
         NO_IAP2_LINK_FRAME, LINK_ACK_NOT_OBSERVED,
         CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
+        CARPLAY_START_SESSION_MALFORMED, CARPLAY_START_SESSION_UNKNOWN_SCHEMA,
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
@@ -205,8 +206,19 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                                 Iap2IdentificationInfoInspector.Result.NOT_IDENTIFICATION ->
                                                     Observation.CONTROL_MESSAGE_OBSERVED
                                             }
-                                        } else if (Iap2ControlSessionCodec.isStructurallyValidStartSession(message)) {
-                                            Observation.CARPLAY_START_SESSION_OBSERVED
+                                        } else if (message.id ==
+                                            Iap2ControlSessionCodec.CARPLAY_START_SESSION
+                                        ) {
+                                            // Two-level 0x4301 schema must be validated
+                                            // without exposing SSID, PSK or device ID.
+                                            // Shape success is not MFi/Wi-Fi/AirPlay success.
+                                            when (Iap2CarPlayStartSchema.inspect(message).result) {
+                                                Iap2CarPlayStartSchema.Result.STRUCTURE_OBSERVED ->
+                                                    Observation.CARPLAY_START_SESSION_OBSERVED
+                                                Iap2CarPlayStartSchema.Result.UNKNOWN_ONLY ->
+                                                    Observation.CARPLAY_START_SESSION_UNKNOWN_SCHEMA
+                                                else -> Observation.CARPLAY_START_SESSION_MALFORMED
+                                            }
                                         } else {
                                             Observation.CONTROL_MESSAGE_OBSERVED
                                         }
