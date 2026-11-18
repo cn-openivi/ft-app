@@ -51,4 +51,35 @@ class IccoaNetworkCallbackGateTest {
         assertFalse(gate.onAvailable("A"))
         assertTrue(gate.isCurrent("A"))
     }
+    @Test fun socketFactoryIsNotCalledForSupersededNetwork() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        val createdOn = mutableListOf<String>()
+        gate.onAvailable("wifi-A")
+        assertEquals("socket-A", gate.createIfCurrent("wifi-A") {
+            createdOn += "wifi-A"
+            "socket-A"
+        })
+        gate.onAvailable("wifi-B")
+        assertNull(gate.createIfCurrent("wifi-A") {
+            createdOn += "stale-network"
+            "socket-stale"
+        })
+        assertEquals("socket-B", gate.createIfCurrent("wifi-B") {
+            createdOn += "wifi-B"
+            "socket-B"
+        })
+        assertEquals(listOf("wifi-A", "wifi-B"), createdOn)
+    }
+
+    @Test fun socketFactoryFailureDoesNotSelectProcessDefaultOrResetCurrentNetwork() {
+        val gate = IccoaNetworkCallbackGate<String>()
+        gate.onAvailable("wifi-A")
+        try {
+            gate.createIfCurrent("wifi-A") { throw java.io.IOException("factory refused") as Nothing }
+            fail("A factory failure must propagate; no default Socket fallback")
+        } catch (_: java.io.IOException) {
+            assertTrue(gate.isCurrent("wifi-A"))
+        }
+    }
+
 }
