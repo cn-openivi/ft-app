@@ -6,6 +6,7 @@ import androidx.compose.ui.res.stringResource
 import app.ft.R
 import app.ft.core.CarConnection
 import app.ft.core.CarProtocol
+import app.ft.carplay.CarPlaySdpDiagnostic
 
 @Composable
 internal fun CarProtocolSetting(): CarProtocol {
@@ -29,5 +30,7 @@ internal fun CarProtocolSetting(): CarProtocol {
                 ?.let { CarConnection.selectProtocol(context, it) }
         }
     )
+    // Read-only, explicitly user-triggered SDP survey. Does NOT select or enable CarPlay.
+    CarPlaySdpDiagnostic()
     return protocol
 }
