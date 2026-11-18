@@ -76,6 +76,7 @@ jobs:
           folder = Path('app/build/test-results/testUnsignedTransitUnitTest')
           names = (
               'CarProtocolFt200CompatibilityTest', 'CarPlayPhoneIdentityTest',
+              'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
