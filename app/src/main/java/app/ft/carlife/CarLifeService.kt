@@ -602,7 +602,7 @@ class CarLifeService : Service() {
                 startChosenWay()
             }
         }
-        return START_STICKY
+        return if (foregroundDenied) START_NOT_STICKY else START_STICKY
     }
 
     private fun logEnvironment() {
@@ -770,6 +770,8 @@ class CarLifeService : Service() {
         }
     }
 
+    @Volatile private var foregroundDenied = false
+
     private fun foreground(text: () -> String, projection: Boolean = false, microphone: Boolean = false): Boolean {
         note = text
         val keepProjection = projection || this.projection != null
@@ -785,11 +787,13 @@ class CarLifeService : Service() {
                 .isSuccess
         }
         if (accepted == null) {
+            foregroundDenied = true
             DiagLog.w(tag, "FOREGROUND_START_FAILED; open FT to retry with granted permissions")
             _state.update { it.copy(running = false, listening = false, step = "Open FT and allow foreground permissions") }
             stopSelf()
             return false
         }
+        foregroundDenied = false
         if (keepMicrophone && accepted and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE == 0)
             DiagLog.w(tag, "FOREGROUND_NO_MICROPHONE; audio capture unavailable until permission granted")
         awake()
