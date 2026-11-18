@@ -102,6 +102,7 @@ class AaSession(
         }
     )
     private var videoSession = 0
+    private val vehicleVideoFocus = AaVehicleVideoFocus()
     private val audioSessions = AaAudioChannelRegistry()
     private val audioMeasured = HashSet<Int>()
     private var mediaFrames = 0L
@@ -379,10 +380,23 @@ class AaSession(
         }
     }
 
+    /** Queue the OEM Home (NATIVE) or ICCOA PLAY (PROJECTED) focus edge.
+     * This does NOT prove phone acceptance or an IDR; RTP key-write is verified separately.
+     */
+    fun setVehicleVideoFocus(projected: Boolean): Boolean {
+        if (!lifecycle.running || _phase.value < Phase.DISCOVERED) return false
+        val mode = vehicleVideoFocus.transition(projected) ?: return true
+        sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION,
+            AaMessages.videoFocusIndication(mode, true))
+        DiagLog.i(tag, "AA_VEHICLE_VIDEO_FOCUS_QUEUED mode=${if (projected) "PROJECTED" else "NATIVE"}")
+        return true
+    }
+
     fun askForAFreshPicture() {
         if (_phase.value != Phase.STREAMING) return
         runCatching {
-            sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, true))
+            sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION,
+                AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), true))
         }.onFailure { DiagLog.w(tag, "could not ask Android Auto for a fresh picture: ${it.message}") }
     }
 
@@ -391,7 +405,7 @@ class AaSession(
             AaProtocol.AV_SETUP_REQUEST -> {
                 DiagLog.i(tag, "video setup config=${AaMessages.setupConfigIndex(body)}")
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_SETUP_RESPONSE, AaMessages.avSetupResponse())
-                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, false))
+                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), false))
             }
             AaProtocol.AV_START_INDICATION -> {
                 hasStreamed = true
@@ -403,7 +417,7 @@ class AaSession(
                 _phase.value = Phase.STREAMING
                 AaH264Tap.start(this)
                 DiagLog.i(tag, "video start session=$videoSession")
-                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, false))
+                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), false))
             }
             AaProtocol.AV_STOP_INDICATION -> {
                 DiagLog.i(tag, "video stop")
@@ -428,7 +442,7 @@ class AaSession(
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(videoSession))
             }
             AaProtocol.VIDEO_FOCUS_REQUEST -> {
-                val mode = AaMessages.videoFocusRequestMode(body)
+                val mode = vehicleVideoFocus.replyToPhoneRequest(AaMessages.videoFocusRequestMode(body))
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(mode, false))
             }
             else -> DiagLog.w(tag, "unhandled video ${AaProtocol.avName(id)}")
