@@ -457,7 +457,20 @@ internal class IccoaDirectVideo(
      * AA frames. FT's native UI is the sole encoder while parked.
      */
     fun parkForFtHome(): Boolean {
-        if (closed || failed || !active || !projection.directVideoActive) return false
+        if (closed || failed) return false
+        if (returningFromFtHome && !active) {
+            // A second return while waiting for AA's next original IDR must
+            // not tear down the connected phone or replace its FT compositor.
+            returningFromFtHome = false
+            parkedForFtHome = true
+            pending = false
+            resumeEpoch++
+            projection.showFtHomeKeepingAa()
+            val queued = source?.setVehicleVideoFocus(false) == true
+            DiagLog.i("ICCOA", "DIRECT_FT_HOME_REPARK waitingAA=false focusQueued=$queued")
+            return true
+        }
+        if (!active || !projection.directVideoActive) return false
         parkedForFtHome = true
         returningFromFtHome = false
         active = false
