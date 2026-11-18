@@ -24,9 +24,7 @@ import kotlinx.coroutines.flow.collect
 import java.io.InputStream
 import java.io.OutputStream
 
-private val OFF_MAIN = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ft-aa-main-sends").apply { isDaemon = true } }
-
-class AaSession(
+ class AaSession(
     context: Context,
     private val input: InputStream,
     private val output: OutputStream,
@@ -45,6 +43,13 @@ class AaSession(
     private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
     private val outLock = Any()
+    private val offMain = AaBoundedSendQueue(
+        onFailure = { e -> if (lifecycle.running) close("off-main write ${e.javaClass.simpleName}") },
+        onDropped = { count ->
+            if (count == 1 || count and (count - 1) == 0)
+                DiagLog.w(tag, "AA_OFF_MAIN_OPTIONAL_DROPPED count=$count")
+        }
+    )
     private var job: Job? = null
     private var carGpsJob: Job? = null
     private var carGearJob: Job? = null
@@ -88,6 +93,7 @@ class AaSession(
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
             DiagLog.i(tag, "AA actual audio arrival at shutdown: ${audioRouteAudit.summary()}")
             sensorSubscriptions.reset()
+            offMain.close()
             systemAudioFocus.close()
             microphoneInput.close()
             runCatching { mic.stop() }
@@ -167,7 +173,15 @@ class AaSession(
     ) {
         if (!lifecycle.running) return
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            OFF_MAIN.execute { send(channel, id, body, encrypted, control, afterWrite) }
+            val priority = AaSendPriority.critical(channel, id)
+            val queued = offMain.offer(priority) {
+                send(channel, id, body, encrypted, control, afterWrite)
+            }
+            if (!queued && priority && lifecycle.running) {
+                DiagLog.w(tag, "AA_OFF_MAIN_CRITICAL_OVERLOAD channel=$channel id=$id " +
+                    "queued=${offMain.queued()} fail_closed=true")
+                close("AA off-main critical send queue overflow")
+            }
             return
         }
         val payload = ByteArray(2 + body.size)
