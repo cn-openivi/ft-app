@@ -470,6 +470,18 @@ internal class IccoaDirectVideo(
             DiagLog.i("ICCOA", "DIRECT_FT_HOME_REPARK waitingAA=false focusQueued=$queued")
             return true
         }
+        if (!active && pending) {
+            // AA is still using the FT compositor before the initial Direct
+            // IDR. Park its UI without letting a queued activation win the race.
+            parkedForFtHome = true
+            returningFromFtHome = false
+            pending = false
+            resumeEpoch++
+            projection.showFtHomeKeepingAa()
+            val queued = source?.setVehicleVideoFocus(false) == true
+            DiagLog.i("ICCOA", "DIRECT_FT_HOME_WHILE_PENDING keptAA=true nativeFocusQueued=$queued")
+            return true
+        }
         if (!active || !projection.directVideoActive) return false
         parkedForFtHome = true
         returningFromFtHome = false
