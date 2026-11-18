@@ -28,7 +28,8 @@ class CarPlayAvcPassthroughTest {
 
     @Test fun firstFrameMustBeIdrAndNoVideoReencodingOrCopy() {
         val gate = CarPlayAvcPassthrough()
-        gate.configure(csd,30,peer)
+        assertEquals(CarPlayAvcPassthrough.Result.CONFIG_READY_WAITING_IDR,
+            gate.configure(csd,30,peer))
         var called = false
         assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR,
             gate.offer(pframe,1000) { _,_ -> called=true; true })
@@ -68,6 +69,15 @@ class CarPlayAvcPassthroughTest {
         gate.configure(csd,30,peer.copy(profiles = setOf(100)))
         assertEquals(CarPlayAvcPassthrough.Result.PROFILE_OR_SECURITY_MISMATCH,
             gate.offer(idr,100) { _,_ -> true })
+    }
+
+    @Test fun throwingSinkNeverClaimsDeliveryAndCannotCorruptIdrGate() {
+        val gate = CarPlayAvcPassthrough()
+        gate.configure(csd,30,peer)
+        assertEquals(CarPlayAvcPassthrough.Result.BACKPRESSURE_DROP,
+            gate.offer(idr,42) { _,_ -> error("downstream failed") })
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR,
+            gate.offer(pframe,43) { _,_ -> true })
     }
 
     @Test fun duplicatedTimestampsAndDisconnectResetAreSafe() {

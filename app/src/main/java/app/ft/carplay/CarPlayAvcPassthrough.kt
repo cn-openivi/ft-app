@@ -13,7 +13,7 @@ import app.ft.iccoa.IccoaDirectAvc
  */
 internal class CarPlayAvcPassthrough {
     enum class Result {
-        NO_CONFIG, SOURCE_SPS_INVALID, AIRPLAY_PEER_UNVERIFIED,
+        NO_CONFIG, CONFIG_READY_WAITING_IDR, SOURCE_SPS_INVALID, AIRPLAY_PEER_UNVERIFIED,
         FRAME_TOO_LARGE, TIMESTAMP_INVALID, NEED_IDR,
         PROFILE_OR_SECURITY_MISMATCH, BACKPRESSURE_DROP,
         ORIGINAL_COMPRESSED_AU_CONSUMED
@@ -40,7 +40,7 @@ internal class CarPlayAvcPassthrough {
         parsed = sps
         selectedFps = fps
         negotiated = receiver
-        return Result.NO_CONFIG // Config cached, a real first IDR is still required
+        return Result.CONFIG_READY_WAITING_IDR // A real first IDR is still required
     }
 
     /** No frame is copied or retained. One synchronous, caller-owned attempt. */
@@ -67,7 +67,9 @@ internal class CarPlayAvcPassthrough {
         if (CarPlayMediaPreflight.video(candidate, receiver) !=
             CarPlayMediaPreflight.VideoResult.DIRECT_H264_CANDIDATE_ONLY)
             return Result.PROFILE_OR_SECURITY_MISMATCH
-        if (!consumer(encodedAccessUnit, ptsUs))
+        // A slow, failed or throwing downstream does NOT become a phantom
+        // successful video frame, and is never scheduled for later replay.
+        if (!runCatching { consumer(encodedAccessUnit, ptsUs) }.getOrDefault(false))
             return Result.BACKPRESSURE_DROP
         hasIdr = true
         previousPts = ptsUs
