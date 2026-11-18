@@ -12,6 +12,7 @@ class AaBoundedSendQueueTest {
         val release = CountDownLatch(1)
         val sent = mutableListOf<String>()
         val dropped = AtomicInteger(0)
+        val gpsWritten = CountDownLatch(1)
         val q = AaBoundedSendQueue(2, onDropped = { dropped.set(it) })
         try {
             assertTrue(q.offer(true) { running.countDown(); release.await(3, TimeUnit.SECONDS) })
@@ -19,11 +20,14 @@ class AaBoundedSendQueueTest {
             assertTrue(q.offer(false) { synchronized(sent) { sent.add("optional1") } })
             assertTrue(q.offer(false) { synchronized(sent) { sent.add("optional2") } })
             assertEquals(2, q.queued())
-            assertTrue(q.offer(true) { synchronized(sent) { sent.add("gps") } })
+            assertTrue(q.offer(true) {
+                synchronized(sent) { sent.add("gps") }
+                gpsWritten.countDown()
+            })
             assertEquals(2, q.queued())
             assertEquals(1, dropped.get())
             release.countDown()
-            Thread.sleep(200)
+            assertTrue(gpsWritten.await(2, TimeUnit.SECONDS))
             assertTrue(synchronized(sent) { "gps" in sent })
         } finally {
             release.countDown()
