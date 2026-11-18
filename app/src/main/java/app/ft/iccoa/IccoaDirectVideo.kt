@@ -470,9 +470,9 @@ internal class IccoaDirectVideo(
             DiagLog.i("ICCOA", "DIRECT_FT_HOME_REPARK waitingAA=false focusQueued=$queued")
             return true
         }
-        if (!active && pending) {
+        if (!active && !projection.directVideoActive) {
             // AA is still using the FT compositor before the initial Direct
-            // IDR. Park its UI without letting a queued activation win the race.
+            // IDR (pending or waiting). Park without racing an activation.
             parkedForFtHome = true
             returningFromFtHome = false
             pending = false
