@@ -81,7 +81,7 @@ internal class Iap2ReliableLinkWindow(
         )
         outstanding = Outstanding(sendingSequence, wire, 0)
         sendingSequence = (sendingSequence + 1) and 0xff
-        return Outgoing(SendStatus.READY, wire)
+        return Outgoing(SendStatus.READY, wire.copyOf())
     }
 
     /**
@@ -105,17 +105,22 @@ internal class Iap2ReliableLinkWindow(
     fun observe(frame: Iap2LinkFrameCodec.Frame): Incoming {
         if (frame.sequence !in 0..255 ||
             frame.acknowledgement !in 0..255 ||
-            frame.control !in 0..255) return Incoming(Status.MALFORMED_HEADER)
-        val matched = outstanding?.sequence == frame.acknowledgement &&
-            frame.control and 0x40 != 0
+            frame.control !in 0..255 ||
+            frame.control and 0x80 != 0 ||
+            frame.control and 0x40 == 0) {
+            return Incoming(Status.MALFORMED_HEADER)
+        }
+        // A peer cannot acknowledge our last outbound data by inventing a
+        // foreign session ID. Empty LINK ACKs may use session 0.
+        val knownSession = confirmed.sessions.any { it.id == frame.session }
+        if (!knownSession && (frame.payload.isNotEmpty() || frame.session != 0)) {
+            return Incoming(Status.UNKNOWN_SESSION, cumulativeAck = receivedSequence)
+        }
+        val matched = outstanding?.sequence == frame.acknowledgement
         if (matched) outstanding = null
 
         if (frame.payload.isEmpty()) {
             return Incoming(Status.EMPTY_ACK, ackOfOutstanding = matched,
-                cumulativeAck = receivedSequence)
-        }
-        if (confirmed.sessions.none { it.id == frame.session }) {
-            return Incoming(Status.UNKNOWN_SESSION, ackOfOutstanding = matched,
                 cumulativeAck = receivedSequence)
         }
         val distance = (frame.sequence - receivedSequence) and 0xff
