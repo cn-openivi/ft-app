@@ -192,30 +192,20 @@ class WifiChannelLink(
     private fun watchCar(scope: CoroutineScope, s: Socket) {
         watch?.cancel()
         watch = scope.launch(Dispatchers.IO) {
-            var misses = 0
             while (isActive && running.get() && !s.isClosed) {
                 delay(REACH_EVERY_MS)
                 if (s.isClosed || synchronized(sockets) { sockets[CarLifeProtocol.CH_CMD] !== s }) break
-                val reachable = probeCar(s)
-                if (CarWatch.alive(reachable, sinceProgress())) {
-                    if (!reachable) DiagLog.i(tag, "the head unit did not answer a ping but is still taking data, keeping the connection")
-                    misses = 0
-                    continue
+                // Some OEM access points block ICMP even while TCP/RTSP and
+                // audio continue. A quiet paused session must not be torn down
+                // merely because InetAddress.isReachable is negative.
+                val idle = sinceProgress()
+                if (idle >= REACH_EVERY_MS) {
+                    val icmp = probeCar(s)
+                    if (!icmp) DiagLog.w(tag, "BAIDU_TCP_IDLE_PROBE_UNCONFIRMED " +
+                        "idleMs=$idle tcpOpen=${!s.isClosed} noForcedDisconnect=true")
                 }
-                misses++
-                DiagLog.w(tag, "the head unit did not answer a ping and took no data for ${sinceProgress() / 1000}s ($misses)")
-                if (misses < 2) {
-                    delay(REACH_RETRY_MS)
-                    val again = probeCar(s)
-                    if (CarWatch.alive(again, sinceProgress())) {
-                        misses = 0
-                        continue
-                    }
-                    misses++
-                }
-                DiagLog.w(tag, "the head unit is gone, closing the connection")
-                if (dropAll(expectedCommand = s)) closedHook?.invoke("head unit stopped answering")
-                break
+                // A real EOF or read/write error owns disconnect in readLoop
+                // and write(). ICMP alone is only diagnostic evidence.
             }
         }
     }
