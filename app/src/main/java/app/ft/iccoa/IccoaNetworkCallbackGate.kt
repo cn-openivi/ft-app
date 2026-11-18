@@ -24,6 +24,14 @@ internal class IccoaNetworkCallbackGate<T : Any> {
         return true
     }
 
+    /**
+     * Construct a transport socket while the selected Network still owns the attempt.
+     * Unlike binding a raw Socket(), the caller can use Network.socketFactory here.
+     */
+    @Synchronized fun <R : Any> createIfCurrent(network: T, create: () -> R): R? =
+        if (selected == network) create() else null
+
+
     @Synchronized fun onLost(network: T): Boolean {
         if (selected != network) return false
         selected = null
