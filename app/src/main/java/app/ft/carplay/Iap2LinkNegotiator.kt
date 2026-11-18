@@ -67,29 +67,24 @@ internal class Iap2LinkNegotiator {
         if (packet.control and 0x80 == 0 || packet.control and 0x40 != 0 ||
             packet.session != 0) return reject(Failure.NOT_SYN)
 
-        val p = packet.payload
-        if (p.size < 13 || (p.size - 10) % 3 != 0 ||
-            (p[0].toInt() and 255) != 1 || (p[1].toInt() and 255) == 0 ||
-            read16(p, 2) < 64) return reject(Failure.UNSUPPORTED_SYN)
-
-        // Only the real head unit chooses session IDs. No hardcoded control=2.
-        val observed = ArrayList<Session>()
-        val used = HashSet<Int>()
-        for (offset in 10 until p.size step 3) {
-            val id = p[offset].toInt() and 255
-            val type = p[offset + 1].toInt() and 255
-            val version = p[offset + 2].toInt() and 255
-            if (id == 0 || !used.add(id)) return reject(Failure.UNSUPPORTED_SYN)
-            observed.add(Session(id, type, version))
-        }
+        // v2+ has a different wire layout, including an extension count.
+        // Never assume that session entries begin at byte 10 for all versions.
+        val parsed = Iap2SynPayloadParser.parse(packet.payload)
+            ?: return reject(Failure.UNSUPPORTED_SYN)
+        val observed = parsed.sessions.map { Session(it.id, it.type, it.version) }
         if (observed.none { it.type == 0 }) return reject(Failure.MISSING_CONTROL_SESSION)
+        if (observed.count { it.type == 0 } != 1 ||
+            observed.map { it.type }.toSet().size != observed.size) {
+            return reject(Failure.UNSUPPORTED_SYN)
+        }
         sessions = observed
         phase = Phase.AWAITING_ACCESSORY_ACK
         return Step(
             phase,
             reply = Iap2LinkFrameCodec.encode(
                 control = 0xc0, sequence = senderInitialSequence,
-                acknowledgement = packet.sequence, session = 0, payload = p
+                acknowledgement = packet.sequence, session = 0,
+                payload = packet.payload
             )
         )
     }
@@ -109,6 +104,4 @@ internal class Iap2LinkNegotiator {
         return Step(phase, reason)
     }
 
-    private fun read16(bytes: ByteArray, off: Int): Int =
-        ((bytes[off].toInt() and 255) shl 8) or (bytes[off + 1].toInt() and 255)
 }
