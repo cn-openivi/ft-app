@@ -256,7 +256,7 @@ class IccoaProjection(
 
     /** Return to FT launcher without tearing down the phone's AA connection. */
     fun showFtHomeKeepingAa() = onMain {
-        if (!active || !directVideoActive) return@onMain
+        if (!active || !state.value.aaOverlay) return@onMain
         aaUiParked = true
         mutableState.update { it.copy(aaOverlay = false) }
         keys.tryEmit(3)
