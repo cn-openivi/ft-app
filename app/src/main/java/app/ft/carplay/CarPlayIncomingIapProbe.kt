@@ -35,11 +35,17 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         ACTUAL_TOYOTA_RFCOMM_CONNECTED, PEER_NOT_SELECTED_TOYOTA,
         IAP2_DETECT_SEEN, DETECT_ECHO_SENT, REAL_LINK_FRAME_SEEN,
         LINK_SYN_ACK_SENT, LINK_NEGOTIATED, LINK_REJECTED,
-        NO_IAP2_LINK_FRAME, IO_FAILURE,
-        CANCELLED
+        NO_IAP2_LINK_FRAME, LINK_ACK_NOT_OBSERVED,
+        CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
+        PROBE_TIMEOUT, IO_FAILURE, CANCELLED
     }
 
-    data class Event(val status: Observation, val validLinkFrames: Int = 0)
+    data class Event(
+        val status: Observation,
+        val validLinkFrames: Int = 0,
+        val messageId: Int? = null,
+        val parameterCount: Int = 0
+    )
 
     companion object {
         /**
@@ -50,6 +56,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
          */
         const val PUBLIC_IAP2_DEVICE_UUID_CANDIDATE = "00000000-deca-fade-deca-deafdecacafe"
         private const val ACCEPT_TIMEOUT_MS = 15_000
+        private const val PROBE_TIMEOUT_MS = 30_000L
         private val IAP1_DETECT_REPLY = byteArrayOf(
             0xff.toByte(), 0x55, 0x02, 0x00, 0xee.toByte(), 0x10
         )
@@ -61,6 +68,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
     @Volatile private var session: BluetoothSocket? = null
     @Volatile private var thread: Thread? = null
     @Volatile private var onEvent: ((Event) -> Unit)? = null
+    @Volatile private var generation = 0L
+    private var timeout: Runnable? = null
 
     /**
      * No pairing, scans, HFP manipulation or calls to privileged OEM services.
@@ -107,77 +116,122 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         onEvent = callback
         active.set(true)
         server = serverSocket
+        val run = ++generation
+        val deadline = Runnable {
+            if (active.get() && generation == run) {
+                emit(run, Observation.PROBE_TIMEOUT)
+                close() // Closing RFCOMM unblocks a blocked physical Bluetooth read.
+            }
+        }
+        timeout = deadline
+        main.postDelayed(deadline, PROBE_TIMEOUT_MS)
         val job = Thread({
-            emit(Observation.SDP_LISTENER_READY)
+            emit(run, Observation.SDP_LISTENER_READY)
             try {
                 val connection = serverSocket.accept(ACCEPT_TIMEOUT_MS)
-                session = connection
-                if (!active.get()) return@Thread
+                val admitted = synchronized(this@CarPlayIncomingIapProbe) {
+                    if (active.get() && generation == run) {
+                        session = connection
+                        true
+                    } else false
+                }
+                if (!admitted) {
+                    runCatching { connection.close() }
+                    return@Thread
+                }
                 if (!connection.remoteDevice.address.equals(target.address, ignoreCase = true) ||
                     connection.remoteDevice.bondState != BluetoothDevice.BOND_BONDED
                 ) {
-                    emit(Observation.PEER_NOT_SELECTED_TOYOTA)
+                    emit(run, Observation.PEER_NOT_SELECTED_TOYOTA)
                     return@Thread
                 }
-                emit(Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED)
+                emit(run, Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED)
                 // A genuine link frame (not a fake ACK) is the first positive protocol
                 // signal. A peer can still be incompatible or unauthenticated.
                 val observer = Iap2PhoneWireObserver()
                 val negotiator = Iap2LinkNegotiator()
+                val control = Iap2ControlStreamParser()
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
                 var bytesSeen = 0
                 var found = false
-                for (attempt in 0 until 16) {
-                    if (!active.get() || bytesSeen >= 65535) break
+                for (attempt in 0 until 64) {
+                    if (!active.get() || generation != run || bytesSeen >= 65535) break
                     // read() may block; close() cancels by closing the socket.
                     val count = connection.inputStream.read(received)
                     if (count <= 0) break
                     bytesSeen += count
                     val event = observer.accept(received.copyOf(count))
                     if (event.detectSeen) {
-                        emit(Observation.IAP2_DETECT_SEEN)
+                        emit(run, Observation.IAP2_DETECT_SEEN)
                         found = true
                         // A physical accessory's legacy iAP detect is echoed verbatim.
                         // This is a real response on the selected bonded RFCOMM socket,
                         // not an MFi response or a fabricated transport ACK.
                         connection.outputStream.write(IAP1_DETECT_REPLY)
                         connection.outputStream.flush()
-                        emit(Observation.DETECT_ECHO_SENT)
+                        emit(run, Observation.DETECT_ECHO_SENT)
                     }
                     if (event.linkFrameCount > 0) {
-                        emit(Observation.REAL_LINK_FRAME_SEEN, event.linkFrameCount)
+                        emit(run, Observation.REAL_LINK_FRAME_SEEN, event.linkFrameCount)
                         found = true
                         for (frame in event.frames) {
+                            if (negotiator.phase == Iap2LinkNegotiator.Phase.LINK_NEGOTIATED) {
+                                // The real accessory chose the CONTROL session ID in SYN.
+                                // Do not interpret a random LINK or data frame as 0x4301.
+                                val controlSessionId = negotiator.sessions
+                                    .firstOrNull { it.type == 0 }?.id
+                                if (frame.session == controlSessionId && frame.payload.isNotEmpty()) {
+                                    for (message in control.accept(frame.payload)) {
+                                        val start = Iap2ControlSessionCodec.isStructurallyValidStartSession(message)
+                                        emit(
+                                            run,
+                                            if (start) Observation.CARPLAY_START_SESSION_OBSERVED
+                                            else Observation.CONTROL_MESSAGE_OBSERVED,
+                                            messageId = message.id,
+                                            parameterCount = message.parameters.size
+                                        )
+                                    }
+                                }
+                                continue
+                            }
                             val negotiated = negotiator.onRealLinkFrame(frame)
                             if (negotiated.reply != null) {
                                 connection.outputStream.write(negotiated.reply)
                                 connection.outputStream.flush()
-                                emit(Observation.LINK_SYN_ACK_SENT)
+                                emit(run, Observation.LINK_SYN_ACK_SENT)
                             }
                             if (negotiated.phase == Iap2LinkNegotiator.Phase.LINK_NEGOTIATED) {
-                                emit(Observation.LINK_NEGOTIATED)
-                                return@Thread
+                                // LINK ACK is real wire evidence, but not MFi/Identify/Auth.
+                                // Continue reading the actual negotiated CONTROL session.
+                                emit(run, Observation.LINK_NEGOTIATED)
                             }
                             if (negotiated.phase == Iap2LinkNegotiator.Phase.REJECTED) {
-                                emit(Observation.LINK_REJECTED)
+                                emit(run, Observation.LINK_REJECTED)
                                 return@Thread
                             }
                         }
                     }
                 }
-                if (!found && active.get()) emit(Observation.NO_IAP2_LINK_FRAME)
+                if (active.get() && generation == run) {
+                    if (!found) emit(run, Observation.NO_IAP2_LINK_FRAME)
+                    else if (negotiator.phase == Iap2LinkNegotiator.Phase.AWAITING_ACCESSORY_ACK)
+                        emit(run, Observation.LINK_ACK_NOT_OBSERVED)
+                }
             } catch (_: SocketTimeoutException) {
-                if (active.get()) emit(Observation.ACCEPT_TIMEOUT)
+                if (active.get() && generation == run) emit(run, Observation.ACCEPT_TIMEOUT)
             } catch (_: IOException) {
-                if (active.get()) emit(Observation.IO_FAILURE)
+                if (active.get() && generation == run) emit(run, Observation.IO_FAILURE)
             } catch (_: SecurityException) {
-                if (active.get()) emit(Observation.PERMISSION_MISSING)
+                if (active.get() && generation == run) emit(run, Observation.PERMISSION_MISSING)
             } catch (_: RuntimeException) {
-                if (active.get()) emit(Observation.IO_FAILURE)
+                if (active.get() && generation == run) emit(run, Observation.IO_FAILURE)
             } finally {
-                close()
+                synchronized(this@CarPlayIncomingIapProbe) {
+                    // An old listener must never close a newer owner-started probe.
+                    if (generation == run) close()
+                }
             }
         }, "ft200-phone-iap2-observation")
         job.isDaemon = true
@@ -186,17 +240,23 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         return Observation.SDP_LISTENER_READY
     }
 
-    private fun emit(status: Observation, frames: Int = 0) {
-        if (!active.get()) return
+    private fun emit(
+        run: Long, status: Observation, frames: Int = 0,
+        messageId: Int? = null, parameterCount: Int = 0
+    ) {
+        if (!active.get() || generation != run) return
         val callback = onEvent ?: return
-        // Capture the result before finally/close() cancels listening. Otherwise
-        // all successful observations disappear from the UI as the socket closes.
-        main.post { callback(Event(status, frames)) }
+        // Capture the result before close() cancels listening. Values in CONTROL
+        // TLVs (including potential credentials) NEVER leave the parser here.
+        main.post { callback(Event(status, frames, messageId, parameterCount)) }
     }
 
     @Synchronized
     override fun close() {
+        generation++
         active.set(false)
+        timeout?.let { main.removeCallbacks(it) }
+        timeout = null
         val currentSession = session
         session = null
         val currentServer = server
