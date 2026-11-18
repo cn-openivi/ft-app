@@ -432,11 +432,13 @@ internal class IccoaMediaTransport(
 /** Balanced JSON objects can span TCP records; quoted braces do not delimit an object. */
 internal class IccoaInputJson(private val emit: (JSONObject) -> Unit) {
     private val buffer = StringBuilder()
+    private val utf8 = IccoaUtf8Frames()
     fun finish() {
+        utf8.finish()
         if (buffer.isNotBlank()) throw java.io.EOFException("Incomplete UIBC JSON")
     }
     fun accept(bytes: ByteArray) {
-        buffer.append(bytes.toString(Charsets.UTF_8))
+        buffer.append(utf8.accept(bytes))
         require(buffer.length <= 65536) { "UIBC object too large" }
         var depth = 0; var quoted = false; var escaped = false; var start = -1; var consumed = 0
         for (i in buffer.indices) {
