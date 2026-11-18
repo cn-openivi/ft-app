@@ -35,7 +35,7 @@ object DiagReport {
         ZipOutputStream(out.outputStream().buffered()).use { zip ->
             fun put(entry: String, text: String) {
                 zip.putNextEntry(ZipEntry(entry))
-                zip.write(text.toByteArray())
+                zip.write(DiagReportPrivacy.scrub(text).toByteArray())
                 zip.closeEntry()
             }
             put("report.txt", snapshot(c))
@@ -64,13 +64,13 @@ object DiagReport {
             DiagLog.files().forEach { f ->
                 zip.write("===== ${f.name} (${f.length()} bytes) =====\n".toByteArray())
                 runCatching {
-                    if (recordCoordinates) {
-                        f.inputStream().use { it.copyTo(zip) }
-                    } else {
-                        f.bufferedReader().useLines { lines ->
-                            lines.forEach { line ->
-                                zip.write((VehicleCoordinateLog.scrubStoredLine(line) + "\n").toByteArray())
-                            }
+                    f.bufferedReader().useLines { lines ->
+                        lines.forEach { line ->
+                            // The owner can opt in to coordinates, not to an exported
+                            // Wi-Fi password, full MAC or personal song metadata.
+                            val withCoordinatePolicy = if (recordCoordinates) line
+                                else VehicleCoordinateLog.scrubStoredLine(line)
+                            zip.write((DiagReportPrivacy.scrub(withCoordinatePolicy) + "\n").toByteArray())
                         }
                     }
                 }.onFailure { zip.write("could not read: ${it.message}\n".toByteArray()) }
