@@ -29,8 +29,8 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
         SECURITY_ERROR, CANCELLED
     }
     private val manager = context.getSystemService(ConnectivityManager::class.java)
-    private var callback: ConnectivityManager.NetworkCallback? = null
-    private var generation: Long = 0L
+    @Volatile private var callback: ConnectivityManager.NetworkCallback? = null
+    @Volatile private var generation: Long = 0L
 
     @SuppressLint("MissingPermission")
     @Synchronized

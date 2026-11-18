@@ -17,6 +17,10 @@ internal object CarPlayAudioFocusPolicy {
     ): Result {
         if (carPlayPhase != CarPlayHandshakeLedger.Phase.ACTIVE)
             return Result.CARPLAY_NOT_ACTIVE
+        // Only the selected OEM transport may own the sound. A stale CP
+        // handshake must never steal focus from FT's ICCOA/Baidu media path.
+        if (situation.transport != CarPlayAudioRolePolicy.Transport.CARPLAY)
+            return Result.NO_PROJECTION_SOUND
         if (situation.carrierCallActive)
             return Result.SYSTEM_HFP_CALL
         val choice = CarPlayAudioRolePolicy.evaluate(situation)

@@ -35,6 +35,15 @@ class CarPlayAudioFocusPolicyTest {
             policy.evaluate(CarPlayHandshakeLedger.Phase.ACTIVE,situation(nav = true)))
     }
 
+    @Test fun staleCarPlayHandshakeNeverStealsBaiduOrIccoaFocus() {
+        for (other in listOf(CarPlayAudioRolePolicy.Transport.BAIDU,
+                CarPlayAudioRolePolicy.Transport.ICCOA)) {
+            assertEquals(CarPlayAudioFocusPolicy.Result.NO_PROJECTION_SOUND,
+                policy.evaluate(CarPlayHandshakeLedger.Phase.ACTIVE,
+                    situation(transport = other)))
+        }
+    }
+
     @Test fun noCarPlayTransportNoProjectionFocus() {
         assertEquals(CarPlayAudioFocusPolicy.Result.NO_PROJECTION_SOUND,
             policy.evaluate(CarPlayHandshakeLedger.Phase.ACTIVE,
