@@ -402,8 +402,8 @@ class IccoaService : Service() {
             _state.update { it.copy(effectiveVideoMode = 0,
                 videoFallbackReason = "FT home selected; AA link retained") }
         } else {
-            // Existing non-direct mode keeps its original Home behavior.
-            projection?.goHome()
+            // A composited/pending Direct session also keeps its AA link.
+            projection?.showFtHomeKeepingAa()
         }
     }
 
