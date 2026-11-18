@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -185,7 +186,26 @@ class AaHeadUnitService : Service() {
         }
         acceptJob = scope.launch {
             try {
-                val ss = NetUtil.listen(port) { isActive } ?: return@launch
+                // Bluetooth wireless mode must bind the SAME IPv4 actually
+                // assigned to the LOHS, never every interface or a guessed
+                // 192.168.x.x. Developer/self mode keeps its legacy listener.
+                var localIp: java.net.InetAddress? = null
+                if (bluetooth) {
+                    var ready: HotspotInfo? = null
+                    repeat(72) {
+                        if (ready == null && isActive) {
+                            ready = bt?.info?.value
+                            if (ready == null) delay(250L)
+                        }
+                    }
+                    val resolved = ready ?: run {
+                        DiagLog.w(tag, "AA_WIRELESS_LISTENER_BLOCKED hotspot IPv4 not ready")
+                        _state.update { it.copy(listening = false, bluetooth = "hotspot-ip-unavailable") }
+                        return@launch
+                    }
+                    localIp = java.net.InetAddress.getByName(resolved.ip)
+                }
+                val ss = NetUtil.listen(port, bindAddress = localIp) { isActive } ?: return@launch
                 if (!connections.withRun(run) {
                     server = ss
                     _state.update { it.copy(listening = true, port = port) }
@@ -196,6 +216,12 @@ class AaHeadUnitService : Service() {
                 DiagLog.i(tag, "head unit waiting for Android Auto on tcp:$port")
                 while (isActive) {
                     val s = ss.accept()
+                    if (bluetooth && (bt?.info?.value?.ip != localIp?.hostAddress ||
+                        s.localAddress != localIp)) {
+                        DiagLog.w(tag, "AA_WIRELESS_STALE_HOTSPOT_IP; rejecting old listener peer")
+                        s.close()
+                        continue
+                    }
                     s.tcpNoDelay = true
                     s.keepAlive = true
                     DiagLog.i(tag, "Android Auto connected from ${s.inetAddress.hostAddress}")
