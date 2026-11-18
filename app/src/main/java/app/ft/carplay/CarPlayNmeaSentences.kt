@@ -27,7 +27,11 @@ internal object CarPlayNmeaSentences {
         val altitudeMetres: Double? = null,
         val satellitesUsed: Int? = null,
         val hdop: Double? = null
-    )
+    ) {
+        // Never expose precise coordinates through accidental data-class logs.
+        override fun toString(): String =
+            "CarPlayNmeaFix(source=$source, location redacted)"
+    }
 
     fun encodeIfApproved(
         gate: CarPlayMediaPreflight.GpsResult,
