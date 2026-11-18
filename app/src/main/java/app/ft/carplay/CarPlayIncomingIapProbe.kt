@@ -37,6 +37,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         LINK_SYN_ACK_SENT, LINK_NEGOTIATED, LINK_REJECTED,
         NO_IAP2_LINK_FRAME, LINK_ACK_NOT_OBSERVED,
         CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
+        IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         PROBE_TIMEOUT, IO_FAILURE, CANCELLED
     }
 
@@ -80,6 +81,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
     fun listen(
         selectedToyotaAddress: String,
         serviceUuid: String = PUBLIC_IAP2_DEVICE_UUID_CANDIDATE,
+        requestIdentification: Boolean = false,
         callback: (Event) -> Unit
     ): Observation {
         if (active.get()) return Observation.ALREADY_LISTENING
@@ -151,6 +153,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 val observer = Iap2PhoneWireObserver()
                 val negotiator = Iap2LinkNegotiator()
                 val control = Iap2ControlStreamParser()
+                val identify = Iap2PhoneIdentificationProbe()
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
@@ -206,6 +209,22 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                 // LINK ACK is real wire evidence, but not MFi/Identify/Auth.
                                 // Continue reading the actual negotiated CONTROL session.
                                 emit(run, Observation.LINK_NEGOTIATED)
+                                if (requestIdentification && active.get() && generation == run) {
+                                    val proposal = identify.prepare(negotiator.confirmedLink(), true)
+                                    when (proposal.result) {
+                                        Iap2PhoneIdentificationProbe.Result.REQUEST_PREPARED -> {
+                                            // Only after real LINK ACK and explicit diagnostic opt-in.
+                                            // This does NOT claim IdentityAccepted, MFi, or CarPlay.
+                                            connection.outputStream.write(proposal.frame!!)
+                                            connection.outputStream.flush()
+                                            emit(run, Observation.IDENTIFICATION_REQUEST_SENT,
+                                                messageId = 0x1D00)
+                                        }
+                                        Iap2PhoneIdentificationProbe.Result.UNSUPPORTED_CONTROL_VERSION ->
+                                            emit(run, Observation.IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION)
+                                        else -> Unit
+                                    }
+                                }
                             }
                             if (negotiated.phase == Iap2LinkNegotiator.Phase.REJECTED) {
                                 emit(run, Observation.LINK_REJECTED)
@@ -248,7 +267,14 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         val callback = onEvent ?: return
         // Capture the result before close() cancels listening. Values in CONTROL
         // TLVs (including potential credentials) NEVER leave the parser here.
-        main.post { callback(Event(status, frames, messageId, parameterCount)) }
+        main.post {
+            // A queued callback from an OLD listen() must never update the UI
+            // after a replacement probe has started. Permit terminal events
+            // of a just-closed session when no replacement is active.
+            if (generation == run || (generation == run + 1 && !active.get())) {
+                callback(Event(status, frames, messageId, parameterCount))
+            }
+        }
     }
 
     @Synchronized
