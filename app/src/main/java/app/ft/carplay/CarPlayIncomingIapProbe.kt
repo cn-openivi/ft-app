@@ -41,6 +41,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
+        LINK_DUPLICATE_IGNORED, LINK_GAP_IGNORED,
+        LINK_UNEXPECTED_SESSION, IDENTIFICATION_REQUEST_ACKED,
         PROBE_TIMEOUT, IO_FAILURE, CANCELLED
     }
 
@@ -157,6 +159,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 val negotiator = Iap2LinkNegotiator()
                 val control = Iap2ControlStreamParser()
                 val identify = Iap2PhoneIdentificationProbe()
+                var reliable: Iap2ReliableLinkWindow? = null
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
@@ -186,10 +189,25 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                             if (negotiator.phase == Iap2LinkNegotiator.Phase.LINK_NEGOTIATED) {
                                 // The real accessory chose the CONTROL session ID in SYN.
                                 // Do not interpret a random LINK or data frame as 0x4301.
+                                val accepted = reliable?.observe(frame)
+                                if (accepted?.ackOfOutstanding == true)
+                                    emit(run, Observation.IDENTIFICATION_REQUEST_ACKED)
+                                when (accepted?.status) {
+                                    Iap2ReliableLinkWindow.Status.DUPLICATE ->
+                                        emit(run, Observation.LINK_DUPLICATE_IGNORED)
+                                    Iap2ReliableLinkWindow.Status.OUT_OF_ORDER ->
+                                        emit(run, Observation.LINK_GAP_IGNORED)
+                                    Iap2ReliableLinkWindow.Status.UNKNOWN_SESSION ->
+                                        emit(run, Observation.LINK_UNEXPECTED_SESSION)
+                                    else -> Unit
+                                }
                                 val controlSessionId = negotiator.sessions
                                     .firstOrNull { it.type == 0 }?.id
-                                if (frame.session == controlSessionId && frame.payload.isNotEmpty()) {
-                                    for (message in control.accept(frame.payload)) {
+                                if (accepted?.status == Iap2ReliableLinkWindow.Status.ACCEPTED_IN_ORDER &&
+                                    accepted.sessionId == controlSessionId &&
+                                    accepted.payload != null
+                                ) {
+                                    for (message in control.accept(accepted.payload)) {
                                         // 0x1D01 carries potentially sensitive Toyota
                                         // identification values; observe only IDs/count.
                                         // Never auto-send 0x1D02 or promote to MFi PASS.
@@ -238,16 +256,39 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                 // LINK ACK is real wire evidence, but not MFi/Identify/Auth.
                                 // Continue reading the actual negotiated CONTROL session.
                                 emit(run, Observation.LINK_NEGOTIATED)
+                                // Source-only reliability tracker: consume only
+                                // fresh, in-order payload; reject duplicate/gap
+                                // before reaching the sensitive TLV decoder.
+                                reliable = negotiator.confirmedLink()
+                                    ?.let { Iap2ReliableLinkWindow(it) }
                                 if (requestIdentification && active.get() && generation == run) {
                                     val proposal = identify.prepare(negotiator.confirmedLink(), true)
                                     when (proposal.result) {
                                         Iap2PhoneIdentificationProbe.Result.REQUEST_PREPARED -> {
                                             // Only after real LINK ACK and explicit diagnostic opt-in.
                                             // This does NOT claim IdentityAccepted, MFi, or CarPlay.
-                                            connection.outputStream.write(proposal.frame!!)
-                                            connection.outputStream.flush()
-                                            emit(run, Observation.IDENTIFICATION_REQUEST_SENT,
-                                                messageId = 0x1D00)
+                                            val controlId = proposal.controlSessionId ?: -1
+                                            val message = Iap2ControlSessionCodec.encode(
+                                                Iap2ControlSessionCodec.Message(0x1D00, emptyList())
+                                            )
+                                            val outgoing = reliable?.prepareData(controlId, message)
+                                            // Both independently constructed
+                                            // frames must be byte-for-byte the
+                                            // same (true session/seq/ACK). Never
+                                            // write a mismatched frame to Toyota.
+                                            if (outgoing?.status ==
+                                                Iap2ReliableLinkWindow.SendStatus.READY &&
+                                                outgoing.wire != null &&
+                                                outgoing.wire.contentEquals(proposal.frame)
+                                            ) {
+                                                connection.outputStream.write(outgoing.wire)
+                                                connection.outputStream.flush()
+                                                emit(run, Observation.IDENTIFICATION_REQUEST_SENT,
+                                                    messageId = 0x1D00)
+                                            } else {
+                                                emit(run, Observation.IO_FAILURE)
+                                                return@Thread
+                                            }
                                         }
                                         Iap2PhoneIdentificationProbe.Result.UNSUPPORTED_CONTROL_VERSION ->
                                             emit(run, Observation.IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION)
