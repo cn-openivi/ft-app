@@ -137,7 +137,7 @@ internal class IccoaDirectVideo(
                     DiagLog.i("ICCOA", "DIRECT_VIDEO_FOCUS_RETRY_NATIVE queued=$nativeQueued epoch=$generation")
                     main.postDelayed({
                         if (!closed && active && !receiverPaused && awaitingResumeRtpIdr &&
-                            !resumeIdrReceived && this.source === aa && resumeEpoch == generation &&
+                            !resumeIdrReceived && this@IccoaDirectVideo.source === aa && resumeEpoch == generation &&
                             AaHeadUnitService.current === aa) {
                             val projectedQueued = aa.setVehicleVideoFocus(true)
                             DiagLog.i("ICCOA", "DIRECT_VIDEO_FOCUS_RETRY_PROJECTED " +
