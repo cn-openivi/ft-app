@@ -33,7 +33,9 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         PERMISSION_MISSING, ADAPTER_MISSING, ADAPTER_OFF, INVALID_ADDRESS,
         NOT_BONDED, ALREADY_LISTENING, SDP_LISTENER_READY, ACCEPT_TIMEOUT,
         ACTUAL_TOYOTA_RFCOMM_CONNECTED, PEER_NOT_SELECTED_TOYOTA,
-        IAP2_DETECT_SEEN, REAL_LINK_FRAME_SEEN, NO_IAP2_LINK_FRAME, IO_FAILURE,
+        IAP2_DETECT_SEEN, DETECT_ECHO_SENT, REAL_LINK_FRAME_SEEN,
+        LINK_SYN_ACK_SENT, LINK_NEGOTIATED, LINK_REJECTED,
+        NO_IAP2_LINK_FRAME, IO_FAILURE,
         CANCELLED
     }
 
@@ -48,6 +50,9 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
          */
         const val PUBLIC_IAP2_DEVICE_UUID_CANDIDATE = "00000000-deca-fade-deca-deafdecacafe"
         private const val ACCEPT_TIMEOUT_MS = 15_000
+        private val IAP1_DETECT_REPLY = byteArrayOf(
+            0xff.toByte(), 0x55, 0x02, 0x00, 0xee.toByte(), 0x10
+        )
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -118,6 +123,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 // A genuine link frame (not a fake ACK) is the first positive protocol
                 // signal. A peer can still be incompatible or unauthenticated.
                 val observer = Iap2PhoneWireObserver()
+                val negotiator = Iap2LinkNegotiator()
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
@@ -133,11 +139,32 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                     if (event.detectSeen) {
                         emit(Observation.IAP2_DETECT_SEEN)
                         found = true
+                        // A physical accessory's legacy iAP detect is echoed verbatim.
+                        // This is a real response on the selected bonded RFCOMM socket,
+                        // not an MFi response or a fabricated transport ACK.
+                        connection.outputStream.write(IAP1_DETECT_REPLY)
+                        connection.outputStream.flush()
+                        emit(Observation.DETECT_ECHO_SENT)
                     }
                     if (event.linkFrameCount > 0) {
                         emit(Observation.REAL_LINK_FRAME_SEEN, event.linkFrameCount)
                         found = true
-                        break
+                        for (frame in event.frames) {
+                            val negotiated = negotiator.onRealLinkFrame(frame)
+                            if (negotiated.reply != null) {
+                                connection.outputStream.write(negotiated.reply)
+                                connection.outputStream.flush()
+                                emit(Observation.LINK_SYN_ACK_SENT)
+                            }
+                            if (negotiated.phase == Iap2LinkNegotiator.Phase.LINK_NEGOTIATED) {
+                                emit(Observation.LINK_NEGOTIATED)
+                                return@Thread
+                            }
+                            if (negotiated.phase == Iap2LinkNegotiator.Phase.REJECTED) {
+                                emit(Observation.LINK_REJECTED)
+                                return@Thread
+                            }
+                        }
                     }
                 }
                 if (!found && active.get()) emit(Observation.NO_IAP2_LINK_FRAME)
