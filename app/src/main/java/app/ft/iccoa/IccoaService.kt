@@ -574,15 +574,21 @@ class IccoaService : Service() {
                 main.removeCallbacks(recoveryScan)
                 _state.update { it.copy(pinRequired = true, status = "Enter the six-digit code shown by the car") }
             } },
-            onReady = { network, peer ->
+            onReady = { network, local, peer ->
                 // AuthConfirm must only advertise our address after these listeners are bound.
                 synchronized(lifecycle) {
                     check(generation == token) { "Connection cancelled" }
-                    val transport = IccoaMediaTransport(network, peer,
+                    val transport = IccoaMediaTransport(network, local, peer,
+                        networkCurrent = { generation == token && connection.ownsNetwork(network) },
                         decryptInput = { session?.decryptInput(it) ?: error("Session ended") },
-                        onPlay = { config -> current { play(config) } },
-                        onPause = { current { pauseProjection("RTSP_PAUSE") } },
+                        onPlay = { config -> current {
+                            if (connection.ownsNetwork(network)) play(config)
+                        } },
+                        onPause = { current {
+                            if (connection.ownsNetwork(network)) pauseProjection("RTSP_PAUSE")
+                        } },
                         onKeyframe = { current {
+                            if (!connection.ownsNetwork(network)) return@current
                             // A temporarily unavailable AA VIDEO_FOCUS request does NOT
                             // authorize FT compositor keyframes while Direct owns RTP.
                             val direct = directVideo
@@ -591,8 +597,12 @@ class IccoaService : Service() {
                                     DiagLog.i("ICCOA", "DIRECT_VIDEO_IDR_DEFERRED no_compositor_request=true")
                             } else projection?.requestKeyFrame()
                         } },
-                        onTouch = { touch -> current { projection?.touch(touch) } },
-                        onKey = { code -> current { projection?.key(code) } },
+                        onTouch = { touch -> current {
+                            if (connection.ownsNetwork(network)) projection?.touch(touch)
+                        } },
+                        onKey = { code -> current {
+                            if (connection.ownsNetwork(network)) projection?.key(code)
+                        } },
                         onClosed = { reason -> current {
                             connectionFailed(reason, retryableTransportFailure = true)
                         } },
