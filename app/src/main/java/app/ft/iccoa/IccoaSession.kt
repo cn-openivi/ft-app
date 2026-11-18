@@ -543,8 +543,21 @@ class IccoaSession(
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
+                val replaced = attempt.network != null && attempt.network != network
                 DiagLog.i("ICCOA", "WiFi network available handle=$network " +
-                    "replacingCurrent=${attempt.network != null && attempt.network != network}")
+                    "replacingCurrent=$replaced")
+                // Once authenticated, all RTSP/UIBC/RTP sockets belong to A.
+                // Never reuse the old projection with Network B. Tear down the
+                // entire session and re-enter through the existing bounded
+                // reconnect path; verified Quick Auth trust is not erased.
+                if (IccoaNetworkReplacementPolicy.mustRestartSession(
+                        replaced, attempt.cipher != null)) {
+                    DiagLog.w("ICCOA", "ICCOA_NETWORK_REPLACED_AFTER_AUTH " +
+                        "restart_full_media_session=true cached_trust_kept=true")
+                    fail(attempt, Lang.str(R.string.iccoa_err_wifi_lost),
+                        transportFailure = true)
+                    return@post
+                }
                 // A queued auth worker for the previous Network must not monopolize
                 // authStarted when Android replaces the Wi-Fi handle before TCP bind.
                 if (attempt.network != network) {
