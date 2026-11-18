@@ -325,7 +325,10 @@ class CarLifeSession(
         when (channel) {
             CarLifeProtocol.CH_CMD -> {
                 val c = CarLifeFraming.parseCmd(head, body)
-                handleCmd(c.copy(payload = crypto.decryptIn(c.payload)))
+                // The AES receipt is the ONLY OEM plaintext command allowed
+                // after incoming AES is armed and before ENCRYPT_READY.
+                val handshakeAck = c.serviceId == CarLifeProtocol.CMD_HU_AES_REC_RESPONSE
+                handleCmd(c.copy(payload = crypto.decryptIn(c.payload, allowPlainHandshake = handshakeAck)))
             }
             CarLifeProtocol.CH_CTRL -> {
                 val c = CarLifeFraming.parseCmd(head, body)
@@ -387,7 +390,9 @@ class CarLifeSession(
                 val pub = ProtoReader(c.payload).string(1) ?: ""
                 val request = crypto.aesKeyRequest(pub)
                 if (request == null) {
-                    DiagLog.e(tag, "head unit RSA key unusable (${pub.length} chars), staying in plaintext")
+                    // HU explicitly demanded encryption; silently continuing
+                    // in plaintext would misreport the negotiated security mode.
+                    throw IllegalStateException("Baidu required AES but OEM RSA key was invalid")
                 } else {
                     crypto.armIncoming()
                     if (cmd(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST, ProtoWriter().string(1, request).toByteArray())) {
