@@ -679,12 +679,15 @@ class IccoaSession(
             if (active(attempt)) DiagLog.i("ICCOA", "AUTH $value")
         }
         try {
-            val socket = Socket()
+            // Android 17/Samsung may reject Network.bindSocket(Socket()) before connect.
+            // Ask the selected Network itself to create a correctly bound socket.
+            // Never fall back to the process default (mobile/VPN) network.
+            var networkSocket: Socket? = null
+            if (!attempt.networkGate.bindIfCurrent(network) {
+                    networkSocket = network.socketFactory.createSocket()
+                }) return // Stale Wi-Fi handle: do not create an unpinned socket.
+            val socket = networkSocket ?: return
             if (!track(attempt, socket)) return
-            if (!attempt.networkGate.bindIfCurrent(network) { network.bindSocket(socket) }) {
-                socket.close()
-                return // Superseded before TCP; the current Network owns authentication.
-            }
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
             // A replacement Network can arrive while TCP connect is blocked.
