@@ -79,7 +79,11 @@ class AaHeadUnitService : Service() {
                 return
             }
             runCatching { context.startForegroundService(Intent(context, AaHeadUnitService::class.java).setAction(ACTION_START).putExtra(EXTRA_BLUETOOTH, bluetooth)) }
-                .onFailure { DiagLog.w("AA", "Android would not let FT start Android Auto right now (${it.javaClass.simpleName})") }
+                .onFailure {
+                    lastDisconnect = "Android refused AA foreground launch: ${it.javaClass.simpleName}; open FT to retry"
+                    _state.update { previous -> previous.copy(listening = false, bluetooth = "foreground-launch-denied") }
+                    DiagLog.w("AA", "Android would not let FT start Android Auto right now (${it.javaClass.simpleName}); open FT to retry")
+                }
         }
 
         fun feedCarMicrophone(pcm: ByteArray) {
