@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -118,14 +119,26 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 // signal. A peer can still be incompatible or unauthenticated.
                 val parser = Iap2LinkStreamParser()
                 val received = ByteArray(4096)
-                // read() may block: close() cancels by closing the physical socket.
-                val count = connection.inputStream.read(received)
-                if (count <= 0) emit(Observation.NO_IAP2_LINK_FRAME)
-                else {
+                // A first read might contain only a fragment; do not reject it
+                // prematurely. Limit total data and receive operations.
+                var bytesSeen = 0
+                var found = false
+                for (attempt in 0 until 16) {
+                    if (!active.get() || bytesSeen >= 65535) break
+                    // read() may block; close() cancels by closing the socket.
+                    val count = connection.inputStream.read(received)
+                    if (count <= 0) break
+                    bytesSeen += count
                     val frames = parser.accept(received.copyOf(count))
-                    if (frames.isEmpty()) emit(Observation.NO_IAP2_LINK_FRAME)
-                    else emit(Observation.REAL_LINK_FRAME_SEEN, frames.size)
+                    if (frames.isNotEmpty()) {
+                        emit(Observation.REAL_LINK_FRAME_SEEN, frames.size)
+                        found = true
+                        break
+                    }
                 }
+                if (!found && active.get()) emit(Observation.NO_IAP2_LINK_FRAME)
+            } catch (_: SocketTimeoutException) {
+                if (active.get()) emit(Observation.ACCEPT_TIMEOUT)
             } catch (_: IOException) {
                 if (active.get()) emit(Observation.IO_FAILURE)
             } catch (_: SecurityException) {
@@ -145,7 +158,9 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
     private fun emit(status: Observation, frames: Int = 0) {
         if (!active.get()) return
         val callback = onEvent ?: return
-        main.post { if (active.get()) callback(Event(status, frames)) }
+        // Capture the result before finally/close() cancels listening. Otherwise
+        // all successful observations disappear from the UI as the socket closes.
+        main.post { callback(Event(status, frames)) }
     }
 
     @Synchronized
