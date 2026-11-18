@@ -39,7 +39,17 @@ internal class Iap2ControlStreamParser {
                 offset++
                 continue
             }
-            if (data.size - offset < declared) break
+            if (data.size - offset < declared) {
+                // A corrupt prefix can mimic a valid (but huge) length, such as
+                // 40 40 40 00, and hide a complete following CONTROL frame.
+                // Recover only if a LATER, fully framed and TLV-validated
+                // message exists in the bytes we actually received. Never
+                // manufacture an ACK or accept a partial candidate as complete.
+                val recovered = findCompleteLaterMessage(data, offset + 1)
+                if (recovered == -1) break
+                offset = recovered
+                continue
+            }
             val decoded = Iap2ControlSessionCodec.decode(
                 data.copyOfRange(offset, offset + declared)
             )
@@ -54,5 +64,21 @@ internal class Iap2ControlStreamParser {
         }
         pending = data.copyOfRange(offset, data.size)
         return messages
+    }
+
+    /** Resync only to an independently complete and valid CONTROL envelope. */
+    private fun findCompleteLaterMessage(data: ByteArray, after: Int): Int {
+        val max = data.size - Iap2ControlSessionCodec.HEADER_BYTES
+        for (pos in after..max) {
+            if (data[pos].toInt() != 0x40 || data[pos + 1].toInt() != 0x40)
+                continue
+            val n = ((data[pos + 2].toInt() and 0xff) shl 8) or
+                (data[pos + 3].toInt() and 0xff)
+            if (n < Iap2ControlSessionCodec.HEADER_BYTES || n > data.size - pos)
+                continue
+            if (Iap2ControlSessionCodec.decode(data.copyOfRange(pos, pos + n)) != null)
+                return pos
+        }
+        return -1
     }
 }
