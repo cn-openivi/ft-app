@@ -42,16 +42,23 @@ internal object Iap2AccessoryCryptoEvidence {
             return CertificateReview(CertificateStatus.NO_APPROVED_ANCHOR)
         if (wire.isEmpty() || wire.size > 65535)
             return CertificateReview(CertificateStatus.EMPTY_OR_OVERSIZED)
-        return try {
-            val factory = CertificateFactory.getInstance("X.509")
-            // The certificate wire may be PKCS#7 SignedData or a DER cert.
-            // The platform factory handles the DER/PKCS#7 envelope; never
-            // silently treat an arbitrary text blob as a trust certificate.
-            val parsed = factory.generateCertificates(ByteArrayInputStream(wire))
+
+        // Separate envelope parsing from PKIX path building. A malformed DER
+        // (e.g. 30 00) is not a failed trust chain: it is no certificate at all.
+        // The distinction is needed for actionable, nonsecret diagnostics.
+        val factory: CertificateFactory
+        val parsed: List<X509Certificate>
+        try {
+            factory = CertificateFactory.getInstance("X.509")
+            parsed = factory.generateCertificates(ByteArrayInputStream(wire))
                 .filterIsInstance<X509Certificate>()
-            if (parsed.isEmpty() || parsed.size > 8) {
-                return CertificateReview(CertificateStatus.INVALID_CERTIFICATE_ENVELOPE)
-            }
+        } catch (_: Exception) {
+            return CertificateReview(CertificateStatus.INVALID_CERTIFICATE_ENVELOPE)
+        }
+        if (parsed.isEmpty() || parsed.size > 8)
+            return CertificateReview(CertificateStatus.INVALID_CERTIFICATE_ENVELOPE)
+
+        return try {
             val target = X509CertSelector().apply { certificate = parsed.first() }
             val params = PKIXBuilderParameters(
                 approvedAnchors.map { TrustAnchor(it, null) }.toSet(), target
@@ -59,8 +66,8 @@ internal object Iap2AccessoryCryptoEvidence {
             params.addCertStore(CertStore.getInstance(
                 "Collection", CollectionCertStoreParameters(parsed)
             ))
-            // Revocation check cannot be implied where no reliable verifier
-            // configuration/online status is supplied: expose this limitation.
+            // No reliable revocation infrastructure is configured. A valid
+            // signature/path is NOT evidence of a current Apple MFi grant.
             params.isRevocationEnabled = false
             CertPathBuilder.getInstance("PKIX").build(params)
             CertificateReview(CertificateStatus.CHAIN_VALID_REVOCATION_UNCHECKED,
