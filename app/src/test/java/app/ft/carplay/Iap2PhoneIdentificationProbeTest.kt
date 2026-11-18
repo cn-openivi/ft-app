@@ -9,7 +9,7 @@ import org.junit.Test
 
 class Iap2PhoneIdentificationProbeTest {
     private fun confirmed(controlVersion: Int = 2): Iap2LinkNegotiator.ConfirmedLink {
-        val negotiator = Iap2LinkNegotiator()
+        val negotiator = Iap2LinkNegotiator(senderInitialSequence = 0x9d)
         assertNull(negotiator.confirmedLink())
         val syn = Iap2LinkFrameCodec.Frame(
             0x80, 0x41, 0, 0,
