@@ -87,20 +87,22 @@ internal fun CarPlaySdpDiagnostic() {
                     // This is a physical, owner-triggered diagnostic, not a CarPlay session.
                     val result = incoming.listen(item.address) { event ->
                         incomingEvents = (incomingEvents + event).takeLast(12)
-                        DiagLog.i("FT200.IAP2", "incoming=${event.status} linkFrames=${event.validLinkFrames} CarPlay=UNVERIFIED")
+                        val message = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
+                        DiagLog.i("FT200.IAP2", "incoming=${event.status} linkFrames=${event.validLinkFrames} controlId=$message tlvCount=${event.parameterCount} MFi=UNVERIFIED CarPlay=UNVERIFIED")
                     }
                     DiagLog.i("FT200.IAP2", "listenStart=$result CarPlay=UNVERIFIED")
                     if (result != CarPlayIncomingIapProbe.Observation.SDP_LISTENER_READY) {
                         incomingEvents = listOf(CarPlayIncomingIapProbe.Event(result))
                     }
-                }) { Text("Проверить входящий iAP2 от Toyota (15 с)") }
+                }) { Text("Проверить входящий iAP2 от Toyota (до 30 с)") }
                 OutlinedButton(onClick = {
                     incoming.close()
                 }) { Text("Остановить проверку iAP2") }
                 incomingEvents.forEach { e ->
-                    Text("Toyota→Samsung: ${e.status} · iAP2 LINK frames: ${e.validLinkFrames}")
+                    val msg = e.messageId?.let { " · CONTROL=0x" + it.toString(16) + " TLV=${e.parameterCount}" }.orEmpty()
+                    Text("Toyota→Samsung: ${e.status} · LINK frames: ${e.validLinkFrames}$msg")
                 }
-                Text("Результат теста: не подтверждает MFi, Wi-Fi, AirPlay или звонки.")
+                Text("Даже LINK_NEGOTIATED или CONTROL 0x4301 подтверждают лишь полученные байты. MFi, Identify, Wi-Fi, AirPlay и звонки остаются НЕПОДТВЕРЖДЁННЫМИ.")
             }
             observed.forEach { item ->
                 Text("${item.result}: ${item.remoteUuidStrings.size} service UUID(s); fresh SDP signal=${item.completedFreshSdp}")
