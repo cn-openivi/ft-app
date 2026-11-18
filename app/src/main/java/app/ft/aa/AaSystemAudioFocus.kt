@@ -17,6 +17,12 @@ internal object AaAudioFocusPolicy {
         else -> null
     }
 
+    fun grantedState(request: Int): Int = when (request) {
+        1 -> AaProtocol.AUDIO_FOCUS_GAIN
+        2, 3 -> AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT
+        else -> AaProtocol.AUDIO_FOCUS_LOSS
+    }
+
     fun notification(change: Int): Int = when (change) {
         AudioManager.AUDIOFOCUS_GAIN -> AaProtocol.AUDIO_FOCUS_GAIN
         AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> AaProtocol.AUDIO_FOCUS_LOSS_TRANSIENT_CAN_DUCK
@@ -74,8 +80,7 @@ internal class AaSystemAudioFocus(
         active = request
         // AA navigation (type 3) is a transient duck-compatible grant,
         // not a permanent media GAIN.
-        return if (type == 2 || type == 3) AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT
-            else AaProtocol.AUDIO_FOCUS_GAIN
+        return AaAudioFocusPolicy.grantedState(type)
     }
 
     @Synchronized private fun abandon() {
