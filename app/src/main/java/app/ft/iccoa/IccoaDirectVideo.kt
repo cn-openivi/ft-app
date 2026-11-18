@@ -196,7 +196,8 @@ internal class IccoaDirectVideo(
     private fun rearmDirectGop(reason: String) {
         if (closed || !active) return
         rearmPending = true
-        resumeEpoch++
+        // AV_START is part of the same OEM resume epoch: do not invalidate
+        // its queued PROJECTED focus edge before the phone sees it.
         focusPulseAttempted = false
         output.pause()
         output.selectDirectFrames(true)
