@@ -18,6 +18,7 @@ import app.ft.FTApp
 import app.ft.MainActivity
 import app.ft.carlife.NetUtil
 import app.ft.core.DiagLog
+import app.ft.core.ServiceForegroundPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -123,28 +124,36 @@ class AaHeadUnitService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_START -> {
-                foreground(Lang.str(R.string.note_aa_ready))
+                if (!foreground(Lang.str(R.string.note_aa_ready))) {
+                    _state.update { it.copy(listening = false, bluetooth = "foreground-denied") }
+                    lastDisconnect = "Android foreground start denied; open FT to retry"
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 listen(intent.getBooleanExtra(EXTRA_BLUETOOTH, false))
             }
         }
         return START_STICKY
     }
 
-    private fun foreground(text: String) {
+    private fun foreground(text: String): Boolean {
         val note = notification(text)
         val canRecord = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (canRecord) {
-            val withMic = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (runCatching { startForeground(NOTIFICATION_ID, note, withMic) }.isSuccess) {
-                micReady = true
-                return
-            }
+        val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        val requested = if (canRecord) base or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else base
+        val accepted = ServiceForegroundPolicy.acceptedType(requested, base) { type ->
+            runCatching { startForeground(NOTIFICATION_ID, note, type) }
+                .onFailure { DiagLog.w(tag, "AA foreground type=$type refused ${it.javaClass.simpleName}") }
+                .isSuccess
         }
-        micReady = false
-        runCatching { startForeground(NOTIFICATION_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) }
-            .onFailure { DiagLog.w(tag, "could not keep the head unit in the foreground: ${it.message}") }
+        micReady = accepted != null && accepted and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE != 0
+        if (accepted == null) {
+            DiagLog.w(tag, "AA_FOREGROUND_START_FAILED; open FT to retry with permissions")
+            return false
+        }
+        if (canRecord && !micReady) DiagLog.w(tag, "AA_FOREGROUND_NO_MIC; microphone unavailable")
+        return true
     }
 
     private fun listen(bluetooth: Boolean) {
