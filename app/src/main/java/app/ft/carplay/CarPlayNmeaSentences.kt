@@ -25,6 +25,7 @@ internal object CarPlayNmeaSentences {
         val speedMps: Double? = null,
         val courseDegrees: Double? = null,
         val altitudeMetres: Double? = null,
+        val altitudeIsMsl: Boolean = false,
         val satellitesUsed: Int? = null,
         val hdop: Double? = null
     ) {
@@ -70,7 +71,12 @@ internal object CarPlayNmeaSentences {
             ?.let { String.format(Locale.US, "%02d", it) } ?: ""
         val hdop = fix.hdop?.takeIf { it.isFinite() && it in 0.0..99.9 }
             ?.let { String.format(Locale.US, "%.1f", it) } ?: ""
-        val altitude = fix.altitudeMetres?.takeIf { it.isFinite() && it in -1000.0..20000.0 }
+        // NMEA GGA altitude means above mean sea level (geoid), whereas
+        // Android Location.getAltitude() commonly means WGS84 ellipsoid.
+        // Without a verified vertical datum do NOT mislabel the value.
+        val altitude = fix.altitudeMetres?.takeIf {
+            fix.altitudeIsMsl && it.isFinite() && it in -1000.0..20000.0
+        }
             ?.let { String.format(Locale.US, "%.1f", it) } ?: ""
 
         // GGA includes empty geoid separation/unit and differential fields

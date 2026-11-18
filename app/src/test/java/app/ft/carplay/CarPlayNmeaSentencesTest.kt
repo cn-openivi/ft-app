@@ -14,7 +14,7 @@ class CarPlayNmeaSentencesTest {
         utcEpochMillis = 1732019696000L,
         source = CarPlayMediaPreflight.PositionSource.REAL_OEM_WGS84,
         verifiedFusion = false, speedMps = 10.0,
-        courseDegrees = 271.0, altitudeMetres = 4.2,
+        courseDegrees = 271.0, altitudeMetres = 4.2, altitudeIsMsl = true,
         satellitesUsed = 11, hdop = 1.2
     )
 
@@ -26,6 +26,13 @@ class CarPlayNmeaSentencesTest {
             result.rmc)
         assertFalse(result.toString().contains("5206"))
         assertFalse(fix.toString().contains("52.1"))
+    }
+
+    @Test fun ellipsoidalOrUnknownVerticalDatumIsNeverInventedAsMsl() {
+        val result = CarPlayNmeaSentences.encodeIfApproved(
+            eligible, fix.copy(altitudeIsMsl = false))!!
+        assertTrue(result.gga.contains(",11,1.2,,M,,,,"))
+        assertFalse(result.gga.contains("4.2,M"))
     }
 
     @Test fun signedLatitudeLongitudeAndTalkerGnArePreserved() {
