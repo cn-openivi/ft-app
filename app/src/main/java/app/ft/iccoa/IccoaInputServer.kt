@@ -15,7 +15,8 @@ internal class IccoaInputServer(
     bindAddress: InetSocketAddress,
     private val peer: InetAddress,
     private val read: (Socket) -> Unit,
-    private val log: (String) -> Unit
+    private val log: (String) -> Unit,
+    private val networkCurrent: () -> Boolean = { true }
 ) : Closeable {
     private val server = ServerSocket()
     private val lock = Any()
@@ -32,17 +33,18 @@ internal class IccoaInputServer(
     val localPort: Int get() = server.localPort
 
     fun run() {
-        while (!closed) {
+        while (!closed && networkCurrent()) {
             val socket = server.accept()
+            if (!networkCurrent()) { socket.close(); return }
             if (socket.inetAddress != peer) { socket.close(); continue }
             synchronized(lock) {
-                if (closed) { socket.close(); return }
+                if (closed || !networkCurrent()) { socket.close(); return }
                 connection = socket
             }
             try {
                 socket.tcpNoDelay = true
                 log("UIBC 4321 connected")
-                read(socket) // Returns only on EOF at a complete message boundary.
+                if (networkCurrent()) read(socket) // Complete packet boundaries or EOF.
                 if (!closed) log("UIBC 4321 clean-eof; waiting-for-reconnect")
             } finally {
                 runCatching { socket.close() }
