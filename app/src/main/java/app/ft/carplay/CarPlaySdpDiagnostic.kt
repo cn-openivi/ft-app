@@ -97,11 +97,34 @@ internal fun CarPlaySdpDiagnostic() {
                 }) { Text("Проверить входящий iAP2 от Toyota (до 30 с)") }
                 OutlinedButton(onClick = {
                     incoming.close()
+                    incomingEvents = emptyList()
+                    // Separate owner-triggered, explicit experimental action.
+                    // Never included in auto-connect or the passive SDP probe.
+                    val result = incoming.listen(
+                        item.address,
+                        requestIdentification = true
+                    ) { event ->
+                        incomingEvents = (incomingEvents + event).takeLast(14)
+                        val msg = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
+                        DiagLog.i("FT200.IAP2",
+                            "activeProbe=${event.status} controlId=$msg tlvCount=${event.parameterCount} " +
+                                "MFi=UNVERIFIED CarPlay=UNVERIFIED")
+                    }
+                    DiagLog.i("FT200.IAP2", "identificationProbeStart=$result CarPlay=UNVERIFIED")
+                    if (result != CarPlayIncomingIapProbe.Observation.SDP_LISTENER_READY) {
+                        incomingEvents = listOf(CarPlayIncomingIapProbe.Event(result))
+                    }
+                }) {
+                    Text("Эксперимент: iAP2 IdentificationRequest 0x1D00")
+                }
+                OutlinedButton(onClick = {
+                    incoming.close()
                 }) { Text("Остановить проверку iAP2") }
                 incomingEvents.forEach { e ->
                     val msg = e.messageId?.let { " · CONTROL=0x" + it.toString(16) + " TLV=${e.parameterCount}" }.orEmpty()
                     Text("Toyota→Samsung: ${e.status} · LINK frames: ${e.validLinkFrames}$msg")
                 }
+                Text("Активная проверка отправляет только 0x1D00 после реального LINK ACK, если согласована CONTROL v2. Она не проводит MFi/Identify или запуск CarPlay.")
                 Text("Даже LINK_NEGOTIATED или CONTROL 0x4301 подтверждают лишь полученные байты. MFi, Identify, Wi-Fi, AirPlay и звонки остаются НЕПОДТВЕРЖДЁННЫМИ.")
             }
             observed.forEach { item ->
