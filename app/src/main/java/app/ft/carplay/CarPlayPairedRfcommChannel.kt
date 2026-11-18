@@ -35,7 +35,7 @@ internal class CarPlayPairedRfcommChannel(private val context: Context) : AutoCl
         CONNECT_FAILED, NOT_CONNECTED, IO_FAILURE
     }
 
-    private var socket: BluetoothSocket? = null
+    @Volatile private var socket: BluetoothSocket? = null
     private val decoder = Iap2LinkStreamParser()
 
     /**
@@ -43,7 +43,6 @@ internal class CarPlayPairedRfcommChannel(private val context: Context) : AutoCl
      * verifiedIap2Service must come from independent OEM/profile evidence, not a guess.
      */
     @SuppressLint("MissingPermission")
-    @Synchronized
     fun open(
         remoteToyotaAddress: String,
         verifiedServiceUuid: String,
@@ -71,19 +70,22 @@ internal class CarPlayPairedRfcommChannel(private val context: Context) : AutoCl
                 it.address.equals(remoteToyotaAddress, ignoreCase = true)
             } ?: return Result.NOT_BONDED
             val opened = paired.createRfcommSocketToServiceRecord(uuid)
+            // Publish before the blocking connect so close() can interrupt an in-flight
+            // Android RFCOMM connect without waiting on the channel monitor.
+            socket = opened
             try {
                 opened.connect() // real secure Bluetooth socket, no mock callback
-                if (!opened.isConnected) {
+                if (!opened.isConnected || socket !== opened) {
                     runCatching { opened.close() }
+                    if (socket === opened) close()
                     return Result.CONNECT_FAILED
                 }
-                socket = opened
                 Result.CONNECTED_RFCOMM_ONLY
             } catch (_: IOException) {
-                runCatching { opened.close() }
+                if (socket === opened) close() else runCatching { opened.close() }
                 Result.CONNECT_FAILED
             } catch (_: SecurityException) {
-                runCatching { opened.close() }
+                if (socket === opened) close() else runCatching { opened.close() }
                 Result.PERMISSION_MISSING
             }
         } catch (_: SecurityException) {
@@ -94,7 +96,6 @@ internal class CarPlayPairedRfcommChannel(private val context: Context) : AutoCl
     }
 
     /** Read physical bytes and decode iAP2 link frames; no synthetic protocol ACK. */
-    @Synchronized
     fun receiveOnce(): Pair<Result, List<Iap2LinkFrameCodec.Frame>> {
         if (Looper.myLooper() == Looper.getMainLooper())
             return Result.MAIN_THREAD_FORBIDDEN to emptyList()
@@ -118,7 +119,6 @@ internal class CarPlayPairedRfcommChannel(private val context: Context) : AutoCl
     }
 
     /** Only already encoded, structurally valid iAP2 link frames may be transmitted. */
-    @Synchronized
     fun sendLinkFrame(bytes: ByteArray): Result {
         if (Looper.myLooper() == Looper.getMainLooper()) return Result.MAIN_THREAD_FORBIDDEN
         if (Iap2LinkFrameCodec.decode(bytes) == null) return Result.IO_FAILURE
