@@ -37,6 +37,8 @@ internal class IccoaDirectVideo(
     private var frameAtMs = 0L
     private var activatedAtMs = 0L
     private var lastKeyRequestMs = 0L
+    private var resumeEpoch = 0L
+    private var focusPulseAttempted = false
     // Never restart FT's encoder on a transient Toyota PAUSE.
     private var awaitingResumeRtpIdr = false
     private var resumeIdrReceived = false
@@ -121,6 +123,29 @@ internal class IccoaDirectVideo(
                     "elapsedMs=${now - gopLostAtMs} FT_encoder_remains_off=true")
                 onStatus("AA direct recovering RTP GOP; no FT re-encode")
             }
+            // A plain PROJECTED indication is not a keyframe command. If the
+            // initial OEM NATIVE -> PROJECTED edge did not yield an IDR, issue
+            // ONE more true focus edge in this resume epoch, then keep reporting
+            // missing IDR instead of starting a second AVC encoder.
+            if (awaitingResumeRtpIdr && firstKeyAtMs == 0L && !resumeIdrReceived &&
+                !focusPulseAttempted && now - activatedAtMs >= FOCUS_RETRY_MS) {
+                val aa = source?.takeIf { sourceValid(it) }
+                if (aa != null) {
+                    focusPulseAttempted = true
+                    val generation = resumeEpoch
+                    val nativeQueued = aa.setVehicleVideoFocus(false)
+                    DiagLog.i("ICCOA", "DIRECT_VIDEO_FOCUS_RETRY_NATIVE queued=$nativeQueued epoch=$generation")
+                    main.postDelayed({
+                        if (!closed && active && !receiverPaused && awaitingResumeRtpIdr &&
+                            !resumeIdrReceived && this.source === aa && resumeEpoch == generation &&
+                            AaHeadUnitService.current === aa) {
+                            val projectedQueued = aa.setVehicleVideoFocus(true)
+                            DiagLog.i("ICCOA", "DIRECT_VIDEO_FOCUS_RETRY_PROJECTED " +
+                                "queued=$projectedQueued epoch=$generation")
+                        }
+                    }, FOCUS_EDGE_MS)
+                }
+            }
             // Bounded control request *frequency*, without a terminal timeout
             // that would permanently lock this car session into compositing.
             if (firstKeyAtMs == 0L &&
@@ -171,6 +196,8 @@ internal class IccoaDirectVideo(
     private fun rearmDirectGop(reason: String) {
         if (closed || !active) return
         rearmPending = true
+        resumeEpoch++
+        focusPulseAttempted = false
         output.pause()
         output.selectDirectFrames(true)
         compatibleConfig?.let(output::configure)
@@ -344,8 +371,11 @@ internal class IccoaDirectVideo(
             restartGraceAtMs = SystemClock.elapsedRealtime()
             DiagLog.i("ICCOA", "DIRECT_VIDEO_AA_STOP_RESTART_GRACE no_reencode=true")
             main.postDelayed({
-                if (!closed && active && this.source === source &&
-                    source.phase.value != AaSession.Phase.STREAMING)
+                // The OEM can remain on native Home longer than restart grace.
+                // Do not resurrect FT composition while its receiver is paused.
+                if (!closed && active && !receiverPaused && this.source === source &&
+                    source.phase.value != AaSession.Phase.STREAMING &&
+                    SystemClock.elapsedRealtime() - restartGraceAtMs >= AA_RESTART_GRACE_MS)
                     fallback("Android Auto stream ended; return to native FT home")
             }, AA_RESTART_GRACE_MS)
         } else main.post { fallback("Android Auto video stopped") }
@@ -359,15 +389,22 @@ internal class IccoaDirectVideo(
     /** The OEM may PAUSE for only a few seconds while changing its surface. */
     fun paused() {
         if (!active && !pending) return
+        if (receiverPaused) return
         pending = false
         receiverPaused = true
-        DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_PAUSED route_retained=true")
+        resumeEpoch++ // Invalidates a stale delayed PROJECTED from older PLAY.
+        val aa = source?.takeIf { AaHeadUnitService.current === it }
+        val queued = aa?.setVehicleVideoFocus(false) == true
+        DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_PAUSED route_retained=true " +
+            "aaNativeFocusQueued=$queued epoch=$resumeEpoch")
     }
 
     /** Call immediately before WFD PLAY resumes the RTP queue. */
     fun resumed() {
         if (!receiverPaused) return
         receiverPaused = false
+        val generation = ++resumeEpoch
+        focusPulseAttempted = false
         if (active) {
             // A PAUSE clears RTP dependencies: request an IDR, never resume on P frames.
             synchronized(clock) { clock.reset() }
@@ -382,9 +419,22 @@ internal class IccoaDirectVideo(
             gopStallWarned = false
             activatedAtMs = SystemClock.elapsedRealtime()
             lastKeyRequestMs = 0L
+            // Native focus may have stopped AA streaming for the full Home
+            // duration. Give the phone a fresh START grace from the OEM PLAY.
+            if (rearmPending) restartGraceAtMs = activatedAtMs
             DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true " +
                 "firstWarningMs=${IccoaDirectRecoveryPolicy.POST_PAUSE_MAX_MS} " +
                 "autoReencode_on_IDR_timeout=false FT_encoder_stays_off=true")
+            val aa = source
+            // Run AFTER IccoaService.play() resumes the RTP queue on this
+            // same main Handler turn; otherwise a fast IDR could be dropped.
+            main.post {
+                if (!closed && active && !receiverPaused && resumeEpoch == generation &&
+                    this.source === aa && aa != null && AaHeadUnitService.current === aa) {
+                    val queued = aa.setVehicleVideoFocus(true)
+                    DiagLog.i("ICCOA", "DIRECT_VIDEO_RESUME_PROJECTED queued=$queued epoch=$generation")
+                }
+            }
         }
     }
 
@@ -401,6 +451,7 @@ internal class IccoaDirectVideo(
     private fun fallback(reason: String, resumeTransport: Boolean = true) {
         if (closed || failed) return
         failed = true // no re-entry until the next ICCOA connection
+        resumeEpoch++
         pending = false
         active = false
         receiverPaused = false
@@ -445,6 +496,7 @@ internal class IccoaDirectVideo(
 
     fun close() {
         output.selectDirectFrames(false)
+        resumeEpoch++
         closed = true
         failed = true
         active = false
@@ -461,6 +513,8 @@ internal class IccoaDirectVideo(
 
     companion object {
         private const val WATCH_MS = 1_000L
+        private const val FOCUS_RETRY_MS = 3_000L
+        private const val FOCUS_EDGE_MS = 250L
         private const val AA_RESTART_GRACE_MS = 3_000L
         private const val START_TIMEOUT_MS = 5_000L
         private const val IDLE_PROBE_MS = 30_000L
