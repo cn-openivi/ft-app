@@ -66,12 +66,15 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
                 if (id == generation) onStage(Stage.WIFI_NETWORK_AVAILABLE_UNVERIFIED, network)
             }
             override fun onUnavailable() {
-                if (id == generation) onStage(Stage.UNAVAILABLE, null)
-                this@CarPlayWifiHandover.close()
+                // An obsolete callback MUST NOT close a newer Wi-Fi session.
+                if (id != generation) return
+                try { onStage(Stage.UNAVAILABLE, null) }
+                finally { if (id == generation) this@CarPlayWifiHandover.close() }
             }
             override fun onLost(network: Network) {
-                if (id == generation) onStage(Stage.NETWORK_LOST, null)
-                this@CarPlayWifiHandover.close()
+                if (id != generation) return
+                try { onStage(Stage.NETWORK_LOST, null) }
+                finally { if (id == generation) this@CarPlayWifiHandover.close() }
             }
         }
         callback = cb

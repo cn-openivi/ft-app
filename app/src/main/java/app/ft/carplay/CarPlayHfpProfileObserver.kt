@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Read-only FT200.3 HFP profile evidence via documented Android public APIs.
@@ -55,6 +56,7 @@ internal object CarPlayHfpProfileObserver {
                 CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
             return false
         }
+        val delivered = AtomicBoolean(false)
         val listener = object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                 if (profile != BluetoothProfile.HEADSET) return
@@ -80,11 +82,12 @@ internal object CarPlayHfpProfileObserver {
                 } finally {
                     runCatching { adapter.closeProfileProxy(BluetoothProfile.HEADSET, proxy) }
                 }
-                onComplete(result)
+                if (delivered.compareAndSet(false, true)) onComplete(result)
             }
 
             override fun onServiceDisconnected(profile: Int) {
-                if (profile == BluetoothProfile.HEADSET)
+                if (profile == BluetoothProfile.HEADSET &&
+                    delivered.compareAndSet(false, true))
                     onComplete(Snapshot(Error.PROFILE_DISCONNECTED,
                         CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
             }
@@ -92,8 +95,9 @@ internal object CarPlayHfpProfileObserver {
         val requested = try {
             adapter.getProfileProxy(context, listener, BluetoothProfile.HEADSET)
         } catch (_: SecurityException) { false }
-        if (!requested) onComplete(Snapshot(Error.HEADSET_PROXY_UNAVAILABLE,
-            CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
+        if (!requested && delivered.compareAndSet(false, true))
+            onComplete(Snapshot(Error.HEADSET_PROXY_UNAVAILABLE,
+                CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
         return requested
     }
 }
