@@ -44,6 +44,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
+        ACCESSORY_AUTH_CERTIFICATE_RECEIVED_UNTRUSTED,
+        ACCESSORY_AUTH_RESPONSE_RECEIVED_UNVERIFIED,
         LINK_DUPLICATE_IGNORED, LINK_GAP_IGNORED,
         LINK_UNEXPECTED_SESSION, IDENTIFICATION_REQUEST_ACKED,
         LINK_DATA_ACK_SENT, LINK_DATA_RETRIED, LINK_DATA_RETRY_EXHAUSTED,
@@ -165,6 +167,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 val negotiator = Iap2LinkNegotiator()
                 val control = Iap2ControlStreamParser()
                 val identify = Iap2PhoneIdentificationProbe()
+                val accessoryAuth = Iap2AccessoryAuthenticationLedger()
                 var reliable: Iap2ReliableLinkWindow? = null
                 val received = ByteArray(4096)
                 // A first read might contain only a fragment; do not reject it
@@ -232,6 +235,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                         val observation = if (message.id ==
                                             Iap2IdentificationInfoInspector.IDENTIFICATION_INFORMATION
                                         ) {
+                                            if (message.parameters.isNotEmpty())
+                                                accessoryAuth.observeIdentification(message)
                                             when (Iap2IdentificationInfoInspector.inspect(message).result) {
                                                 Iap2IdentificationInfoInspector.Result.NO_PARAMETERS ->
                                                     Observation.IDENTIFICATION_INFO_EMPTY
@@ -242,6 +247,25 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                                 Iap2IdentificationInfoInspector.Result.NOT_IDENTIFICATION ->
                                                     Observation.CONTROL_MESSAGE_OBSERVED
                                             }
+                                        } else if (message.id == 0xAA01) {
+                                            accessoryAuth.observeCertificate(message)
+                                            // No Apple-approved anchor is distributed
+                                            // with this application. The certificate
+                                            // must NEVER become trusted because it
+                                            // arrived from an already bonded Toyota.
+                                            accessoryAuth.reviewCertificate(
+                                                Iap2AccessoryCryptoEvidence.verifyCertificatePath(
+                                                    message.parameters.firstOrNull()?.value
+                                                        ?: byteArrayOf()
+                                                )
+                                            )
+                                            Observation.ACCESSORY_AUTH_CERTIFICATE_RECEIVED_UNTRUSTED
+                                        } else if (message.id == 0xAA03) {
+                                            // Authenticating the signature requires a
+                                            // trusted, approved PKIX certificate chain,
+                                            // a validated algorithm/profile and the
+                                            // actual tracked challenge. None exists yet.
+                                            Observation.ACCESSORY_AUTH_RESPONSE_RECEIVED_UNVERIFIED
                                         } else if (message.id ==
                                             Iap2ControlSessionCodec.CARPLAY_START_SESSION
                                         ) {
