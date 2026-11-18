@@ -426,15 +426,16 @@ internal class IccoaDirectVideo(
             DiagLog.i("ICCOA", "DIRECT_VIDEO_RECEIVER_RESUMED awaiting_new_RTP_IDR=true " +
                 "firstWarningMs=${IccoaDirectRecoveryPolicy.POST_PAUSE_MAX_MS} " +
                 "autoReencode_on_IDR_timeout=false FT_encoder_stays_off=true")
-            val aa = source
-            // Run AFTER IccoaService.play() resumes the RTP queue on this
-            // same main Handler turn; otherwise a fast IDR could be dropped.
-            main.post {
-                if (!closed && active && !receiverPaused && resumeEpoch == generation &&
-                    this.source === aa && aa != null && AaHeadUnitService.current === aa) {
-                    val queued = aa.setVehicleVideoFocus(true)
-                    DiagLog.i("ICCOA", "DIRECT_VIDEO_RESUME_PROJECTED queued=$queued epoch=$generation")
-                }
+        }
+        val aa = source
+        // Even an early PAUSE while the first Direct IDR is pending must
+        // restore PROJECTED: otherwise AA could remain hidden indefinitely.
+        // Run AFTER IccoaService.play() resumes RTP on this main Handler turn.
+        main.post {
+            if (!closed && !receiverPaused && resumeEpoch == generation &&
+                this.source === aa && aa != null && AaHeadUnitService.current === aa) {
+                val queued = aa.setVehicleVideoFocus(true)
+                DiagLog.i("ICCOA", "DIRECT_VIDEO_RESUME_PROJECTED queued=$queued epoch=$generation")
             }
         }
     }
