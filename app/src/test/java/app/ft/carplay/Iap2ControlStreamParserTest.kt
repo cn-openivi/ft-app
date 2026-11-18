@@ -50,6 +50,32 @@ class Iap2ControlStreamParserTest {
         assertEquals(codec.CARPLAY_START_SESSION, observed.single().id)
     }
 
+    @Test fun falseLargeHeaderCannotHideNextCompleteValidatedMessage() {
+        val parser = Iap2ControlStreamParser()
+        val corruptCandidate = byteArrayOf(0x40, 0x40, 0x40, 0x00, 0x12, 0x34)
+        val valid = message(codec.CARPLAY_AVAILABILITY)
+        val observed = parser.accept(corruptCandidate + valid)
+        assertEquals(1, observed.size)
+        assertEquals(codec.CARPLAY_AVAILABILITY, observed.single().id)
+    }
+
+    @Test fun validFragmentWithNoLaterCompleteFrameRemainsBuffered() {
+        val parser = Iap2ControlStreamParser()
+        val first = message(codec.CARPLAY_START_SESSION,
+            ByteArray(31) { 0x40 })
+        assertTrue(parser.accept(first.copyOfRange(0, 12)).isEmpty())
+        assertEquals(1, parser.accept(first.copyOfRange(12, first.size)).size)
+    }
+
+    @Test fun corruptFrameAndValidFrameCanArriveInSeparateReadCalls() {
+        val parser = Iap2ControlStreamParser()
+        assertTrue(parser.accept(byteArrayOf(0x7f, 0x40, 0x40, 0x40, 0)).isEmpty())
+        val actual = message(codec.CARPLAY_AVAILABILITY)
+        val observed = parser.accept(byteArrayOf(12, 0x34) + actual)
+        assertEquals(1, observed.size)
+        assertEquals(codec.CARPLAY_AVAILABILITY, observed.single().id)
+    }
+
     @Test fun partialMessagesCannotSurviveResetBetweenDifferentRealSessions() {
         val parser = Iap2ControlStreamParser()
         val full = message(codec.CARPLAY_START_SESSION)
