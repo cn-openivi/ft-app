@@ -9,7 +9,7 @@ class Iap2ControlStreamParserTest {
     private val codec = Iap2ControlSessionCodec
 
     private fun message(id: Int, payload: ByteArray = byteArrayOf(1, 2, 3)): ByteArray =
-        codec.encode(codec.Message(id, listOf(codec.Parameter(0x10, payload))))
+        codec.encode(Iap2ControlSessionCodec.Message(id, listOf(Iap2ControlSessionCodec.Parameter(0x10, payload))))
 
     @Test fun splitHeaderAndTlvAreReassembledWithoutPartialSuccess() {
         val parser = Iap2ControlStreamParser()
