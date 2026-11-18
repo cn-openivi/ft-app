@@ -38,6 +38,7 @@ internal fun CarPlaySdpDiagnostic() {
     var candidates by remember { mutableStateOf<List<PairedDevice>>(emptyList()) }
     var selected by remember { mutableStateOf<PairedDevice?>(null) }
     var incomingEvents by remember { mutableStateOf<List<CarPlayIncomingIapProbe.Event>>(emptyList()) }
+    var hfpStatus by remember { mutableStateOf("HFP: ещё не проверялся") }
     var notice by remember { mutableStateOf("CarPlay отключён: требуется штатная Toyota и реальный iAP2.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
@@ -51,6 +52,7 @@ internal fun CarPlaySdpDiagnostic() {
             probe.close()
             incoming.close()
             incomingEvents = emptyList()
+            hfpStatus = "HFP: ещё не проверялся"
             selected = null
             observed = emptyList()
             val inventory = readPairedDevices(context)
@@ -67,6 +69,7 @@ internal fun CarPlaySdpDiagnostic() {
                 OutlinedButton(onClick = {
                     observed = emptyList()
                     selected = item
+                    hfpStatus = "HFP: ещё не проверялся"
                     incoming.close()
                     incomingEvents = emptyList()
                     notice = "Проверяем выбранную BT-пару: ${item.name} (${item.shortAddress})"
@@ -80,6 +83,20 @@ internal fun CarPlaySdpDiagnostic() {
                 }
             }
             selected?.let { item ->
+                OutlinedButton(onClick = {
+                    hfpStatus = "HFP: запрошено состояние штатного профиля"
+                    CarPlayHfpProfileObserver.readOnce(context, item.address) { result ->
+                        context.mainExecutor.execute {
+                            // Deliberately show only reason enums, never full
+                            // remote MAC, phone local address or call metadata.
+                            hfpStatus = "HFP: ${result.bondPolicy} / ${result.error}"
+                            DiagLog.i("FT200.HFP",
+                                "profile=${result.bondPolicy} error=${result.error} " +
+                                    "mic=UNVERIFIED farEndVoice=UNVERIFIED")
+                        }
+                    }
+                }) { Text("Проверить штатный HFP профиль Toyota") }
+                Text(hfpStatus)
                 OutlinedButton(onClick = {
                     incoming.close()
                     incomingEvents = emptyList()
