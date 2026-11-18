@@ -688,4 +688,5 @@
     <string name="iccoa_touch_edge_verify">Center matched. Now touch the green marker on the right to check screen alignment.</string>
     <string name="iccoa_touch_edge_failed">Off-center touch mismatch. Try the right marker again; another miss starts calibration.</string>
     <string name="iccoa_touch_center_failed">Center check failed. Tap OK again; another miss opens four-point calibration.</string>
+    <string name="ft191_return_to_ft_on_car">Return to FT on car screen</string>
 </resources>
