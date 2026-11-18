@@ -81,7 +81,7 @@ jobs:
               'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
               'Iap2PhoneIdentificationProbeTest', 'Iap2IdentificationInfoInspectorTest', 'Iap2CarPlayStartSchemaTest',
               'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
-              'Iap2SynPayloadParserTest',
+              'Iap2SynPayloadParserTest', 'Iap2ReliableLinkWindowTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
