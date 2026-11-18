@@ -464,19 +464,21 @@ class IccoaSession(
     private fun authenticate(attempt: Attempt, network: Network, local: String, peer: String,
                              pin: String?, pinned: ByteArray?) {
         var authSocket: Socket? = null
-        var stage = "tcp-bind"
+        var stage = "tcp-network-create"
         fun progress(value: String) {
             stage = value
             if (active(attempt)) DiagLog.i("ICCOA", "AUTH $value")
         }
         try {
-            val socket = Socket()
+            // Android Network.socketFactory pins routing at creation. Some Android builds
+            // reject Network.bindSocket() on a plain Socket() before connect.
+            // Holding the network gate prevents a callback switching the selected
+            // Wi-Fi Network between checking ownership and creating this socket.
+            val socket = attempt.networkGate.createIfCurrent(network) {
+                network.socketFactory.createSocket()
+            } ?: return
             authSocket = socket
             if (!track(attempt, socket)) return
-            if (!attempt.networkGate.bindIfCurrent(network) { network.bindSocket(socket) }) {
-                socket.close()
-                return
-            }
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
             if (!attempt.networkGate.isCurrent(network)) {
@@ -549,7 +551,10 @@ class IccoaSession(
                 else -> "Отправьте отчёт из FT"
             }
             fail(attempt, "Сбой ICCOA на этапе $stage ($reason). $hint",
-                closeReason = IccoaFailurePolicy.authentication(stage, pinned != null, e),
+                // Preserve the existing transport-failure classification for early
+                // network socket creation errors (previously named "tcp-bind").
+                closeReason = IccoaFailurePolicy.authentication(
+                    if (stage == "tcp-network-create") "tcp-bind" else stage, pinned != null, e),
                 shouldFail = { attempt.networkGate.isCurrent(network) })
         } finally {
             authSocket?.let { socket ->
