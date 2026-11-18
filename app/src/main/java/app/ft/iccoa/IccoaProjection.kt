@@ -95,9 +95,11 @@ class IccoaProjection(
     private val mirrorTouches = MirrorTouchSequence()
     private val aaTouchGesture = AaTouchGestureViewport()
     private val directReturnGesture = IccoaTwoFingerReturnGesture()
+    private var suppressReturnRelease = false
     private val directReturnFire = Runnable {
         if (directVideoActive && directReturnGesture.fire(android.os.SystemClock.uptimeMillis())) {
             DiagLog.i("ICCOA", "DIRECT_TWO_FINGER_FT_RETURN_CONFIRMED holdMs=2500")
+            suppressReturnRelease = true
             cancelAaGestureOnRouteChange()
             onDirectReturnRequested()
         }
@@ -345,6 +347,14 @@ class IccoaProjection(
     fun touch(action: Int, x: Int, y: Int) = touch(CarTouch(action, x, y))
     fun touch(raw: CarTouch) = onMain {
         if (!active) return@onMain
+        if (suppressReturnRelease) {
+            if (raw.action == CarTouch.DOWN) suppressReturnRelease = false
+            else {
+                if (raw.action == CarTouch.UP || raw.action == CarTouch.CANCEL)
+                    suppressReturnRelease = false
+                return@onMain
+            }
+        }
         display.noteTouch(raw.action)
         if (directVideoActive) {
             ignoreLetterboxGesture = false
@@ -830,6 +840,7 @@ class IccoaProjection(
     private fun stopInternal() {
         directReturnGesture.reset()
         main.removeCallbacks(directReturnFire)
+        suppressReturnRelease = false
         aaUiParked = false
         IccoaTouchWelcome.cancel()
         displayEpoch++
