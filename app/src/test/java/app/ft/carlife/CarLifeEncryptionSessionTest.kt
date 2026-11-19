@@ -12,13 +12,32 @@ import org.mockito.Mockito.*
 import java.security.KeyPairGenerator
 
 class CarLifeEncryptionSessionTest {
-    @Test fun anUnsolicitedOrFailedKeyExchangeDoesNotSendEncryptReady() = runTest {
+    @Test fun unsolicitedAckAndInvalidRsaCannotAccidentallyEnableAes() = runTest {
         CarLifeCryptoTest.withBase64 {
             val link = TestLink()
             session(link, backgroundScope)
             link.command(CarLifeProtocol.CMD_HU_AES_REC_RESPONSE)
+            // Without the OEM encryption request, an unsolicited malformed
+            // RSA key is ignored. No plaintext fallback is invented.
             link.command(CarLifeProtocol.CMD_HU_RSA_PUBLIC_KEY_RESPONSE, keyPayload("bad key"))
-            link.command(CarLifeProtocol.CMD_HU_AES_REC_RESPONSE)
+            assertFalse(link.stopped)
+            assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST))
+            assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_ENCRYPT_READY))
+        }
+    }
+
+    @Test fun invalidRsaAfterOemRequiresAesClosesLinkWithoutPlaintextFallback() = runTest {
+        CarLifeCryptoTest.withBase64 {
+            val link = TestLink()
+            session(link, backgroundScope)
+            val requiredAes = ProtoWriter()
+                .message(2, ProtoWriter().string(1, "CONTENT_ENCRYPTION").int32(2, 1))
+                .toByteArray()
+            link.command(CarLifeProtocol.CMD_HU_FEATURE_CONFIG_RESPONSE, requiredAes)
+            assertTrue(link.sent.contains(CarLifeProtocol.CMD_MD_RSA_PUBLIC_KEY_REQUEST))
+            link.command(CarLifeProtocol.CMD_HU_RSA_PUBLIC_KEY_RESPONSE, keyPayload("bad key"))
+            assertTrue("required AES must terminate on invalid RSA", link.stopped)
+            assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST))
             assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_ENCRYPT_READY))
         }
     }
@@ -64,6 +83,7 @@ class CarLifeEncryptionSessionTest {
         override val connected = true
         override val isOpen = true
         var accept = true
+        var stopped = false
         val sent = mutableListOf<Int>()
         private lateinit var receive: LinkMessage
         override fun start(scope: CoroutineScope, onMessage: LinkMessage, onEvent: (String) -> Unit,
@@ -72,7 +92,7 @@ class CarLifeEncryptionSessionTest {
             sent += CarLifeFraming.serviceId(channel, inner)
             return accept
         }
-        override fun stop() = Unit
+        override fun stop() { stopped = true }
         fun command(id: Int, payload: ByteArray = ByteArray(0)) {
             val packet = CarLifeFraming.cmd(id, payload)
             receive(CarLifeProtocol.CH_CMD, packet.copyOfRange(0, CarLifeProtocol.HEAD_CMD), payload)
