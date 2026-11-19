@@ -390,7 +390,21 @@ class IccoaService : Service() {
                         navigationSend.run()
                     }
                 }
-            })
+            },
+            onDirectReturnRequested = { main.post { showFtHomeOnCar() } },
+            onAaReturnRequested = { main.post { directVideo?.returnToAaFromFtHome() } })
+    }
+
+    /** Called from the phone action, active notification or verified UIBC hold. */
+    private fun showFtHomeOnCar() {
+        if (!_state.value.connected) return
+        if (directVideo?.parkForFtHome() == true) {
+            _state.update { it.copy(effectiveVideoMode = 0,
+                videoFallbackReason = "FT home selected; AA link retained") }
+        } else {
+            // A composited/pending Direct session also keeps its AA link.
+            projection?.showFtHomeKeepingAa()
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -419,6 +433,7 @@ class IccoaService : Service() {
         val wasRunning = _state.value.running
         _state.update { it.copy(running = true) }
         when (intent?.action) {
+            RETURN_TO_FT -> showFtHomeOnCar()
             CONNECT -> intent.getStringExtra("address")?.let { address ->
                 main.removeCallbacks(recoveryScan)
                 dropRecovery.onExplicitOwnerRequest()
@@ -559,15 +574,21 @@ class IccoaService : Service() {
                 main.removeCallbacks(recoveryScan)
                 _state.update { it.copy(pinRequired = true, status = "Enter the six-digit code shown by the car") }
             } },
-            onReady = { network, peer ->
+            onReady = { network, local, peer ->
                 // AuthConfirm must only advertise our address after these listeners are bound.
                 synchronized(lifecycle) {
                     check(generation == token) { "Connection cancelled" }
-                    val transport = IccoaMediaTransport(network, peer,
+                    val transport = IccoaMediaTransport(network, local, peer,
+                        networkCurrent = { generation == token && connection.ownsNetwork(network) },
                         decryptInput = { session?.decryptInput(it) ?: error("Session ended") },
-                        onPlay = { config -> current { play(config) } },
-                        onPause = { current { pauseProjection("RTSP_PAUSE") } },
+                        onPlay = { config -> current {
+                            if (connection.ownsNetwork(network)) play(config)
+                        } },
+                        onPause = { current {
+                            if (connection.ownsNetwork(network)) pauseProjection("RTSP_PAUSE")
+                        } },
                         onKeyframe = { current {
+                            if (!connection.ownsNetwork(network)) return@current
                             // A temporarily unavailable AA VIDEO_FOCUS request does NOT
                             // authorize FT compositor keyframes while Direct owns RTP.
                             val direct = directVideo
@@ -576,8 +597,12 @@ class IccoaService : Service() {
                                     DiagLog.i("ICCOA", "DIRECT_VIDEO_IDR_DEFERRED no_compositor_request=true")
                             } else projection?.requestKeyFrame()
                         } },
-                        onTouch = { touch -> current { projection?.touch(touch) } },
-                        onKey = { code -> current { projection?.key(code) } },
+                        onTouch = { touch -> current {
+                            if (connection.ownsNetwork(network)) projection?.touch(touch)
+                        } },
+                        onKey = { code -> current {
+                            if (connection.ownsNetwork(network)) projection?.key(code)
+                        } },
                         onClosed = { reason -> current {
                             connectionFailed(reason, retryableTransportFailure = true)
                         } },
@@ -735,7 +760,10 @@ class IccoaService : Service() {
         }
         main.removeCallbacks(connectionTimeout)
         directVideo?.resumed()
-        output.resume()
+        // Direct mode owns AA keyframe recovery via NATIVE -> PROJECTED.
+        // Do not send the old one-shot focus request while AA is still NATIVE:
+        // the queued PROJECTED edge runs after this RTP resume.
+        output.resume(requestNewKeyframe = directVideo?.active != true)
         audioPlayerState.play()
         flushAudioState()
         if (!configScheduled) {
@@ -910,9 +938,17 @@ class IccoaService : Service() {
         if (foregroundMode == withProjection) return
         val launch = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val note = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tile_ft)
+        val builder = NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tile_ft)
             .setContentTitle("FT · ICCOA Carlink").setContentText("ICCOA wireless projection")
-            .setContentIntent(launch).setOngoing(true).build()
+            .setContentIntent(launch).setOngoing(true)
+        if (withProjection) {
+            // Notification action works without locating a control inside the app.
+            val returnIntent = Intent(this, IccoaService::class.java).setAction(RETURN_TO_FT)
+            val returnAction = PendingIntent.getForegroundService(this, 91, returnIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            builder.addAction(R.drawable.ic_tile_ft, "Вернуться в FT", returnAction)
+        }
+        val note = builder.build()
         val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
             (if (withProjection) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
         startForeground(NOTIFICATION, note, type)
@@ -954,6 +990,7 @@ class IccoaService : Service() {
         private const val CONNECT_NORMAL = "app.ft.iccoa.CONNECT_NORMAL"
         private const val PIN = "app.ft.iccoa.PIN"
         private const val DISCONNECT = "app.ft.iccoa.DISCONNECT"
+        private const val RETURN_TO_FT = "app.ft.iccoa.RETURN_TO_FT"
         private val _state = MutableStateFlow(IccoaState())
         val state: StateFlow<IccoaState> = _state
         private var instance: IccoaService? = null
@@ -964,6 +1001,7 @@ class IccoaService : Service() {
         fun connectNormal(context: Context, address: String) = send(context, CONNECT_NORMAL, address = address)
         fun submitPin(context: Context, pin: String) = send(context, PIN, pin = pin)
         fun disconnect(context: Context) = send(context, DISCONNECT)
+        fun returnToFtHome(context: Context) = send(context, RETURN_TO_FT)
         fun calibrateTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startTouchCalibration() }
         fun resetTouchCalibration() { if (_state.value.connected) instance?.projection?.resetTouchCalibration() }
         fun calibrateMirrorTouch() { if (_state.value.connected && _state.value.verifiedReceiverId != null) instance?.projection?.startMirrorTouchCalibration() }

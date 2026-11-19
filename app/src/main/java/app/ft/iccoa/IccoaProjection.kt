@@ -68,7 +68,9 @@ class IccoaProjection(
     private val onCarHome: () -> Unit,
     private val onAudio: (ByteArray) -> Unit,
     private val onFailure: (String) -> Unit = {},
-    private val onAaConnectionChanged: (Boolean) -> Unit = {}
+    private val onAaConnectionChanged: (Boolean) -> Unit = {},
+    private val onDirectReturnRequested: () -> Unit = {},
+    private val onAaReturnRequested: () -> Unit = {}
 ) : CarControls.Backend {
     private val app get() = FTApp.instance
     private val main = Handler(Looper.getMainLooper())
@@ -92,6 +94,18 @@ class IccoaProjection(
     private var ignoreLetterboxGesture = false
     private val mirrorTouches = MirrorTouchSequence()
     private val aaTouchGesture = AaTouchGestureViewport()
+    private val directReturnGesture = IccoaTwoFingerReturnGesture()
+    private var suppressReturnRelease = false
+    private val directReturnFire = Runnable {
+        if (directVideoActive && directReturnGesture.fire(android.os.SystemClock.uptimeMillis())) {
+            DiagLog.i("ICCOA", "DIRECT_TWO_FINGER_FT_RETURN_CONFIRMED holdMs=2500")
+            suppressReturnRelease = true
+            cancelAaGestureOnRouteChange()
+            onDirectReturnRequested()
+        }
+    }
+    private var aaUiParked = false
+    private var lastAaConnected = false
     private var mirrorTouchGestureMap: MirrorTouchMap? = null
     private var mirrorTouchGestureBounds: MirrorTouchBounds? = null
     private fun cancelAaGestureOnRouteChange() {
@@ -212,6 +226,8 @@ class IccoaProjection(
         if (!active || !state.value.aaOverlay || state.value.mirroring || closed ||
             displayPlan != plan || aaWidth <= 0 || aaHeight <= 0) return false
         cancelAaGestureOnRouteChange()
+        main.removeCallbacks(directReturnFire)
+        directReturnGesture.reset()
         touchFt = false
         directAaSize = aaWidth to aaHeight
         directPlan = plan
@@ -231,14 +247,45 @@ class IccoaProjection(
     ) {
         if (!active || !directVideoActive) return
         cancelAaGestureOnRouteChange()
+        main.removeCallbacks(directReturnFire)
+        directReturnGesture.reset()
         directVideoActive = false
         directPlan = null
         directAaSize = null
         start(plan, onConfig, onTimedFrame)
     }
 
+    /** Return to FT launcher without tearing down the phone's AA connection. */
+    fun showFtHomeKeepingAa() = onMain {
+        if (!active || !state.value.aaOverlay) return@onMain
+        aaUiParked = true
+        mutableState.update { it.copy(aaOverlay = false) }
+        keys.tryEmit(3)
+        DiagLog.i("ICCOA", "DIRECT_FT_HOME_UI_SELECTED AA_session_kept=true")
+    }
+
     /** Direct H.264 has an AA-coded raster, NOT the removed FT Compose viewport. */
     private fun directTouch(raw: CarTouch) {
+        val gesture = directReturnGesture.observe(raw, android.os.SystemClock.uptimeMillis())
+        when (gesture) {
+            IccoaTwoFingerReturnGesture.Decision.START_HOLD -> {
+                cancelAaGestureOnRouteChange()
+                main.removeCallbacks(directReturnFire)
+                main.postDelayed(directReturnFire, directReturnGesture.holdMs)
+                return
+            }
+            IccoaTwoFingerReturnGesture.Decision.HOLDING -> return
+            IccoaTwoFingerReturnGesture.Decision.CONSUME -> {
+                if (!directReturnGesture.armed) main.removeCallbacks(directReturnFire)
+                return
+            }
+            IccoaTwoFingerReturnGesture.Decision.RESTART_PRIMARY -> {
+                main.removeCallbacks(directReturnFire)
+                directTouch(raw.copy(action = CarTouch.DOWN, x2 = -1, y2 = -1, index = 0))
+                return
+            }
+            IccoaTwoFingerReturnGesture.Decision.PASS -> Unit
+        }
         val plan = directPlan ?: return
         val (aaWidth, aaHeight) = directAaSize ?: return
         val session = AaHeadUnitService.current ?: return
@@ -301,6 +348,14 @@ class IccoaProjection(
     fun touch(action: Int, x: Int, y: Int) = touch(CarTouch(action, x, y))
     fun touch(raw: CarTouch) = onMain {
         if (!active) return@onMain
+        if (suppressReturnRelease) {
+            if (raw.action == CarTouch.DOWN) suppressReturnRelease = false
+            else {
+                if (raw.action == CarTouch.UP || raw.action == CarTouch.CANCEL)
+                    suppressReturnRelease = false
+                return@onMain
+            }
+        }
         display.noteTouch(raw.action)
         if (directVideoActive) {
             ignoreLetterboxGesture = false
@@ -661,12 +716,20 @@ class IccoaProjection(
     override fun startAa() = onMain {
         if (!active || IccoaTouchWelcome.awaiting) return@onMain
         cancelAaGestureOnRouteChange()
+        if (aaUiParked) {
+            aaUiParked = false
+            mutableState.update { it.copy(aaOverlay = true) }
+            onAaReturnRequested()
+            // If AA is already connected, re-use it; do not repeat wireless
+            // startup or re-pair on every FT -> AA switch.
+            if (AaHeadUnitService.current != null) return@onMain
+        }
         if (runCatching { context.packageManager.getPackageInfo(app.prefs.aaPackage, 0) }.isFailure) return@onMain
         hideMirror()
         val selected = aaVideoProfile
         if (selected?.applyToPrefs == true) {
-            // Direct always requests a standard CEA-sized AA frame; composited
-            // sessions continue to use the existing custom-aspect AA content.
+            // Both Direct and composited AA use one standard VIDEO/INPUT raster.
+            // The physical car aspect ratio is adapted by the viewport.
             app.prefs.aaWidth = selected.width
             app.prefs.aaHeight = selected.height
             app.prefs.aaFps = state.value.fps.coerceIn(1, 30)
@@ -681,10 +744,14 @@ class IccoaProjection(
         aaJob = scope.launch {
             AaHeadUnitService.state.collect { aa ->
                 val connected = aa.connected
-                val changed = mutableState.value.aaOverlay != connected
-                if (changed && !connected) cancelAaGestureOnRouteChange()
-                mutableState.update { it.copy(aaOverlay = connected) }
-                if (changed) onAaConnectionChanged(connected)
+                val visible = connected && !aaUiParked
+                val connectionChanged = lastAaConnected != connected
+                if (connectionChanged && !connected) cancelAaGestureOnRouteChange()
+                lastAaConnected = connected
+                mutableState.update { it.copy(aaOverlay = visible) }
+                // A visual return to FT must never look like an AA disconnect
+                // to the ICCOA GPS/audio owners; report actual session edges.
+                if (connectionChanged) onAaConnectionChanged(connected)
             }
         }
         aaStartJob?.cancel()
@@ -707,6 +774,10 @@ class IccoaProjection(
     }
 
     private fun stopAa() {
+        aaUiParked = false
+        lastAaConnected = false
+        directReturnGesture.reset()
+        main.removeCallbacks(directReturnFire)
         cancelAaGestureOnRouteChange()
         aaJob?.cancel()
         aaJob = null
@@ -772,6 +843,11 @@ class IccoaProjection(
 
     fun stop() = onMain { stopInternal() }
     private fun stopInternal() {
+        directReturnGesture.reset()
+        main.removeCallbacks(directReturnFire)
+        suppressReturnRelease = false
+        aaUiParked = false
+        lastAaConnected = false
         IccoaTouchWelcome.cancel()
         displayEpoch++
         directVideoActive = false

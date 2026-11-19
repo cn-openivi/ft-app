@@ -17,7 +17,9 @@ import java.util.concurrent.atomic.AtomicLong
 /** Owns only WFD sockets and bounded media queues; no CarLife service or framing. */
 internal class IccoaMediaTransport(
     private val network: Network,
+    private val local: String,
     private val peer: String,
+    private val networkCurrent: () -> Boolean,
     private val decryptInput: (ByteArray) -> ByteArray,
     private val onPlay: (IccoaVideoConfig) -> Unit,
     private val onPause: () -> Unit,
@@ -28,6 +30,7 @@ internal class IccoaMediaTransport(
     private val preferredDirectAaRaster: () -> Pair<Int, Int>? = { null }
 ) : AutoCloseable {
     private val closed = AtomicBoolean(false)
+    private val networkScope = IccoaMediaNetworkScope(local, peer, networkCurrent)
     private val rtpPacketCount = AtomicLong(0)
     private val rtpVideoFrames = AtomicLong(0)
     private val rtpCompositedFrames = AtomicLong(0)
@@ -53,9 +56,13 @@ internal class IccoaMediaTransport(
     /** Must complete before AuthConfirm tells the car our ports are ready. */
     fun start() {
         try {
-            rtspServer = ServerSocket().apply { reuseAddress = true; bind(InetSocketAddress(7236), 2) }
-            inputServer = IccoaInputServer(InetSocketAddress(4321), InetAddress.getByName(peer),
-                ::input, { DiagLog.i("ICCOA", it) })
+            check(networkScope.isCurrent()) { "Selected ICCOA Network replaced before media listen" }
+            rtspServer = ServerSocket().apply {
+                reuseAddress = true
+                bind(networkScope.listener(7236), 2)
+            }
+            inputServer = IccoaInputServer(networkScope.listener(4321), networkScope.peer,
+                ::input, { DiagLog.i("ICCOA", it) }, networkScope::isCurrent)
             executor.execute {
                 accept(rtspServer!!) { socket ->
                     val session = IccoaRtsp(socket, ::play, { onPause() }, onKeyframe,
@@ -84,9 +91,10 @@ internal class IccoaMediaTransport(
 
     private fun accept(server: ServerSocket, handler: (Socket) -> Unit) {
         try {
-            while (!closed.get()) {
+            while (!closed.get() && networkScope.isCurrent()) {
                 val socket = server.accept()
-                if (socket.inetAddress.hostAddress != peer) { socket.close(); continue }
+                if (!networkScope.isCurrent()) { socket.close(); return }
+                if (!networkScope.accepts(socket.inetAddress)) { socket.close(); continue }
                 DiagLog.i("ICCOA", "RTSP 7236 connected")
                 // RTSP owns one connection; a fresh session creates a fresh listener.
                 try { handler(socket) } finally { runCatching { socket.close() } }
@@ -96,29 +104,40 @@ internal class IccoaMediaTransport(
     }
 
     private fun play(config: IccoaVideoConfig) {
+        if (closed.get() || !networkScope.isCurrent()) return
         videoConfig = config
         // onPlay resumes the queue and requests one IDR; do not double-request.
         if (muxer != null) { onPlay(config); return }
-        val socket = Socket()
-        synchronized(this) {
-            if (closed.get()) { socket.close(); return }
-            videoSocket = socket
-        }
+        var socket: Socket? = null
+        var stage = "network-socket-create"
         try {
-            network.bindSocket(socket)
-            socket.tcpNoDelay = true
-            socket.sendBufferSize = 512 * 1024
-            socket.connect(InetSocketAddress(config.host, config.rtpPort), 4000)
-            val sender = IccoaTsMuxer(BufferedOutputStream(socket.getOutputStream(), 65536))
+            // The same Network that authenticated the OEM must create RTP.
+            // Never fall back to process-default (VPN/cellular) routing.
+            val pinned = network.socketFactory.createSocket()
+            socket = pinned
+            synchronized(this) {
+                if (closed.get() || !networkScope.isCurrent()) { pinned.close(); return }
+                videoSocket = pinned
+            }
+            stage = "tcp-connect"
+            pinned.tcpNoDelay = true
+            pinned.sendBufferSize = 512 * 1024
+            pinned.connect(InetSocketAddress(config.host, config.rtpPort), 4000)
+            if (closed.get() || !networkScope.isCurrent()) { pinned.close(); return }
+            stage = "rtp-stream-open"
+            val sender = IccoaTsMuxer(BufferedOutputStream(pinned.getOutputStream(), 65536))
             val encoder = IccoaAacEncoder(queue::audio, ::fail)
             synchronized(this) {
-                if (closed.get()) { encoder.close(); socket.close(); return }
+                if (closed.get() || !networkScope.isCurrent()) { encoder.close(); pinned.close(); return }
                 aac = encoder
                 muxer = sender
             }
             DiagLog.i("ICCOA", "WFD PLAY ${config.width}x${config.height}@${config.fps}; RTP/TCP ${config.rtpPort}")
-            onPlay(config)
-        } catch (e: Exception) { runCatching { socket.close() }; fail("RTP: ${e.javaClass.simpleName}") }
+            if (networkScope.isCurrent() && !closed.get()) onPlay(config)
+        } catch (e: Exception) {
+            runCatching { socket?.close() }
+            fail("RTP stage=$stage error=${e.javaClass.simpleName}")
+        }
     }
 
     fun configure(bytes: ByteArray) {
@@ -396,7 +415,9 @@ internal class IccoaMediaTransport(
         }
     }
 
-    private fun fail(reason: String) { if (!closed.get()) onClosed(reason) }
+    private fun fail(reason: String) {
+        if (!closed.get() && networkScope.isCurrent()) onClosed(reason)
+    }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
         DiagLog.i("ICCOA", "RTP CLOSE packets=${rtpPacketCount.get()} videoFrames=${rtpVideoFrames.get()} keyFrames=${rtpKeyFrames.get()} audioFrames=${rtpAudioFrames.get()}")
@@ -411,11 +432,13 @@ internal class IccoaMediaTransport(
 /** Balanced JSON objects can span TCP records; quoted braces do not delimit an object. */
 internal class IccoaInputJson(private val emit: (JSONObject) -> Unit) {
     private val buffer = StringBuilder()
+    private val utf8 = IccoaUtf8Frames()
     fun finish() {
+        utf8.finish()
         if (buffer.isNotBlank()) throw java.io.EOFException("Incomplete UIBC JSON")
     }
     fun accept(bytes: ByteArray) {
-        buffer.append(bytes.toString(Charsets.UTF_8))
+        buffer.append(utf8.accept(bytes))
         require(buffer.length <= 65536) { "UIBC object too large" }
         var depth = 0; var quoted = false; var escaped = false; var start = -1; var consumed = 0
         for (i in buffer.indices) {
