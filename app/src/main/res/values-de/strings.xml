@@ -502,7 +502,7 @@
     <string name="wireless_pair_connecting">Verbindung und Prüfung der Telefon-Apps…</string>
     <string name="wireless_pair_success">Telefon-Apps bereit</string>
     <string name="wireless_pair_failed">Kopplung fehlgeschlagen. Neuen Code in den Einstellungen anzeigen und erneut versuchen.</string>
-    <string name="wireless_pair_button">Entwicklereinstellungen zum Koppeln öffnen</string>
+    <string name="wireless_pair_button">Entwickleroptionen</string>
     <string name="wireless_pair_auto_hint">FT kann den Code einmal über den bereits aktiven Bedienungshilfendienst lesen. Alternativ direkt in der Benachrichtigung eingeben. Kein geteilter Bildschirm nötig.</string>
     <string name="wireless_pair_notifications">FT-Benachrichtigungen für Codeeingabe bei geöffneten Einstellungen zulassen</string>
     <string name="wireless_pair_progress">Kabellose Kopplung: %1$s</string>
@@ -538,8 +538,8 @@
     <string name="home_touch_calibration_step">Auf die Mitte des grünen Kreises tippen. Punkt %1$d von 4.</string>
     <string name="home_touch_calibration_body">Vier Zielpunkte auf dem Fahrzeugbildschirm kalibrieren horizontale und vertikale Berührungen.</string>
     <string name="home_touch_restart">Neu starten</string>
-    <string name="home_touch_start">X/Y auf Headunit kalibrieren</string>
-    <string name="home_touch_reset">Kalibrierung zurücksetzen</string>
+    <string name="home_touch_start">X/Y kalibrieren</string>
+    <string name="home_touch_reset">Zurücksetzen</string>
     <string name="home_yandex_guidance_title">Yandex Navigator-Sprachansagen</string>
     <string name="home_yandex_guidance_about">Android lässt FT Medienaudio aufnehmen, aber keine getrennten NAVIGATION_GUIDANCE-Hinweise. Video kann gespiegelt werden; Navi-Ansagen müssen über die Telefoneinstellungen an Fahrzeug-Bluetooth geleitet werden.</string>
     <string name="home_yandex_guidance_hint">Wenn das Telefon getrennte App-Audioausgabe unterstützt, Navi-Ansagen an Fahrzeug-Bluetooth senden. Bezeichnungen und Verfügbarkeit variieren. Hörbare Ansagen prüfen.</string>

@@ -502,7 +502,7 @@
     <string name="wireless_pair_connecting">Connexion et vérification des applications…</string>
     <string name="wireless_pair_success">Applications du téléphone prêtes</string>
     <string name="wireless_pair_failed">Échec de l’association. Ouvrez un nouveau code dans les paramètres et réessayez.</string>
-    <string name="wireless_pair_button">Ouvrir les options développeur pour l’association</string>
+    <string name="wireless_pair_button">Options développeur</string>
     <string name="wireless_pair_auto_hint">FT peut lire une fois le code grâce au service d’accessibilité déjà activé. Sinon, saisissez-le dans la notification. Aucun écran partagé nécessaire.</string>
     <string name="wireless_pair_notifications">Autorisez les notifications FT pour saisir le code sans fermer les paramètres</string>
     <string name="wireless_pair_progress">Association sans fil : %1$s</string>
@@ -538,8 +538,8 @@
     <string name="home_touch_calibration_step">Touchez le centre du cercle vert sur l’écran du véhicule. Point %1$d sur 4.</string>
     <string name="home_touch_calibration_body">Quatre cibles sur l’écran du véhicule étalonnent les touches horizontales et verticales.</string>
     <string name="home_touch_restart">Recommencer</string>
-    <string name="home_touch_start">Étalonner X/Y sur l’unité principale</string>
-    <string name="home_touch_reset">Réinitialiser l’étalonnage</string>
+    <string name="home_touch_start">Étalonner X/Y</string>
+    <string name="home_touch_reset">Réinitialiser</string>
     <string name="home_yandex_guidance_title">Guidage vocal Yandex Navigator</string>
     <string name="home_yandex_guidance_about">Android autorise FT à capturer l’audio média, mais pas les consignes NAVIGATION_GUIDANCE isolées. La vidéo peut être projetée ; les indications vocales doivent être dirigées vers le Bluetooth du véhicule dans les réglages du téléphone.</string>
     <string name="home_yandex_guidance_hint">Si le téléphone gère le son séparé par application, dirigez les consignes vers le Bluetooth du véhicule. Les intitulés et disponibilités varient. Vérifiez qu’elles sont audibles.</string>

@@ -524,7 +524,7 @@
     <string name="wireless_pair_connecting">Connecting and verifying phone apps…</string>
     <string name="wireless_pair_success">Phone apps are ready</string>
     <string name="wireless_pair_failed">Pairing failed. Open a new code in Settings and retry.</string>
-    <string name="wireless_pair_button">Open developer settings for pairing</string>
+    <string name="wireless_pair_button">خيارات المطوّر</string>
     <string name="wireless_pair_auto_hint">FT can read the code once using its already-enabled Accessibility service. Otherwise enter it directly in the notification. No split screen needed.</string>
     <string name="wireless_pair_notifications">Enable FT notifications to enter the code while Settings stays open</string>
     <string name="wireless_pair_progress">Wireless pairing: %1$s</string>
@@ -560,8 +560,8 @@
     <string name="home_touch_calibration_step">Touch the center of the green circle on the vehicle screen. Point %1$d of 4.</string>
     <string name="home_touch_calibration_body">Four targets on the vehicle screen calibrate horizontal and vertical touches.</string>
     <string name="home_touch_restart">Start again</string>
-    <string name="home_touch_start">Calibrate X/Y on head unit</string>
-    <string name="home_touch_reset">Reset calibration</string>
+    <string name="home_touch_start">معايرة X/Y</string>
+    <string name="home_touch_reset">إعادة الضبط</string>
     <string name="home_yandex_guidance_title">Yandex Navigator voice guidance</string>
     <string name="home_yandex_guidance_about">Android allows FT to capture media audio, but not isolated NAVIGATION_GUIDANCE hints. Video can be mirrored; navigation prompts must be routed to the car Bluetooth through phone settings.</string>
     <string name="home_yandex_guidance_hint">If the phone supports separate app audio, route navigation prompts to car Bluetooth. Names and availability vary by phone. Verify audible directions.</string>

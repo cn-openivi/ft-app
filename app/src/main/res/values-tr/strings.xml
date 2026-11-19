@@ -502,7 +502,7 @@
     <string name="wireless_pair_connecting">Bağlanıyor ve telefon uygulamaları doğrulanıyor…</string>
     <string name="wireless_pair_success">Telefon uygulamaları hazır</string>
     <string name="wireless_pair_failed">Eşleştirme başarısız. Ayarlar’da yeni kod açıp tekrar deneyin.</string>
-    <string name="wireless_pair_button">Eşleştirme için geliştirici ayarlarını aç</string>
+    <string name="wireless_pair_button">Geliştirici ayarları</string>
     <string name="wireless_pair_auto_hint">FT, etkinleştirilmiş erişilebilirlik hizmetiyle kodu bir kez okuyabilir. İsterseniz kodu bildirim üzerinden elle girin. Bölünmüş ekran gerekmez.</string>
     <string name="wireless_pair_notifications">Ayarlar açıkken kodu girmek için FT bildirimlerine izin verin</string>
     <string name="wireless_pair_progress">Kablosuz eşleştirme: %1$s</string>
@@ -538,8 +538,8 @@
     <string name="home_touch_calibration_step">Araç ekranındaki yeşil dairenin merkezine dokunun. %1$d. nokta / 4.</string>
     <string name="home_touch_calibration_body">Araç ekranındaki dört hedef yatay ve dikey dokunmaları kalibre eder.</string>
     <string name="home_touch_restart">Baştan başlat</string>
-    <string name="home_touch_start">Araç ünitesinde X/Y kalibrasyonu</string>
-    <string name="home_touch_reset">Kalibrasyonu sıfırla</string>
+    <string name="home_touch_start">X/Y kalibre et</string>
+    <string name="home_touch_reset">Sıfırla</string>
     <string name="home_yandex_guidance_title">Yandex Navigator sesli yönlendirme</string>
     <string name="home_yandex_guidance_about">Android FT’nin medya sesini yakalamasına izin verir, ancak ayrı NAVIGATION_GUIDANCE uyarılarını yakalamaya izin vermez. Video yansıtılabilir; yol tarifleri telefon ayarlarından araç Bluetooth’una yönlendirilmelidir.</string>
     <string name="home_yandex_guidance_hint">Telefon ayrı uygulama sesi destekliyorsa navigasyon sesini araç Bluetooth’una yönlendirin. Adlar ve kullanılabilirlik telefona göre değişir. Sesli tariflerin duyulduğunu kontrol edin.</string>

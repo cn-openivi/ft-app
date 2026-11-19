@@ -324,7 +324,7 @@ private fun PageContent(page: SettingsPage) {
                                 screen.phase == CarControls.Phase.PROJECTING &&
                                 !screen.aaOverlay && !screen.mirroring) {
                             Text(if (carCalibration.step in 1..4)
-                                stringResource(R.string.home_touch_calibration_step, carCalibration.step)
+                                stringResource(R.string.iccoa_mirror_calibration_step, carCalibration.step)
                                 else stringResource(R.string.home_touch_start))
                         }
                         OutlinedButton(onClick = { IccoaService.resetTouchCalibration() },
