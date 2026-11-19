@@ -25,6 +25,21 @@ internal object CarPlayRtspCodec {
         override fun toString(): String = "RtspReply(status=" + status +
             ", cseq=" + cSeq + ", bodyBytes=" + body.size + ", redacted)"
     }
+    // A 2xx RTSP reply is merely one successful CONTROL transaction.
+    // It never proves AirPlay pairing, encryption, media or HU ACTIVE.
+    enum class ControlAcceptance {
+        PROVISIONAL_2XX_NOT_AUTHENTICATED,
+        AUTH_CHALLENGE_UNSUPPORTED,
+        NON_SUCCESS_REJECTED
+    }
+
+    fun controlAcceptance(reply: Reply): ControlAcceptance = when {
+        reply.status == 401 || reply.status == 403 ->
+            ControlAcceptance.AUTH_CHALLENGE_UNSUPPORTED
+        reply.success -> ControlAcceptance.PROVISIONAL_2XX_NOT_AUTHENTICATED
+        else -> ControlAcceptance.NON_SUCCESS_REJECTED
+    }
+
     sealed class Parse {
         object NeedMore : Parse()
         data class Accepted(val reply: Reply, val consumed: Int) : Parse()
@@ -85,7 +100,12 @@ internal object CarPlayRtspCodec {
                 headers.putIfAbsent(key, value) != null)
                 return Parse.Rejected(Reject.MALFORMED_HEADERS)
         }
-        val number = headers["cseq"]?.toIntOrNull()
+        val rawSeq = headers["cseq"]
+        // Do not accept ambiguous +7/007/whitespace CSeq values. Match the
+        // canonical positive decimal we actually emitted on this socket.
+        val number = if (rawSeq != null &&
+            Regex("[1-9][0-9]{0,9}").matches(rawSeq))
+            rawSeq.toIntOrNull() else null
         if (number != expectedCSeq) return Parse.Rejected(Reject.MISSING_OR_WRONG_CSEQ)
         val len = headers["content-length"]
         val te = headers["transfer-encoding"]
@@ -95,7 +115,9 @@ internal object CarPlayRtspCodec {
                 return Parse.Rejected(Reject.CONFLICTING_BODY_FRAMING)
             return chunks(bytes, from, status, number)
         }
-        val n = len?.toLongOrNull() ?: if (len == null) 0L else -1L
+        val n = if (len == null) 0L else if (
+            Regex("(?:0|[1-9][0-9]{0,9})").matches(len)
+        ) len.toLongOrNull() ?: -1L else -1L
         if (n !in 0L..MAX_BODY.toLong()) return Parse.Rejected(Reject.UNBOUNDED_BODY)
         if (bytes.size - from < n) return Parse.NeedMore
         val total = from + n.toInt()

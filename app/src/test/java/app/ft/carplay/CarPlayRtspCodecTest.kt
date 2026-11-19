@@ -83,6 +83,37 @@ class CarPlayRtspCodecTest {
             is CarPlayRtspCodec.Parse.NeedMore)
     }
 
+    @Test fun statusIsNotAuthenticationAndPeerChallengesFailClosed() {
+        val cases = listOf(
+            200 to CarPlayRtspCodec.ControlAcceptance.PROVISIONAL_2XX_NOT_AUTHENTICATED,
+            204 to CarPlayRtspCodec.ControlAcceptance.PROVISIONAL_2XX_NOT_AUTHENTICATED,
+            301 to CarPlayRtspCodec.ControlAcceptance.NON_SUCCESS_REJECTED,
+            401 to CarPlayRtspCodec.ControlAcceptance.AUTH_CHALLENGE_UNSUPPORTED,
+            403 to CarPlayRtspCodec.ControlAcceptance.AUTH_CHALLENGE_UNSUPPORTED,
+            500 to CarPlayRtspCodec.ControlAcceptance.NON_SUCCESS_REJECTED
+        )
+        cases.forEach { (status, expected) ->
+            val reply = ok("RTSP/1.0 $status Result\r\nCSeq: 3\r\n\r\n", 3).reply
+            assertEquals(expected, c.controlAcceptance(reply))
+        }
+    }
+
+    @Test fun noncanonicalCSeqAndContentLengthCannotBeAccepted() {
+        for (bad in listOf("+4", "04", "-4", "0x4", "4 4")) {
+            val parsed = c.parseSingleReply(b("RTSP/1.0 200 OK\r\nCSeq: $bad\r\n\r\n"), 4)
+            assertEquals(CarPlayRtspCodec.Reject.MISSING_OR_WRONG_CSEQ,
+                (parsed as CarPlayRtspCodec.Parse.Rejected).reason)
+        }
+        for (bad in listOf("+2", "02", "-2", "0x2", "99999999999")) {
+            val parsed = c.parseSingleReply(
+                b("RTSP/1.0 200 OK\r\nCSeq: 4\r\nContent-Length: $bad\r\n\r\n"),
+                4
+            )
+            assertEquals(CarPlayRtspCodec.Reject.UNBOUNDED_BODY,
+                (parsed as CarPlayRtspCodec.Parse.Rejected).reason)
+        }
+    }
+
     @Test fun bodyHasExplicitBoundedContentType() {
         val body = b("SECRET")
         val request = c.request("POST","/feedback",1,body,"application/octet-stream")!!

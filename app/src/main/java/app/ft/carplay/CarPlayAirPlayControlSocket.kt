@@ -29,7 +29,8 @@ internal object CarPlayAirPlayControlSocket {
     enum class Failure {
         AUTH_NOT_VERIFIED, DISCOVERY_NOT_VERIFIED, INVALID_ENDPOINT,
         WRONG_NETWORK, MAIN_THREAD_FORBIDDEN, CONNECT_FAILED, REQUEST_INVALID,
-        TRANSACTION_FAILED, MALFORMED_REPLY, REPLY_TOO_LARGE, CLOSED
+        TRANSACTION_FAILED, MALFORMED_REPLY, REPLY_TOO_LARGE,
+        AUTH_CHALLENGE_UNSUPPORTED, PEER_REJECTED, CLOSED
     }
 
     sealed class Opening {
@@ -109,9 +110,10 @@ internal object CarPlayAirPlayControlSocket {
                 close()
                 return Transaction.Failed(Failure.TRANSACTION_FAILED)
             }
-            val seq = nextCSeq++
+            val seq = nextCSeq
             val bytes = CarPlayRtspCodec.request(method,path,seq,body,contentType)
                 ?: return Transaction.Failed(Failure.REQUEST_INVALID)
+            nextCSeq++
             try {
                 socket.getOutputStream().write(bytes)
                 socket.getOutputStream().flush()
@@ -122,8 +124,24 @@ internal object CarPlayAirPlayControlSocket {
                     if (n <= 0) break
                     received.write(buf,0,n)
                     when (val decoded = CarPlayRtspCodec.parseSingleReply(received.toByteArray(),seq)) {
-                        is CarPlayRtspCodec.Parse.Accepted ->
-                            return Transaction.Complete(decoded.reply)
+                        is CarPlayRtspCodec.Parse.Accepted -> {
+                            // Never feed 401/403/challenge or error responses
+                            // into a caller that might treat Complete as auth.
+                            // A genuine challenge-response exchange needs a
+                            // separate, approved protocol implementation.
+                            when (CarPlayRtspCodec.controlAcceptance(decoded.reply)) {
+                                CarPlayRtspCodec.ControlAcceptance.PROVISIONAL_2XX_NOT_AUTHENTICATED ->
+                                    return Transaction.Complete(decoded.reply)
+                                CarPlayRtspCodec.ControlAcceptance.AUTH_CHALLENGE_UNSUPPORTED -> {
+                                    close()
+                                    return Transaction.Failed(Failure.AUTH_CHALLENGE_UNSUPPORTED)
+                                }
+                                CarPlayRtspCodec.ControlAcceptance.NON_SUCCESS_REJECTED -> {
+                                    close()
+                                    return Transaction.Failed(Failure.PEER_REJECTED)
+                                }
+                            }
+                        }
                         is CarPlayRtspCodec.Parse.Rejected -> {
                             close()
                             return Transaction.Failed(Failure.MALFORMED_REPLY)
