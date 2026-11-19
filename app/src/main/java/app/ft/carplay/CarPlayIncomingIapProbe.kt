@@ -41,6 +41,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         NO_IAP2_LINK_FRAME, LINK_ACK_NOT_OBSERVED,
         CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
         CARPLAY_START_SESSION_MALFORMED, CARPLAY_START_SESSION_UNKNOWN_SCHEMA,
+        FLAT_WIFI_INFO_STRUCTURE_OBSERVED, FLAT_WIFI_INFO_UNVERIFIED,
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
@@ -280,6 +281,17 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                                 Iap2CarPlayStartSchema.Result.UNKNOWN_ONLY ->
                                                     Observation.CARPLAY_START_SESSION_UNKNOWN_SCHEMA
                                                 else -> Observation.CARPLAY_START_SESSION_MALFORMED
+                                            }
+                                        } else if (message.id ==
+                                            Iap2ControlSessionCodec.ACCESSORY_WIFI_CONFIG
+                                        ) {
+                                            // Source-only flat 0x5703 observation. The
+                                            // actual Toyota credential/security profile
+                                            // remains unverified; do not use or log bytes.
+                                            when (CarPlayFlatWifiInfoInspector.inspect(message).shape) {
+                                                CarPlayFlatWifiInfoInspector.Shape.STRUCTURE_OBSERVED_ONLY ->
+                                                    Observation.FLAT_WIFI_INFO_STRUCTURE_OBSERVED
+                                                else -> Observation.FLAT_WIFI_INFO_UNVERIFIED
                                             }
                                         } else {
                                             Observation.CONTROL_MESSAGE_OBSERVED
