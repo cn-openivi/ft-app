@@ -390,11 +390,15 @@ class CarLifeSession(
                 val pub = ProtoReader(c.payload).string(1) ?: ""
                 val request = crypto.aesKeyRequest(pub)
                 if (request == null) {
-                    // Invalid key is a fatal negotiation failure, including
-                    // unsolicited RSA responses. Let the link reader's normal
-                    // error-close path release the session; never accept
-                    // plaintext or send ENCRYPT_READY after this failure.
-                    throw IllegalStateException("Baidu required AES but OEM RSA key was invalid")
+                    // An unsolicited invalid RSA response is not a completed
+                    // handshake. If encryption was required or probed, close
+                    // the link instead of silently falling back to plaintext.
+                    DiagLog.w(tag, "Baidu OEM RSA public key invalid; AES not negotiated")
+                    if (crypto.started) {
+                        link.stop()
+                        closed("Baidu required encryption but OEM RSA key was invalid")
+                    }
+                    return
                 } else {
                     crypto.armIncoming()
                     if (cmd(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST, ProtoWriter().string(1, request).toByteArray())) {
