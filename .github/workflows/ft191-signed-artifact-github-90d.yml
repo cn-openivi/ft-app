@@ -42,6 +42,12 @@ jobs:
           echo 'RELEASE=NEVER'
           echo 'SIGNING_KEYS=NOT_REQUIRED'
 
+      - name: JDK 17 for Android SDK manager
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
+        with:
+          distribution: temurin
+          java-version: '17'
+
       - name: Android SDK for offline signature verification
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
         with:
@@ -84,7 +90,9 @@ jobs:
           grep -Fxq 'FIELD=NOT_TESTED' PROVENANCE.txt
           grep -Fxq 'RELEASE=NOT_AUTHORIZED' PROVENANCE.txt
           BT="$ANDROID_HOME/build-tools/36.0.0"
-          "$BT/aapt" dump badging "$apk" | grep -Fq "package: name='app.ft.xa60' versionCode='191'"
+          "$BT/aapt" dump badging "$apk" > current-badging.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='191'" current-badging.txt
+          rm -f current-badging.txt
           "$BT/apksigner" verify --verbose --print-certs "$apk" > cert.txt
           grep -iq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' cert.txt
           rm -f cert.txt
