@@ -728,8 +728,8 @@ class IccoaProjection(
         hideMirror()
         val selected = aaVideoProfile
         if (selected?.applyToPrefs == true) {
-            // Direct always requests a standard CEA-sized AA frame; composited
-            // sessions continue to use the existing custom-aspect AA content.
+            // Both Direct and composited AA use one standard VIDEO/INPUT raster.
+            // The physical car aspect ratio is adapted by the viewport.
             app.prefs.aaWidth = selected.width
             app.prefs.aaHeight = selected.height
             app.prefs.aaFps = state.value.fps.coerceIn(1, 30)

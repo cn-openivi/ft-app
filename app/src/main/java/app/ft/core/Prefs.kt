@@ -52,9 +52,12 @@ class Prefs(context: Context) {
 
     var aaPort: Int get() = int("aaPort", 5288); set(v) = set("aaPort", v)
     var aaSelfPort: Int get() = int("aaSelfPort", 5277); set(v) = set("aaSelfPort", v)
-    // Effective AA wire raster: this remains a verified 480p/720p/1080p mode.
-    var aaWidth: Int get() = int("aaWidth", 1280); set(v) = set("aaWidth", v)
-    var aaHeight: Int get() = int("aaHeight", 720); set(v) = set("aaHeight", v)
+    // Old stored 1920x1008 and other custom canvases must never escape into
+    // SDP, MediaCodec or UIBC. Preserve the owner's quality preference.
+    private fun aaStandardRaster(): Pair<Int, Int> =
+        app.ft.aa.AaProtocol.standardSize(int("aaWidth", 1280), int("aaHeight", 720))
+    var aaWidth: Int get() = aaStandardRaster().first; set(v) = set("aaWidth", v)
+    var aaHeight: Int get() = aaStandardRaster().second; set(v) = set("aaHeight", v)
     // Distinct UI-requested tier; a higher-quality request may be capped by
     // the verified AA protocol without falsely changing video/touch geometry.
     var aaRequestedQualityTier: String

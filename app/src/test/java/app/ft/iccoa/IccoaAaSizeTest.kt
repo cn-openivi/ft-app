@@ -6,36 +6,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class IccoaAaSizeTest {
-    @Test fun xa60FitsTheSupportedFrameAndKeepsItsAspectRatio() {
-        val (width, height) = IccoaAaSize.fit(2422, 1272)
-        assertEquals(1920 to 1008, width to height)
-        assertEquals(2422.0 / 1272, width.toDouble() / height, 0.002)
-        val layout = AaVideoLayout.forFrame(width, height, 1920, 1080)
-        assertEquals(width, layout.contentWidth)
-        assertEquals(height, layout.contentHeight)
-        assertEquals(1080f / 1008, layout.scaleY, 0.0001f)
+    @Test fun xa60SelectsFullHdRatherThanLegacy1008() {
+        val (w, h) = IccoaAaSize.fit(2422, 1272)
+        assertEquals(1920 to 1080, w to h)
+        val layout = AaVideoLayout.forFrame(w, h, 1920, 1080)
+        assertEquals(1920 to 1080, layout.contentWidth to layout.contentHeight)
+        assertEquals(1f, layout.scaleY, 0f)
     }
 
-    @Test fun supportedCarSizesArePreserved() {
-        for (size in listOf(800 to 480, 1280 to 720, 1920 to 1080, 1920 to 720)) {
-            assertEquals(size, IccoaAaSize.fit(size.first, size.second))
+    @Test fun carAspectsCannotProduceCustomAaWireSizes() {
+        val verified = setOf(800 to 480, 1280 to 720, 1920 to 1080)
+        for ((w, h) in listOf(800 to 480, 1280 to 720, 1920 to 1080,
+            1920 to 1008, 1920 to 720, 2422 to 1272, 3840 to 2160,
+            1080 to 2160, 3840 to 960, 320 to 240)) {
+            assertTrue("not a supported AA mode", IccoaAaSize.fit(w, h) in verified)
         }
+        assertEquals(1920 to 1080, IccoaAaSize.fit(1920, 720))
+        assertEquals(1920 to 1080, IccoaAaSize.fit(3840, 960))
     }
 
-    @Test fun tallAndUltraWideScreensFitBothLimits() {
-        assertEquals(1920 to 1080, IccoaAaSize.fit(3840, 2160))
-        assertEquals(540 to 1080, IccoaAaSize.fit(1080, 2160))
-        assertEquals(1920 to 480, IccoaAaSize.fit(3840, 960))
-    }
-
-    @Test fun xa60TouchesFollowThePictureInsteadOfTheWholeCarDisplay() {
-        // 1920x1080 AA picture fitted inside the 2422x1272 car display in build 142.
-        val viewport = AaViewport(80, 0, 2261, 1272)
-        assertFalse(viewport.contains(40, 600))
-        assertEquals(0 to 0, viewport.map(80, 0, 2422, 1272))
-        assertEquals(1210 to 636, viewport.map(1210, 636, 2422, 1272))
-        // Once AA is matched to 1920x1008, the same car centre maps into that input range.
-        assertEquals(960 to 504, AaViewport(0, 0, 2422, 1272).map(1211, 636, 1920, 1008))
-        assertEquals(1919 to 1007, AaViewport(0, 0, 2422, 1272).map(2421, 1271, 1920, 1008))
+    @Test fun standardFullHdTouchViewportCoversAllInputCorners() {
+        val vp = AaViewport(0, 0, 2422, 1272)
+        assertEquals(960 to 540, vp.map(1211, 636, 1920, 1080))
+        assertEquals(1919 to 1079, vp.map(2421, 1271, 1920, 1080))
     }
 }

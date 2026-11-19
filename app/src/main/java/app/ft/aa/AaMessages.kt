@@ -32,9 +32,9 @@ object AaMessages {
             1280 -> AaProtocol.RES_1280x720
             else -> AaProtocol.RES_800x480
         }
-        val marginW = (fullW - width).coerceAtLeast(0)
-        val marginH = (fullH - height).coerceAtLeast(0)
-        val effectiveDpi = AaUiDensity.effective(density, width, height)
+        // One full AA raster for both H.264 VIDEO and INPUT/touch coordinates.
+        // Never advertise fake 72px padding from legacy 1920x1008.
+        val effectiveDpi = AaUiDensity.effective(density, fullW, fullH)
         val video = ProtoWriter()
             .int32(1, AaProtocol.CH_VIDEO)
             .message(
@@ -44,8 +44,8 @@ object AaMessages {
                         4, ProtoWriter()
                             .enum(1, resolution)
                             .enum(2, if (fps >= 60) AaProtocol.FPS_60 else AaProtocol.FPS_30)
-                            .uint32(3, marginW)
-                            .uint32(4, marginH)
+                            .uint32(3, 0)
+                            .uint32(4, 0)
                             .uint32(5, effectiveDpi)
                     )
                     .bool(5, true)
@@ -56,7 +56,7 @@ object AaMessages {
             .message(
                 4, ProtoWriter()
                     .packedInts(1, keycodes)
-                    .message(2, ProtoWriter().int32(1, width).int32(2, height).int32(3, 1))
+                    .message(2, ProtoWriter().int32(1, fullW).int32(2, fullH).int32(3, 1))
             )
         // Advertise supported sensor types; Android Auto chooses subscriptions.
         // Repeated field order is not a mechanism to force car GPS selection.
