@@ -111,6 +111,46 @@ class CarPlayAvcPassthroughTest {
             gate.offer(pframe,200_104L) { _,_ -> true })
     }
 
+
+    @Test fun sourceCountersSeparateRejectedFramesFromAcceptedSinkConsumption() {
+        val gate = CarPlayAvcPassthrough(maxDecodeGapUs = 100_000L)
+        gate.configure(csd,30,peer)
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR,
+            gate.offer(pframe,1L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(idr,100L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.BACKPRESSURE_DROP,
+            gate.offer(pframe,110L) { _,_ -> false })
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR_AFTER_GAP,
+            gate.offer(pframe,200_101L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.TIMESTAMP_INVALID,
+            gate.offer(idr,90L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(idr,200_102L) { _,_ -> true })
+        val c = gate.counters()
+        assertEquals(6L, c.offeredAUs)
+        assertEquals(2L, c.acceptedBySinkAUs)
+        assertEquals(1L, c.sinkBackpressureDrops)
+        assertEquals(2L, c.withheldForIdr)
+        // Backpressure already invalidated IDR: no separate continuity
+        // episode is counted for subsequent gap while waiting for IDR.
+        assertEquals(0L, c.ptsDiscontinuities)
+        assertEquals(1L, c.rejectedPts)
+        gate.reset()
+        assertEquals(0L, gate.counters().offeredAUs)
+    }
+
+    @Test fun sourceCountersTrackOneLongGapAcrossMultipleRejectedPFrames() {
+        val gate = CarPlayAvcPassthrough(maxDecodeGapUs = 100_000L)
+        gate.configure(csd,30,peer)
+        gate.offer(idr,1L) { _,_ -> true }
+        gate.offer(pframe,200_002L) { _,_ -> true }
+        gate.offer(pframe,200_003L) { _,_ -> true }
+        assertEquals(1L, gate.counters().ptsDiscontinuities)
+        assertEquals(2L, gate.counters().withheldForIdr)
+        gate.offer(idr,200_004L) { _,_ -> true }
+        assertEquals(2L, gate.counters().acceptedBySinkAUs)
+    }
     @Test fun duplicatedTimestampsAndDisconnectResetAreSafe() {
         val gate = CarPlayAvcPassthrough()
         gate.configure(csd,30,peer)
