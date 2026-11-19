@@ -12,13 +12,19 @@ import org.mockito.Mockito.*
 import java.security.KeyPairGenerator
 
 class CarLifeEncryptionSessionTest {
-    @Test fun anUnsolicitedOrFailedKeyExchangeDoesNotSendEncryptReady() = runTest {
+    @Test fun unsolicitedAckIsIgnoredAndInvalidRequiredRsaKeyFailsClosed() = runTest {
         CarLifeCryptoTest.withBase64 {
             val link = TestLink()
             session(link, backgroundScope)
             link.command(CarLifeProtocol.CMD_HU_AES_REC_RESPONSE)
-            link.command(CarLifeProtocol.CMD_HU_RSA_PUBLIC_KEY_RESPONSE, keyPayload("bad key"))
-            link.command(CarLifeProtocol.CMD_HU_AES_REC_RESPONSE)
+            // The old expectation allowed the failed RSA exchange to continue
+            // as plaintext. This is unsafe once HU requested encrypted data.
+            // Assert an explicit failure, not merely absence of ENCRYPT_READY.
+            val failure = assertThrows(IllegalStateException::class.java) {
+                link.command(CarLifeProtocol.CMD_HU_RSA_PUBLIC_KEY_RESPONSE, keyPayload("bad key"))
+            }
+            assertTrue(failure.message.orEmpty().contains("required AES"))
+            assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST))
             assertFalse(link.sent.contains(CarLifeProtocol.CMD_MD_ENCRYPT_READY))
         }
     }
