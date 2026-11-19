@@ -58,23 +58,45 @@ internal object CarPlaySingleBondPolicy {
 internal class CarPlayCarrierCallEvidence {
     enum class Direction { INCOMING, OUTGOING }
     enum class Status {
-        NOT_VERIFIED, WRONG_HFP_PEER, NO_CARPLAY_SESSION,
+        NOT_VERIFIED, SESSION_EVIDENCE_MISSING, STALE_OR_REVOKED_SESSION,
+        WRONG_HFP_PEER, NO_CARPLAY_SESSION,
         MISSING_REAL_OPERATOR_CALL, MISSING_TWOWAY_SPEECH,
         INCOMING_VERIFIED_ONLY, OUTGOING_VERIFIED_ONLY, BOTH_DIRECTIONS_VERIFIED
     }
 
+    /**
+     * sessionGeneration must come from the same genuinely observed CarPlay HU
+     * session lifecycle, not a synthesized per-call counter. Boolean speech
+     * evidence must be independently observed by the final field tester;
+     * this policy does not sniff or intercept protected carrier audio.
+     */
     data class Observation(
         val direction: Direction,
         val actualCarrierCall: Boolean,
         val carPlayHuActive: Boolean,
         val hfpPeer: CarPlaySingleBondPolicy.Result,
         val micToFarEndHeard: Boolean,
-        val farEndToToyotaHeard: Boolean
+        val farEndToToyotaHeard: Boolean,
+        val sessionGeneration: Long = 0L
     )
+
     private val approved = mutableSetOf<Direction>()
+    private var activeGeneration = 0L
+    private var revokedThroughGeneration = 0L
     private var lastFailure = Status.NOT_VERIFIED
 
+    @Synchronized
     fun record(observation: Observation): Status {
+        val id = observation.sessionGeneration
+        if (id <= 0L) return Status.SESSION_EVIDENCE_MISSING
+        if (id <= revokedThroughGeneration || id < activeGeneration)
+            return Status.STALE_OR_REVOKED_SESSION
+        if (id > activeGeneration) {
+            activeGeneration = id
+            approved.clear() // Never combine incoming and outgoing across reconnect.
+            lastFailure = Status.NOT_VERIFIED
+        }
+
         val failure = when {
             observation.hfpPeer != CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU ->
                 Status.WRONG_HFP_PEER
@@ -85,13 +107,17 @@ internal class CarPlayCarrierCallEvidence {
             else -> null
         }
         if (failure != null) {
+            // A failed later call must withdraw a previous positive BOTH proof.
+            approved.clear()
             lastFailure = failure
             return failure
         }
         approved.add(observation.direction)
+        lastFailure = Status.NOT_VERIFIED
         return status()
     }
 
+    @Synchronized
     fun status(): Status {
         if (approved.isEmpty()) return lastFailure
         return when (approved) {
@@ -101,7 +127,18 @@ internal class CarPlayCarrierCallEvidence {
         }
     }
 
+    @Synchronized
+    fun onSessionLost(generation: Long) {
+        if (generation != activeGeneration || generation <= 0L) return
+        revokedThroughGeneration = maxOf(revokedThroughGeneration, generation)
+        approved.clear()
+        lastFailure = Status.NOT_VERIFIED
+    }
+
+    @Synchronized
     fun reset() {
+        revokedThroughGeneration = maxOf(revokedThroughGeneration, activeGeneration)
+        activeGeneration = 0L
         approved.clear()
         lastFailure = Status.NOT_VERIFIED
     }

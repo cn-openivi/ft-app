@@ -93,7 +93,7 @@ class Iap2Ft200SafetyPolicyTest {
         val hfp = CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU
         val oneWay = CarPlayCarrierCallEvidence.Observation(
             CarPlayCarrierCallEvidence.Direction.INCOMING, true, true, hfp,
-            micToFarEndHeard = false, farEndToToyotaHeard = true)
+            micToFarEndHeard = false, farEndToToyotaHeard = true, sessionGeneration = 7L)
         assertEquals(CarPlayCarrierCallEvidence.Status.MISSING_TWOWAY_SPEECH,
             evidence.record(oneWay))
         val correct = oneWay.copy(micToFarEndHeard = true)
@@ -104,6 +104,60 @@ class Iap2Ft200SafetyPolicyTest {
                 direction = CarPlayCarrierCallEvidence.Direction.OUTGOING)))
         evidence.reset()
         assertEquals(CarPlayCarrierCallEvidence.Status.NOT_VERIFIED, evidence.status())
+    }
+
+    @Test fun carrierEvidenceCannotCombineCallsAcrossReconnect() {
+        val evidence = CarPlayCarrierCallEvidence()
+        val hfp = CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU
+        val first = CarPlayCarrierCallEvidence.Observation(
+            CarPlayCarrierCallEvidence.Direction.INCOMING, true, true, hfp,
+            micToFarEndHeard = true, farEndToToyotaHeard = true,
+            sessionGeneration = 20L)
+        assertEquals(CarPlayCarrierCallEvidence.Status.INCOMING_VERIFIED_ONLY,
+            evidence.record(first))
+        val newSession = first.copy(
+            direction = CarPlayCarrierCallEvidence.Direction.OUTGOING,
+            sessionGeneration = 21L)
+        assertEquals(CarPlayCarrierCallEvidence.Status.OUTGOING_VERIFIED_ONLY,
+            evidence.record(newSession))
+        assertEquals(CarPlayCarrierCallEvidence.Status.STALE_OR_REVOKED_SESSION,
+            evidence.record(first))
+        assertEquals(CarPlayCarrierCallEvidence.Status.OUTGOING_VERIFIED_ONLY,
+            evidence.status())
+    }
+
+    @Test fun failedFollowupCallWithdrawsEarlierAcceptance() {
+        val evidence = CarPlayCarrierCallEvidence()
+        val hfp = CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU
+        val verified = CarPlayCarrierCallEvidence.Observation(
+            CarPlayCarrierCallEvidence.Direction.INCOMING, true, true, hfp,
+            micToFarEndHeard = true, farEndToToyotaHeard = true, sessionGeneration = 30L)
+        evidence.record(verified)
+        assertEquals(CarPlayCarrierCallEvidence.Status.MISSING_TWOWAY_SPEECH,
+            evidence.record(verified.copy(
+                direction = CarPlayCarrierCallEvidence.Direction.OUTGOING,
+                farEndToToyotaHeard = false)))
+        assertEquals(CarPlayCarrierCallEvidence.Status.MISSING_TWOWAY_SPEECH,
+            evidence.status())
+    }
+
+    @Test fun lostOrUnidentifiedSessionNeverProducesCarrierPass() {
+        val evidence = CarPlayCarrierCallEvidence()
+        val hfp = CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU
+        val verified = CarPlayCarrierCallEvidence.Observation(
+            CarPlayCarrierCallEvidence.Direction.INCOMING, true, true, hfp,
+            micToFarEndHeard = true, farEndToToyotaHeard = true, sessionGeneration = 40L)
+        assertEquals(CarPlayCarrierCallEvidence.Status.SESSION_EVIDENCE_MISSING,
+            evidence.record(verified.copy(sessionGeneration = 0L)))
+        assertEquals(CarPlayCarrierCallEvidence.Status.INCOMING_VERIFIED_ONLY,
+            evidence.record(verified))
+        evidence.onSessionLost(40L)
+        assertEquals(CarPlayCarrierCallEvidence.Status.NOT_VERIFIED,
+            evidence.status())
+        assertEquals(CarPlayCarrierCallEvidence.Status.STALE_OR_REVOKED_SESSION,
+            evidence.record(verified))
+        assertEquals(CarPlayCarrierCallEvidence.Status.INCOMING_VERIFIED_ONLY,
+            evidence.record(verified.copy(sessionGeneration = 41L)))
     }
 
     private fun situation(
