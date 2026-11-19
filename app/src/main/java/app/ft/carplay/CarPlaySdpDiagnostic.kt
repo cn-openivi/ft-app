@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,8 @@ internal fun CarPlaySdpDiagnostic() {
     var selected by remember { mutableStateOf<PairedDevice?>(null) }
     var incomingEvents by remember { mutableStateOf<List<CarPlayIncomingIapProbe.Event>>(emptyList()) }
     var hfpStatus by remember { mutableStateOf("HFP: ещё не проверялся") }
+    val hfpContinuity = remember { CarPlayHfpContinuityLedger() }
+    var diagnosticGeneration by remember { mutableStateOf(0L) }
     var notice by remember { mutableStateOf("CarPlay: тестовый выбор. Настоящее подключение пока не подтверждено.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
@@ -51,6 +54,8 @@ internal fun CarPlaySdpDiagnostic() {
         OutlinedButton(onClick = {
             probe.close()
             incoming.close()
+            diagnosticGeneration++
+            hfpContinuity.beginProbe(diagnosticGeneration)
             incomingEvents = emptyList()
             hfpStatus = "HFP: ещё не проверялся"
             selected = null
@@ -68,6 +73,8 @@ internal fun CarPlaySdpDiagnostic() {
             candidates.forEach { item ->
                 OutlinedButton(onClick = {
                     observed = emptyList()
+                    diagnosticGeneration++
+                    hfpContinuity.beginProbe(diagnosticGeneration)
                     selected = item
                     hfpStatus = "HFP: ещё не проверялся"
                     incoming.close()
@@ -85,13 +92,20 @@ internal fun CarPlaySdpDiagnostic() {
             selected?.let { item ->
                 OutlinedButton(onClick = {
                     hfpStatus = "HFP: запрошено состояние штатного профиля"
-                    CarPlayHfpProfileObserver.readOnce(context, item.address) { result ->
+                    val run = diagnosticGeneration
+                    val currentToyota = item.address
+                    CarPlayHfpProfileObserver.readOnce(context, currentToyota) { result ->
                         context.mainExecutor.execute {
-                            // Deliberately show only reason enums, never full
-                            // remote MAC, phone local address or call metadata.
-                            hfpStatus = "HFP: ${result.bondPolicy} / ${result.error}"
+                            val gate = hfpContinuity.observe(
+                                run, result.bondPolicy, SystemClock.elapsedRealtime())
+                            // Ignore late callbacks from the previously selected
+                            // Toyota or closed probe; no stale HFP indication.
+                            if (run != diagnosticGeneration ||
+                                selected?.address != currentToyota) return@execute
+                            hfpStatus = "HFP: $gate / ${result.error}; " +
+                                "сотовая речь НЕ ПРОВЕРЕНА"
                             DiagLog.i("FT200.HFP",
-                                "profile=${result.bondPolicy} error=${result.error} " +
+                                "continuity=$gate profile=${result.bondPolicy} error=${result.error} " +
                                     "mic=UNVERIFIED farEndVoice=UNVERIFIED")
                         }
                     }

@@ -43,6 +43,7 @@ jobs:
           grep -Fq 'carPlayExperimentalSelected' app/src/main/java/app/ft/core/Prefs.kt
           grep -Fq 'CarPlayExperimentalSelectionPolicy.display' app/src/main/java/app/ft/ui/components/CarProtocolState.kt
           test -f app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt
+          test -f app/src/test/java/app/ft/carplay/CarPlayHfpContinuityLedgerTest.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
           grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
@@ -102,6 +103,7 @@ jobs:
           folder = Path('app/build/test-results/testUnsignedTransitUnitTest')
           names = (
               'CarProtocolFt200CompatibilityTest', 'CarPlayExperimentalSelectionPolicyTest',
+              'CarPlayHfpContinuityLedgerTest',
               'CarPlayPhoneIdentityTest',
               'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
               'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
