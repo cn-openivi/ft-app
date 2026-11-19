@@ -294,7 +294,7 @@
     <string name="car_touch_needs_accessibility">Activez FT dans les paramètres d’accessibilité du téléphone pour utiliser le tactile</string>
     <string name="car_am">AM</string>
     <string name="car_pm">PM</string>
-    <string name="car_date">%1$s, %2$s %3$s</string>
+    <string name="car_date">%1$s %2$s %3$s</string>
     <string name="link_projecting">%1$s · %2$d×%3$d · %4$d i/s</string>
     <string name="link_getting_ready">%1$s · préparation</string>
     <string name="link_connected">%1$s · connecté</string>
@@ -665,4 +665,27 @@
     <string name="iccoa_touch_edge_failed">Décalage tactile hors centre. Réessayez le repère à droite ; un nouvel échec lancera l’étalonnage.</string>
     <string name="iccoa_touch_center_failed">Échec du contrôle central. Touchez encore OK ; un nouvel échec ouvrira l’étalonnage à quatre points.</string>
     <string name="ft191_return_to_ft_on_car">Retour à FT dans le véhicule</string>
+    <string-array name="car_days">
+        <item>dimanche</item>
+        <item>lundi</item>
+        <item>mardi</item>
+        <item>mercredi</item>
+        <item>jeudi</item>
+        <item>vendredi</item>
+        <item>samedi</item>
+    </string-array>
+    <string-array name="car_months">
+        <item>janvier</item>
+        <item>février</item>
+        <item>mars</item>
+        <item>avril</item>
+        <item>mai</item>
+        <item>juin</item>
+        <item>juillet</item>
+        <item>août</item>
+        <item>septembre</item>
+        <item>octobre</item>
+        <item>novembre</item>
+        <item>décembre</item>
+    </string-array>
 </resources>

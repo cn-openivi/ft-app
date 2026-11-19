@@ -294,7 +294,7 @@
     <string name="car_touch_needs_accessibility">FT in den Bedienungshilfen des Telefons aktivieren, um hier Touch zu nutzen</string>
     <string name="car_am">AM</string>
     <string name="car_pm">PM</string>
-    <string name="car_date">%1$s, %2$s %3$s</string>
+    <string name="car_date">%1$s, %2$s. %3$s</string>
     <string name="link_projecting">%1$s · %2$d×%3$d · %4$d fps</string>
     <string name="link_getting_ready">%1$s · wird vorbereitet</string>
     <string name="link_connected">%1$s · verbunden</string>
@@ -665,4 +665,27 @@
     <string name="iccoa_touch_edge_failed">Berührung am Rand stimmt nicht. Rechte Markierung erneut antippen; bei erneutem Fehler startet die Kalibrierung.</string>
     <string name="iccoa_touch_center_failed">Mittelpunktprüfung fehlgeschlagen. Erneut OK tippen; beim nächsten Fehler startet die Vier-Punkt-Kalibrierung.</string>
     <string name="ft191_return_to_ft_on_car">Im Fahrzeug zu FT zurück</string>
+    <string-array name="car_days">
+        <item>Sonntag</item>
+        <item>Montag</item>
+        <item>Dienstag</item>
+        <item>Mittwoch</item>
+        <item>Donnerstag</item>
+        <item>Freitag</item>
+        <item>Samstag</item>
+    </string-array>
+    <string-array name="car_months">
+        <item>Januar</item>
+        <item>Februar</item>
+        <item>März</item>
+        <item>April</item>
+        <item>Mai</item>
+        <item>Juni</item>
+        <item>Juli</item>
+        <item>August</item>
+        <item>September</item>
+        <item>Oktober</item>
+        <item>November</item>
+        <item>Dezember</item>
+    </string-array>
 </resources>

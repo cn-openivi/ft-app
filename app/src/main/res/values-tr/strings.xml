@@ -665,4 +665,27 @@
     <string name="iccoa_touch_edge_failed">Merkez dışı dokunma kayması var. Sağdaki işareti tekrar deneyin; bir kez daha kaçırırsanız kalibrasyon başlar.</string>
     <string name="iccoa_touch_center_failed">Merkez kontrolü başarısız. OK’ye tekrar dokunun; yeniden başarısız olursa dört noktalı kalibrasyon açılır.</string>
     <string name="ft191_return_to_ft_on_car">Araç ekranında FT’ye dön</string>
+    <string-array name="car_days">
+        <item>Pazar</item>
+        <item>Pazartesi</item>
+        <item>Salı</item>
+        <item>Çarşamba</item>
+        <item>Perşembe</item>
+        <item>Cuma</item>
+        <item>Cumartesi</item>
+    </string-array>
+    <string-array name="car_months">
+        <item>Ocak</item>
+        <item>Şubat</item>
+        <item>Mart</item>
+        <item>Nisan</item>
+        <item>Mayıs</item>
+        <item>Haziran</item>
+        <item>Temmuz</item>
+        <item>Ağustos</item>
+        <item>Eylül</item>
+        <item>Ekim</item>
+        <item>Kasım</item>
+        <item>Aralık</item>
+    </string-array>
 </resources>
