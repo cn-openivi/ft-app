@@ -1,0 +1,95 @@
+name: FT191 simplify Russian pre-release description only
+
+on:
+  push:
+    branches:
+      - openivi/ft191-stabilization-hotfix-20261118
+    paths:
+      - '.github/workflows/ft191-release-description-update-20261119.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ft191-description-only-release-451552758
+  cancel-in-progress: false
+
+jobs:
+  update-existing-prerelease-description:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact authorized notes edit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify no FT191 application or release binary changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft191-stabilization-hotfix-20261118'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          base='efd9ce7b9ed0ad531213c1c53ab93df9a1bfadfc'
+          git merge-base --is-ancestor "$base" "$GITHUB_SHA"
+          git diff --quiet '685f7988d812c6396d6592203146e3d2ad3e5f66' "$GITHUB_SHA" -- app server
+          changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
+          expected="$(printf '%s\n' '.github/workflows/ft191-release-description-update-20261119.yml' 'docs/releases/FT191-owner-signed-prerelease-20261119.md')"
+          test "$changed" = "$expected"
+          test -s docs/releases/FT191-owner-signed-prerelease-20261119.md
+          echo 'FT191_RELEASE_DESCRIPTION_EDIT_ONLY=PASS'
+
+      - name: Replace only release text and verify same pre-release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from urllib.request import Request, urlopen
+          repo='cn-openivi/ft-app'
+          url='https://api.github.com/repos/'+repo+'/releases/451552758'
+          headers={
+              'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+              'Accept':'application/vnd.github+json',
+              'Content-Type':'application/json',
+              'X-GitHub-Api-Version':'2022-11-28',
+              'User-Agent':'OpenIVI-FT191-Notes-Only',
+          }
+          def call(method, body=None):
+              payload=json.dumps(body, ensure_ascii=False).encode('utf-8') if body is not None else None
+              with urlopen(Request(url, headers=headers, data=payload, method=method),timeout=90) as response:
+                  return json.loads(response.read().decode('utf-8'))
+          expected_notes=Path('docs/releases/FT191-owner-signed-prerelease-20261119.md').read_text(encoding='utf-8')
+          assert len(expected_notes)<1400 and '## Проверки' not in expected_notes
+          assert 'https://' not in expected_notes and 'SHA-256' not in expected_notes
+          assert 'чек-лист' not in expected_notes.lower()
+          expected_assets={
+              'FT191_XA60_OWNER_SIGNED.apk': (768250400,41291541,'sha256:72d78875125c7af6d050fef585a2d05c5d4cbca4d542867030a19c74f58e6ef8'),
+              'SHA256SUMS':(768261788,94,'sha256:22a66ea99714cc026a5fac7f7d290970038442f60b4095286d7daba2b1aae864'),
+              'PROVENANCE.txt':(768262564,295,'sha256:d174ea27830343aaf6d481ede9dde8291c3133a8297550242c8ce2a165a70790'),
+          }
+          def verify(release):
+              assert release['id']==451552758
+              assert release['tag_name']=='xa60-ft191-29a2f9d7'
+              assert release['prerelease'] is True and release['draft'] is False
+              assert release['name']=='OpenIVI FT191 — исправления ICCOA, Android Auto и CarLife (тестовая сборка)'
+              assets={x['name']:(x['id'],x['size'],x.get('digest')) for x in release.get('assets',[])}
+              assert assets==expected_assets, 'Signed release asset changed'
+              return release
+          old=verify(call('GET'))
+          if old['body']!=expected_notes:
+              assert old['body'].startswith('# OpenIVI FT191 — подписанная тестовая сборка')
+              assert '## Проверки перед публикацией' in old['body']
+              call('PATCH',{'body':expected_notes})
+          final=verify(call('GET'))
+          assert final['body']==expected_notes, 'Release notes readback mismatch'
+          print('FT191_RELEASE_DESCRIPTION_SHORT_RU=PASS')
+          print('FT191_PRERELEASE_UNCHANGED=PASS')
+          print('FT191_SIGNED_APK_ASSET_UNCHANGED=PASS')
+          print('FT191_RELEASE_NOTES_URL='+final['html_url'])
+          PY
