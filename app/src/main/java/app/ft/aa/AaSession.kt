@@ -24,9 +24,7 @@ import kotlinx.coroutines.flow.collect
 import java.io.InputStream
 import java.io.OutputStream
 
-private val OFF_MAIN = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ft-aa-main-sends").apply { isDaemon = true } }
-
-class AaSession(
+ class AaSession(
     context: Context,
     private val input: InputStream,
     private val output: OutputStream,
@@ -45,6 +43,13 @@ class AaSession(
     private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
     private val outLock = Any()
+    private val offMain: AaBoundedSendQueue = AaBoundedSendQueue(
+        onFailure = { e -> if (lifecycle.running) close("off-main write ${e.javaClass.simpleName}") },
+        onDropped = { count ->
+            if (count == 1 || count and (count - 1) == 0)
+                DiagLog.w(tag, "AA_OFF_MAIN_OPTIONAL_DROPPED count=$count")
+        }
+    )
     private var job: Job? = null
     private var carGpsJob: Job? = null
     private var carGearJob: Job? = null
@@ -56,6 +61,11 @@ class AaSession(
     private var locationCharacterizationAtDiscovery =
         AaLocationCharacterization.RAW_GNSS_ONLY
     private val audioRouteAudit = AaAudioRouteAudit()
+    private val systemAudioFocus: AaSystemAudioFocus = AaSystemAudioFocus(context) { state ->
+        if (lifecycle.running)
+            sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
+                AaMessages.audioFocusNotification(state))
+    }
     @Volatile private var sensorChannelOpened = false
 
     /** Channel CLOSE invalidates *both* active stream subscriptions. */
@@ -68,7 +78,7 @@ class AaSession(
         carSatellitesJob?.cancel(); carSatellitesJob = null
     }
 
-    private val lifecycle = AaSessionLifecycle(
+    private val lifecycle: AaSessionLifecycle = AaSessionLifecycle(
         interrupt = {
             runCatching { input.close() }
             runCatching { output.close() }
@@ -83,6 +93,8 @@ class AaSession(
             DiagLog.i(tag, "AA sensor subscriptions at shutdown: ${sensorSubscriptions.summary()}")
             DiagLog.i(tag, "AA actual audio arrival at shutdown: ${audioRouteAudit.summary()}")
             sensorSubscriptions.reset()
+            offMain.close()
+            systemAudioFocus.close()
             microphoneInput.close()
             runCatching { mic.stop() }
             if (micWanted) {
@@ -102,6 +114,7 @@ class AaSession(
         }
     )
     private var videoSession = 0
+    private val vehicleVideoFocus = AaVehicleVideoFocus()
     private val audioSessions = AaAudioChannelRegistry()
     private val audioMeasured = HashSet<Int>()
     private var mediaFrames = 0L
@@ -160,7 +173,15 @@ class AaSession(
     ) {
         if (!lifecycle.running) return
         if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-            OFF_MAIN.execute { send(channel, id, body, encrypted, control, afterWrite) }
+            val priority = AaSendPriority.critical(channel, id)
+            val queued = offMain.offer(priority) {
+                send(channel, id, body, encrypted, control, afterWrite)
+            }
+            if (!queued && priority && lifecycle.running) {
+                DiagLog.w(tag, "AA_OFF_MAIN_CRITICAL_OVERLOAD channel=$channel id=$id " +
+                    "queued=${offMain.queued()} fail_closed=true")
+                close("AA off-main critical send queue overflow")
+            }
             return
         }
         val payload = ByteArray(2 + body.size)
@@ -339,8 +360,11 @@ class AaSession(
             AaProtocol.PING_RESPONSE -> Unit
             AaProtocol.AUDIO_FOCUS_REQUEST -> {
                 val req = AaMessages.audioFocusRequestType(body)
-                val state = if (req == AaProtocol.AUDIO_REQUEST_RELEASE) AaProtocol.AUDIO_FOCUS_LOSS else AaProtocol.AUDIO_FOCUS_GAIN
-                sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION, AaMessages.audioFocusNotification(state))
+                val state = systemAudioFocus.request(req)
+                DiagLog.i(tag, "AA_AUDIO_FOCUS_REQUEST request=$req state=$state " +
+                    "system_policy_checked=true")
+                sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
+                    AaMessages.audioFocusNotification(state))
             }
             AaProtocol.NAV_FOCUS_REQUEST -> sendEnc(AaProtocol.CH_CONTROL, AaProtocol.NAV_FOCUS_NOTIFICATION, AaMessages.navFocusNotification(AaProtocol.NAV_FOCUS_PROJECTED))
             AaProtocol.BYEBYE_REQUEST -> {
@@ -363,6 +387,7 @@ class AaSession(
                     channel == AaProtocol.CH_SPEECH_AUDIO ||
                     channel == AaProtocol.CH_SYSTEM_AUDIO) {
                     if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                    audioRouteAudit.streamBoundary(channel)
                     audioMeasured -= channel
                     DiagLog.i(tag, "AA audio channel closed: ${AaProtocol.channelName(channel)}")
                 }
@@ -379,10 +404,23 @@ class AaSession(
         }
     }
 
+    /** Queue the OEM Home (NATIVE) or ICCOA PLAY (PROJECTED) focus edge.
+     * This does NOT prove phone acceptance or an IDR; RTP key-write is verified separately.
+     */
+    fun setVehicleVideoFocus(projected: Boolean): Boolean {
+        if (!lifecycle.running || _phase.value < Phase.DISCOVERED) return false
+        val mode = vehicleVideoFocus.transition(projected) ?: return true
+        sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION,
+            AaMessages.videoFocusIndication(mode, true))
+        DiagLog.i(tag, "AA_VEHICLE_VIDEO_FOCUS_QUEUED mode=${if (projected) "PROJECTED" else "NATIVE"}")
+        return true
+    }
+
     fun askForAFreshPicture() {
         if (_phase.value != Phase.STREAMING) return
         runCatching {
-            sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, true))
+            sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION,
+                AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), true))
         }.onFailure { DiagLog.w(tag, "could not ask Android Auto for a fresh picture: ${it.message}") }
     }
 
@@ -391,7 +429,7 @@ class AaSession(
             AaProtocol.AV_SETUP_REQUEST -> {
                 DiagLog.i(tag, "video setup config=${AaMessages.setupConfigIndex(body)}")
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_SETUP_RESPONSE, AaMessages.avSetupResponse())
-                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, false))
+                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), false))
             }
             AaProtocol.AV_START_INDICATION -> {
                 hasStreamed = true
@@ -403,7 +441,7 @@ class AaSession(
                 _phase.value = Phase.STREAMING
                 AaH264Tap.start(this)
                 DiagLog.i(tag, "video start session=$videoSession")
-                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(AaProtocol.VIDEO_FOCUS_PROJECTED, false))
+                sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(vehicleVideoFocus.currentMode(), false))
             }
             AaProtocol.AV_STOP_INDICATION -> {
                 DiagLog.i(tag, "video stop")
@@ -428,7 +466,7 @@ class AaSession(
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(videoSession))
             }
             AaProtocol.VIDEO_FOCUS_REQUEST -> {
-                val mode = AaMessages.videoFocusRequestMode(body)
+                val mode = vehicleVideoFocus.replyToPhoneRequest(AaMessages.videoFocusRequestMode(body))
                 sendEnc(AaProtocol.CH_VIDEO, AaProtocol.VIDEO_FOCUS_INDICATION, AaMessages.videoFocusIndication(mode, false))
             }
             else -> DiagLog.w(tag, "unhandled video ${AaProtocol.avName(id)}")
@@ -633,11 +671,15 @@ class AaSession(
             AaProtocol.AV_START_INDICATION -> {
                 val wasAlreadyActive = !audioSessions.start(channel, AaMessages.startSession(body))
                 audioMeasured -= channel
-                if (!wasAlreadyActive) CarAudioBus.begin(channel)
+                if (!wasAlreadyActive) {
+                    audioRouteAudit.streamBoundary(channel)
+                    CarAudioBus.begin(channel)
+                }
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} started")
             }
             AaProtocol.AV_STOP_INDICATION -> {
                 if (audioSessions.stop(channel)) CarAudioBus.end(channel)
+                audioRouteAudit.streamBoundary(channel)
                 audioMeasured -= channel
                 DiagLog.i(tag, "${AaProtocol.channelName(channel)} stopped")
             }
@@ -651,7 +693,7 @@ class AaSession(
                 val pcm = if (id == AaProtocol.AV_MEDIA_WITH_TIMESTAMP && body.size > 8) body.copyOfRange(8, body.size) else body
                 sendEnc(channel, AaProtocol.AV_MEDIA_ACK, AaMessages.mediaAck(audioSessions.session(channel)))
                 if (pcm.isNotEmpty()) {
-                    audioRouteAudit.pcm(channel, pcm.size)
+                    audioRouteAudit.pcm(channel, pcm.size)?.let { DiagLog.i(tag, it) }
                     val rate = if (channel == AaProtocol.CH_MEDIA_AUDIO) 48000 else 16000
                     val ch = if (channel == AaProtocol.CH_MEDIA_AUDIO) 2 else 1
                     if (audioMeasured.add(channel)) {

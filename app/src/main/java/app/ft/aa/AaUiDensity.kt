@@ -18,7 +18,7 @@ internal object AaUiDensity {
 
     /**
      * Avoid advertising an unreadably narrow logical canvas for low-resolution
-     * Android Auto displays; standard 1920x1008 and 1280x720 retain 240 DPI.
+     * Android Auto displays; standard 1920x1080 and 1280x720 retain 240 DPI.
      */
     fun effective(requestedDpi: Int, widthPx: Int, heightPx: Int): Int {
         val requested = requestedDpi.coerceIn(120, 480)
