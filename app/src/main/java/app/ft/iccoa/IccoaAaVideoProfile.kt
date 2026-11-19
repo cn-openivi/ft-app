@@ -40,7 +40,10 @@ internal object IccoaAaVideoProfile {
                 matchCar || legacyManual, "DIRECT_STANDARD_WFD")
         }
         if (matchCar) {
-            val (w, h) = IccoaAaSize.fit(plan.contentWidth, plan.contentHeight)
+            // The full FT virtual display is NOT the actual AA viewport on the HU.
+            // Select only a standard AA tier from the negotiated WFD VIDEO raster;
+            // AaOverlay measures and letterboxes the visible picture separately.
+            val (w, h) = IccoaAaSize.fit(plan.streamWidth, plan.streamHeight)
             return Selection(w, h, false, true,
                 if (directRequested) "WFD_NONSTANDARD_FALLBACK_TO_COMPOSITION"
                 else "COMPOSITED_MATCH_CAR")

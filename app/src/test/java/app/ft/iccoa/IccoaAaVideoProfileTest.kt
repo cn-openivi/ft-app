@@ -60,6 +60,24 @@ class IccoaAaVideoProfileTest {
         assertEquals(0 to 36, geometry.toStream(0, 0))
     }
 
+    @Test fun autoQualityDependsOnWfdVideoNotOnPhysicalOemMenuOrClimate() {
+        // Two completely different FT virtual-display aspect ratios.
+        // The OEM side menu and climate bar can alter physical visible area;
+        // neither number is a valid input to AA VIDEO resolution selection.
+        val carA = VideoPlan(2422, 1272, 1280, 720, 30, 8_000_000,
+            preserveAspect = true)
+        val carB = VideoPlan(1920, 480, 1280, 720, 30, 8_000_000,
+            preserveAspect = true)
+        val a = IccoaAaVideoProfile.choose(carA, false, true, 1920, 1008)
+        val b = IccoaAaVideoProfile.choose(carB, false, true, 1920, 1008)
+        assertEquals(1280 to 720, a.width to a.height)
+        assertEquals(a.width to a.height, b.width to b.height)
+        assertTrue(a.applyToPrefs)
+        // The manual Full HD choice is independent of WFD and remains Full HD.
+        val manual = IccoaAaVideoProfile.choose(carA, false, false, 1920, 1080)
+        assertEquals(1920 to 1080, manual.width to manual.height)
+    }
+
     @Test fun allManualAndAutomaticPathsStayInVerifiedAaModes() {
         val verified = setOf(800 to 480, 1280 to 720, 1920 to 1080)
         for (direct in listOf(true, false)) for (auto in listOf(true, false))

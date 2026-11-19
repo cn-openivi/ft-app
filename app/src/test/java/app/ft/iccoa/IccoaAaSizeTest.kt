@@ -2,6 +2,7 @@ package app.ft.iccoa
 
 import app.ft.aa.AaVideoLayout
 import app.ft.aa.AaViewport
+import app.ft.aa.AaTouchGestureViewport
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -25,9 +26,13 @@ class IccoaAaSizeTest {
         assertEquals(1920 to 1080, IccoaAaSize.fit(3840, 960))
     }
 
-    @Test fun standardFullHdTouchViewportCoversAllInputCorners() {
-        val vp = AaViewport(0, 0, 2422, 1272)
-        assertEquals(960 to 540, vp.map(1211, 636, 1920, 1080))
-        assertEquals(1919 to 1079, vp.map(2421, 1271, 1920, 1080))
+    @Test fun onlyMeasuredAaPictureGetsTouchesNotSideMenuOrClimate() {
+        // Synthetic Compose-measured rectangle, not assumed Toyota dimensions.
+        val vp = AaViewport(150, 70, 1600, 900)
+        val touch = AaTouchGestureViewport()
+        assertNull(touch.map(0, 40, 500, vp, 1920, 1080)) // side menu
+        assertNull(touch.map(0, 800, 990, vp, 1920, 1080)) // climate strip
+        assertEquals(960 to 540, touch.map(0, 950, 520, vp, 1920, 1080))
+        assertEquals(960 to 540, touch.map(1, 950, 520, vp, 1920, 1080))
     }
 }
