@@ -7,6 +7,12 @@ import java.net.InetAddress
  * mobile/VPN IPv4 and platform-specific fallback gateways are not evidence.
  */
 internal object AaHotspotAddressPolicy {
+    /** FT advertises WPA2_PERSONAL, never OPEN: Android must provide a valid
+     * SSID and WPA2 passphrase before sending any wireless AA credentials.
+     * The passphrase is only tested in memory and must not enter diagnostics.
+     */
+    fun credentialsUsable(ssid: String, password: String): Boolean =
+        ssid.isNotBlank() && password.length in 8..63
     fun select(candidates: List<String>): String? {
         val verified = candidates.mapNotNull { name ->
             val ip = runCatching { InetAddress.getByName(name) }.getOrNull()
