@@ -49,6 +49,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import app.ft.ui.car.CarIcons
@@ -246,6 +247,19 @@ fun HomeScreen(pad: PaddingValues, onOpenAccessibility: () -> Unit, onOpenOverla
                     else if (iccoaActions != null) iccoaActions.start(false)
                     else CarConnection.switchOn(context)
                 }
+            }
+        }
+        // Primary emergency return action: above the fold, immediately below
+        // the connection state. Does not depend on a vanishing AA overlay.
+        if (iccoa && connected && screenState.aaOverlay) item {
+            FilledTonalButton(
+                onClick = { IccoaService.returnToFtHome(context) },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 72.dp)
+            ) {
+                Icon(Icons.Filled.Home, contentDescription = null, modifier = Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(stringResource(R.string.ft191_return_to_ft_on_car),
+                    style = MaterialTheme.typography.titleMedium)
             }
         }
         // Explicit radio states before connection; cable/USB mode does not need them.

@@ -523,7 +523,7 @@ private fun AaFloatingReturnButton(corner: Int, compact: Boolean, onClick: () ->
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         var movedTooSoon = false
-                        // Unlike Android's short system long-click, require an intentional four-second hold.
+                        // Require an intentional 2.5-second hold to drag; a tap still returns to FT.
                         val earlyRelease = withTimeoutOrNull(AaFloatingReturnPlacement.HOLD_MS) {
                             while (true) {
                                 val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
