@@ -43,7 +43,7 @@ import java.io.OutputStream
     private val authCompletion = AaAuthCompletionGate()
     private val assembler = AaFraming.Assembler { crypto.decrypt(it) }
     private val outLock = Any()
-    private val offMain = AaBoundedSendQueue(
+    private val offMain: AaBoundedSendQueue = AaBoundedSendQueue(
         onFailure = { e -> if (lifecycle.running) close("off-main write ${e.javaClass.simpleName}") },
         onDropped = { count ->
             if (count == 1 || count and (count - 1) == 0)
@@ -61,7 +61,7 @@ import java.io.OutputStream
     private var locationCharacterizationAtDiscovery =
         AaLocationCharacterization.RAW_GNSS_ONLY
     private val audioRouteAudit = AaAudioRouteAudit()
-    private val systemAudioFocus = AaSystemAudioFocus(context) { state ->
+    private val systemAudioFocus: AaSystemAudioFocus = AaSystemAudioFocus(context) { state ->
         if (lifecycle.running)
             sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
                 AaMessages.audioFocusNotification(state))
@@ -78,7 +78,7 @@ import java.io.OutputStream
         carSatellitesJob?.cancel(); carSatellitesJob = null
     }
 
-    private val lifecycle = AaSessionLifecycle(
+    private val lifecycle: AaSessionLifecycle = AaSessionLifecycle(
         interrupt = {
             runCatching { input.close() }
             runCatching { output.close() }
