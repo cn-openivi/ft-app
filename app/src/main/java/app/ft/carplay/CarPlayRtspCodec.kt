@@ -18,7 +18,7 @@ internal object CarPlayRtspCodec {
 
     enum class Reject {
         INVALID_STATUS, MALFORMED_HEADERS, MISSING_OR_WRONG_CSEQ,
-        UNBOUNDED_BODY, CONFLICTING_BODY_FRAMING, MALFORMED_CHUNKS
+        UNBOUNDED_BODY, CONFLICTING_BODY_FRAMING, MALFORMED_CHUNKS, UNSOLICITED_TRAILING_BYTES
     }
     class Reply(val status: Int, val cSeq: Int, val body: ByteArray) {
         val success: Boolean get() = status in 200..299
@@ -101,6 +101,18 @@ internal object CarPlayRtspCodec {
         val total = from + n.toInt()
         return Parse.Accepted(Reply(status, number, bytes.copyOfRange(from, total)), total)
     }
+
+    /**
+     * One sequential control transaction must consume precisely one reply.
+     * A second unsolicited reply/command already buffered cannot be silently
+     * dropped and mistaken for a clean CSeq exchange.
+     */
+    fun parseSingleReply(bytes: ByteArray, expectedCSeq: Int): Parse =
+        when (val parsed = parseReply(bytes, expectedCSeq)) {
+            is Parse.Accepted -> if (parsed.consumed == bytes.size) parsed
+                else Parse.Rejected(Reject.UNSOLICITED_TRAILING_BYTES)
+            else -> parsed
+        }
 
     private fun chunks(bytes: ByteArray, start: Int, status: Int, cSeq: Int): Parse {
         var pos = start

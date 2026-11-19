@@ -73,6 +73,16 @@ class CarPlayRtspCodecTest {
         assertTrue(c.parseReply(b(header),1) is CarPlayRtspCodec.Parse.Rejected)
     }
 
+    @Test fun unsolicitedTrailingResponseBytesFailClosedRatherThanDisappear() {
+        val one = b("RTSP/1.0 200 OK\r\nCSeq: 10\r\nContent-Length: 3\r\n\r\nONE")
+        val next = b("RTSP/1.0 200 OK\r\nCSeq: 11\r\n\r\n")
+        assertTrue(c.parseSingleReply(one, 10) is CarPlayRtspCodec.Parse.Accepted)
+        assertEquals(CarPlayRtspCodec.Reject.UNSOLICITED_TRAILING_BYTES,
+            (c.parseSingleReply(one + next, 10) as CarPlayRtspCodec.Parse.Rejected).reason)
+        assertTrue(c.parseSingleReply(one.copyOf(one.size - 1), 10)
+            is CarPlayRtspCodec.Parse.NeedMore)
+    }
+
     @Test fun bodyHasExplicitBoundedContentType() {
         val body = b("SECRET")
         val request = c.request("POST","/feedback",1,body,"application/octet-stream")!!

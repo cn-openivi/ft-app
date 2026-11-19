@@ -121,7 +121,7 @@ internal object CarPlayAirPlayControlSocket {
                     val n = socket.getInputStream().read(buf)
                     if (n <= 0) break
                     received.write(buf,0,n)
-                    when (val decoded = CarPlayRtspCodec.parseReply(received.toByteArray(),seq)) {
+                    when (val decoded = CarPlayRtspCodec.parseSingleReply(received.toByteArray(),seq)) {
                         is CarPlayRtspCodec.Parse.Accepted ->
                             return Transaction.Complete(decoded.reply)
                         is CarPlayRtspCodec.Parse.Rejected -> {
