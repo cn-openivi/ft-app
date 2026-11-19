@@ -18,6 +18,7 @@ import app.ft.FTApp
 import app.ft.MainActivity
 import app.ft.carlife.NetUtil
 import app.ft.core.DiagLog
+import app.ft.core.ServiceForegroundPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -78,7 +80,11 @@ class AaHeadUnitService : Service() {
                 return
             }
             runCatching { context.startForegroundService(Intent(context, AaHeadUnitService::class.java).setAction(ACTION_START).putExtra(EXTRA_BLUETOOTH, bluetooth)) }
-                .onFailure { DiagLog.w("AA", "Android would not let FT start Android Auto right now (${it.javaClass.simpleName})") }
+                .onFailure {
+                    lastDisconnect = "Android refused AA foreground launch: ${it.javaClass.simpleName}; open FT to retry"
+                    _state.update { previous -> previous.copy(listening = false, bluetooth = "foreground-launch-denied") }
+                    DiagLog.w("AA", "Android would not let FT start Android Auto right now (${it.javaClass.simpleName}); open FT to retry")
+                }
         }
 
         fun feedCarMicrophone(pcm: ByteArray) {
@@ -123,28 +129,36 @@ class AaHeadUnitService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_START -> {
-                foreground(Lang.str(R.string.note_aa_ready))
+                if (!foreground(Lang.str(R.string.note_aa_ready))) {
+                    _state.update { it.copy(listening = false, bluetooth = "foreground-denied") }
+                    lastDisconnect = "Android foreground start denied; open FT to retry"
+                    stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 listen(intent.getBooleanExtra(EXTRA_BLUETOOTH, false))
             }
         }
         return START_STICKY
     }
 
-    private fun foreground(text: String) {
+    private fun foreground(text: String): Boolean {
         val note = notification(text)
         val canRecord = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
-        if (canRecord) {
-            val withMic = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            if (runCatching { startForeground(NOTIFICATION_ID, note, withMic) }.isSuccess) {
-                micReady = true
-                return
-            }
+        val base = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        val requested = if (canRecord) base or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else base
+        val accepted = ServiceForegroundPolicy.acceptedType(requested, base) { type ->
+            runCatching { startForeground(NOTIFICATION_ID, note, type) }
+                .onFailure { DiagLog.w(tag, "AA foreground type=$type refused ${it.javaClass.simpleName}") }
+                .isSuccess
         }
-        micReady = false
-        runCatching { startForeground(NOTIFICATION_ID, note, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) }
-            .onFailure { DiagLog.w(tag, "could not keep the head unit in the foreground: ${it.message}") }
+        micReady = accepted != null && accepted and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE != 0
+        if (accepted == null) {
+            DiagLog.w(tag, "AA_FOREGROUND_START_FAILED; open FT to retry with permissions")
+            return false
+        }
+        if (canRecord && !micReady) DiagLog.w(tag, "AA_FOREGROUND_NO_MIC; microphone unavailable")
+        return true
     }
 
     private fun listen(bluetooth: Boolean) {
@@ -172,7 +186,31 @@ class AaHeadUnitService : Service() {
         }
         acceptJob = scope.launch {
             try {
-                val ss = NetUtil.listen(port) { isActive } ?: return@launch
+                // Both paths are scoped: wireless to the actual local-only
+                // hotspot IPv4, developer/self mode to 127.0.0.1 only.
+                // Never expose a wildcard listener to Wi-Fi/LTE/VPN.
+                var localIp = AaHeadUnitListenAddress.selected(false, null)
+                if (bluetooth) {
+                    var ready: HotspotInfo? = null
+                    repeat(72) {
+                        if (ready == null && isActive) {
+                            ready = bt?.info?.value
+                            if (ready == null) delay(250L)
+                        }
+                    }
+                    val resolved = ready ?: run {
+                        DiagLog.w(tag, "AA_WIRELESS_LISTENER_BLOCKED hotspot IPv4 not ready")
+                        _state.update { it.copy(listening = false, bluetooth = "hotspot-ip-unavailable") }
+                        return@launch
+                    }
+                    localIp = AaHeadUnitListenAddress.selected(true, resolved.ip)
+                        ?: run {
+                            DiagLog.w(tag, "AA_WIRELESS_LISTENER_BLOCKED invalid hotspot IPv4")
+                            _state.update { it.copy(listening = false, bluetooth = "hotspot-ip-invalid") }
+                            return@launch
+                        }
+                }
+                val ss = NetUtil.listen(port, bindAddress = localIp) { isActive } ?: return@launch
                 if (!connections.withRun(run) {
                     server = ss
                     _state.update { it.copy(listening = true, port = port) }
@@ -183,6 +221,12 @@ class AaHeadUnitService : Service() {
                 DiagLog.i(tag, "head unit waiting for Android Auto on tcp:$port")
                 while (isActive) {
                     val s = ss.accept()
+                    if (bluetooth && (bt?.info?.value?.ip != localIp?.hostAddress ||
+                        s.localAddress != localIp)) {
+                        DiagLog.w(tag, "AA_WIRELESS_STALE_HOTSPOT_IP; rejecting old listener peer")
+                        s.close()
+                        continue
+                    }
                     s.tcpNoDelay = true
                     s.keepAlive = true
                     DiagLog.i(tag, "Android Auto connected from ${s.inetAddress.hostAddress}")

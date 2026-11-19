@@ -19,9 +19,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class HotspotInfo(val ssid: String, val password: String, val ip: String)
+
+// The Wi-Fi credential response must never reach raw TX diagnostics,
+// including opt-in packet tracing. This does not change the wire packet.
+internal object AaBluetoothLogPolicy {
+    fun mayLogPayload(type: Int): Boolean = type != AaProtocol.BT_WIFI_INFO_RESPONSE
+}
 
 @SuppressLint("MissingPermission")
 class AaBluetoothAdvertiser(private val context: Context, private val port: Int) {
@@ -30,6 +38,8 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
     private var server: BluetoothServerSocket? = null
     private var job: Job? = null
     private var hotspot: WifiManager.LocalOnlyHotspotReservation? = null
+    private val hotspotReady = CountDownLatch(1)
+    private val main = Handler(Looper.getMainLooper())
     private val _info = MutableStateFlow<HotspotInfo?>(null)
     val info: StateFlow<HotspotInfo?> = _info
     private val _status = MutableStateFlow("idle")
@@ -76,23 +86,61 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
                             @Suppress("DEPRECATION")
                             cfg.ssid
                         }
-                        (name ?: "FT") to (cfg.passphrase ?: "")
+                        name.orEmpty() to cfg.passphrase.orEmpty()
                     } else {
                         @Suppress("DEPRECATION")
                         val cfg = reservation.wifiConfiguration
-                        (cfg?.SSID?.trim('"') ?: "FT") to (cfg?.preSharedKey ?: "")
+                        cfg?.SSID?.trim('"').orEmpty() to cfg?.preSharedKey.orEmpty()
                     }
-                    val ip = app.ft.carlife.NetUtil.localIpv4() ?: "192.168.43.1"
-                    _info.value = HotspotInfo(ssid, pass, ip)
-                    DiagLog.i(tag, "hotspot ready ssid=$ssid ip=$ip")
+                    if (!AaHotspotAddressPolicy.credentialsUsable(ssid, pass)) {
+                        _status.value = "hotspot-wpa2-credentials-unavailable"
+                        DiagLog.w(tag, "LOHS did not provide a valid WPA2 SSID/passphrase; no BT Wi-Fi advertisement")
+                        _info.value = null
+                        hotspotReady.countDown()
+                        runCatching { reservation.close() }
+                        return
+                    }
+                    // onStarted means SSID and credentials exist; the AP IPv4
+                    // may be assigned later. Never advertise the station/VPN IP.
+                    fun resolveAddress(attempt: Int) {
+                        if (!running.get() || hotspot !== reservation) return
+                        val candidates = app.ft.carlife.NetUtil.hotspotInterfaces(context)
+                            .flatMap { iface -> iface.inetAddresses.toList() }
+                            .mapNotNull { it.hostAddress }
+                        val ip = AaHotspotAddressPolicy.select(candidates)
+                        if (ip != null) {
+                            _info.value = HotspotInfo(ssid, pass, ip)
+                            _status.value = "hotspot-ready"
+                            DiagLog.i(tag, "local-only hotspot ready ip=$ip")
+                            hotspotReady.countDown()
+                        } else if (attempt < 60) {
+                            main.postDelayed({ resolveAddress(attempt + 1) }, 250L)
+                        } else {
+                            _status.value = "hotspot-ip-unavailable"
+                            DiagLog.w(tag, "local-only hotspot IPv4 not independently verified")
+                            hotspotReady.countDown()
+                        }
+                    }
+                    resolveAddress(0)
                 }
 
                 override fun onFailed(reason: Int) {
-                    DiagLog.w(tag, "hotspot failed $reason")
+                    _info.value = null
+                    _status.value = "hotspot-failed-$reason"
+                    DiagLog.w(tag, "hotspot failed reason=$reason")
+                    hotspotReady.countDown()
                 }
-            }, Handler(Looper.getMainLooper()))
+                override fun onStopped() {
+                    _info.value = null
+                    _status.value = "hotspot-stopped"
+                    DiagLog.w(tag, "local-only hotspot stopped by Android")
+                    hotspotReady.countDown()
+                }
+            }, main)
         } catch (t: Throwable) {
-            DiagLog.w(tag, "hotspot unavailable: ${t.message}")
+            _status.value = "hotspot-unavailable"
+            hotspotReady.countDown()
+            DiagLog.w(tag, "hotspot unavailable: ${t.javaClass.simpleName}")
         }
     }
 
@@ -100,9 +148,18 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
         try {
             val i = s.inputStream
             val o = s.outputStream
-            val hs = _info.value
-            val ip = hs?.ip ?: app.ft.carlife.NetUtil.localIpv4() ?: "192.168.43.1"
-            write(o, AaProtocol.BT_WIFI_START_REQUEST, ProtoWriter().string(1, ip).int32(2, port).toByteArray())
+            // RFCOMM may connect before Android has assigned the local-only
+            // AP interface. Do not issue WIFI_START with a guessed gateway.
+            if (!hotspotReady.await(16L, TimeUnit.SECONDS)) {
+                DiagLog.w(tag, "AA BT connected before hotspot IP ready; retry later")
+                return
+            }
+            val hs = _info.value ?: run {
+                DiagLog.w(tag, "AA BT hotspot unavailable; refusing empty Wi-Fi credentials")
+                return
+            }
+            write(o, AaProtocol.BT_WIFI_START_REQUEST,
+                ProtoWriter().string(1, hs.ip).int32(2, port).toByteArray())
             while (running.get() && s.isConnected) {
                 val h = ByteArray(4)
                 Bytes.readFully(i, h)
@@ -113,12 +170,23 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
                 DiagLog.rx(tag, "bt type=$type", body)
                 when (type) {
                     AaProtocol.BT_WIFI_INFO_REQUEST -> {
-                        val info = _info.value
+                        val info = _info.value ?: return
+                        // If the hotspot address disappeared or changed, the
+                        // ongoing BT handshake is stale; reconnect from scratch.
+                        val currentIp = AaHotspotAddressPolicy.select(
+                            app.ft.carlife.NetUtil.hotspotInterfaces(context)
+                                .flatMap { it.inetAddresses.toList() }.mapNotNull { it.hostAddress })
+                        if (currentIp != info.ip) {
+                            _info.value = null
+                            _status.value = "hotspot-ip-changed"
+                            DiagLog.w(tag, "AA BT hotspot IPv4 changed; discard stale handshake")
+                            return
+                        }
                         write(
                             o, AaProtocol.BT_WIFI_INFO_RESPONSE,
                             ProtoWriter()
-                                .string(1, info?.ssid ?: "FT")
-                                .string(2, info?.password ?: "")
+                                .string(1, info.ssid)
+                                .string(2, info.password)
                                 .string(3, "")
                                 .enum(4, AaProtocol.WIFI_SECURITY_WPA2_PERSONAL)
                                 .enum(5, AaProtocol.WIFI_AP_DYNAMIC)
@@ -142,13 +210,18 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
         Bytes.putU16(body.size, f, 0)
         Bytes.putU16(type, f, 2)
         System.arraycopy(body, 0, f, 4, body.size)
-        DiagLog.tx(tag, "bt type=$type", body)
+        if (AaBluetoothLogPolicy.mayLogPayload(type)) {
+            DiagLog.tx(tag, "bt type=$type", body)
+        } else {
+            DiagLog.d(tag, "TX bt type=$type bytes=${body.size} payload=REDACTED_WIFI_PASSWORD")
+        }
         o.write(f)
         o.flush()
     }
 
     fun stop() {
         running.set(false)
+        hotspotReady.countDown()
         runCatching { server?.close() }
         server = null
         runCatching { hotspot?.close() }
