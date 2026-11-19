@@ -39,6 +39,7 @@ internal fun CarPlaySdpDiagnostic() {
     var candidates by remember { mutableStateOf<List<PairedDevice>>(emptyList()) }
     var selected by remember { mutableStateOf<PairedDevice?>(null) }
     var incomingEvents by remember { mutableStateOf<List<CarPlayIncomingIapProbe.Event>>(emptyList()) }
+    var trialState by remember { mutableStateOf(CarPlayTrialProgress.State()) }
     var hfpStatus by remember { mutableStateOf("HFP: ещё не проверялся") }
     val hfpContinuity = remember { CarPlayHfpContinuityLedger() }
     var diagnosticGeneration by remember { mutableStateOf(0L) }
@@ -60,6 +61,7 @@ internal fun CarPlaySdpDiagnostic() {
             iapProbeSerial++
             hfpContinuity.beginProbe(diagnosticGeneration)
             incomingEvents = emptyList()
+            trialState = CarPlayTrialProgress.State()
             hfpStatus = "HFP: ещё не проверялся"
             selected = null
             observed = emptyList()
@@ -83,6 +85,7 @@ internal fun CarPlaySdpDiagnostic() {
                     hfpStatus = "HFP: ещё не проверялся"
                     incoming.close()
                     incomingEvents = emptyList()
+                    trialState = CarPlayTrialProgress.State()
                     notice = "Проверяем выбранную BT-пару: ${item.name} (${item.shortAddress})"
                     val run = diagnosticGeneration
                     val currentToyota = item.address
@@ -148,36 +151,62 @@ internal fun CarPlaySdpDiagnostic() {
                 OutlinedButton(onClick = {
                     incoming.close()
                     incomingEvents = emptyList()
+                    trialState = CarPlayTrialProgress.start()
                     val run = diagnosticGeneration
                     val currentToyota = item.address
                     val serial = ++iapProbeSerial
-                    // Separate owner-triggered, explicit experimental action.
-                    // Never included in auto-connect or the passive SDP probe.
-                    val result = incoming.listen(
-                        item.address,
-                        requestIdentification = true
-                    ) { event ->
-                        if (!visible || run != diagnosticGeneration ||
-                            serial != iapProbeSerial ||
-                            selected?.address != currentToyota) return@listen
-                        incomingEvents = (incomingEvents + event).takeLast(14)
-                        val msg = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
-                        DiagLog.i("FT200.IAP2",
-                            "activeProbe=${event.status} controlId=$msg tlvCount=${event.parameterCount} " +
-                                "MFi=UNVERIFIED CarPlay=UNVERIFIED")
+                    // One physical existing Toyota BT bond. HFP is read-only,
+                    // independently of the actual inbound iAP2 negotiation.
+                    hfpStatus = "HFP: проверяем штатный профиль"
+                    val readId = ++hfpReadSerial
+                    if (hfpContinuity.beginRead(run, readId)) {
+                        CarPlayHfpProfileObserver.readOnce(context, currentToyota) { result ->
+                            context.mainExecutor.execute {
+                                val gate = hfpContinuity.observe(
+                                    run, readId, result.bondPolicy, SystemClock.elapsedRealtime())
+                                if (gate != CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED &&
+                                    visible && run == diagnosticGeneration &&
+                                    readId == hfpReadSerial &&
+                                    selected?.address == currentToyota) {
+                                    hfpStatus = "HFP: $gate / ${result.error}; " +
+                                        "реальные звонки ещё не проверены"
+                                    DiagLog.i("FT200.HFP",
+                                        "trialProfile=$gate nativeCarrierVoice=UNVERIFIED")
+                                }
+                            }
+                        }
                     }
-                    DiagLog.i("FT200.IAP2", "identificationProbeStart=$result CarPlay=UNVERIFIED")
+                    // Real owner-triggered RFCOMM listener and, after observed
+                    // LINK ACK and CONTROL v2, a genuine 0x1D00 request.
+                    val result = incoming.listen(item.address, requestIdentification = true) { event ->
+                        context.mainExecutor.execute {
+                            if (!visible || run != diagnosticGeneration ||
+                                serial != iapProbeSerial ||
+                                selected?.address != currentToyota) return@execute
+                            incomingEvents = (incomingEvents + event).takeLast(14)
+                            trialState = CarPlayTrialProgress.observe(trialState, event.status)
+                            val msg = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
+                            DiagLog.i("FT200.IAP2",
+                                "trial=${event.status} controlId=$msg fields=${event.parameterCount} " +
+                                    "MFi=UNVERIFIED AirPlay=NOT_STARTED calls=UNVERIFIED")
+                        }
+                    }
                     if (result != CarPlayIncomingIapProbe.Observation.SDP_LISTENER_READY) {
                         incomingEvents = listOf(CarPlayIncomingIapProbe.Event(result))
+                        trialState = CarPlayTrialProgress.observe(trialState, result)
                     }
                 }) {
-                    Text("Эксперимент: iAP2 IdentificationRequest 0x1D00")
+                    Text("Пробный запуск CarPlay: iAP2 + HFP (30 с)")
                 }
                 OutlinedButton(onClick = {
                     iapProbeSerial++
+                    trialState = CarPlayTrialProgress.observe(trialState,
+                        CarPlayIncomingIapProbe.Observation.CANCELLED)
                     incoming.close()
                     incomingEvents = emptyList()
                 }) { Text("Остановить проверку iAP2") }
+                Text("Результат пробного запуска: ${carPlayTrialStatus(trialState)}")
+                Text("MFi: не подтверждён · AirPlay: не запущен · CarPlay ACTIVE: нет")
                 incomingEvents.forEach { e ->
                     val msg = e.messageId?.let { " · CONTROL=0x" + it.toString(16) + " TLV=${e.parameterCount}" }.orEmpty()
                     Text("Toyota→Samsung: ${e.status} · LINK frames: ${e.validLinkFrames}$msg")
@@ -199,6 +228,7 @@ internal fun CarPlaySdpDiagnostic() {
                 probe.close()
                 incoming.close()
                 incomingEvents = emptyList()
+                trialState = CarPlayTrialProgress.State()
                 hfpStatus = "HFP: ещё не проверялся"
                 observed = emptyList()
                 candidates = emptyList()
@@ -236,4 +266,30 @@ private fun readPairedDevices(context: Context): Pair<String, List<PairedDevice>
     } catch (_: RuntimeException) {
         "Bluetooth-стек не вернул список пар." to emptyList()
     }
+}
+
+private fun carPlayTrialStatus(s: CarPlayTrialProgress.State): String {
+    val stage = when (s.phase) {
+        CarPlayTrialProgress.Phase.NOT_STARTED -> "не запускали"
+        CarPlayTrialProgress.Phase.WAITING_FOR_TOYOTA -> "ожидаем Toyota по Bluetooth"
+        CarPlayTrialProgress.Phase.TOYOTA_RFCOMM_CONNECTED -> "Toyota подключилась к RFCOMM"
+        CarPlayTrialProgress.Phase.IAP2_LINK_NEGOTIATED -> "iAP2 LINK согласован"
+        CarPlayTrialProgress.Phase.IDENTIFICATION_REQUESTED -> "iAP2 запрос идентификации отправлен"
+        CarPlayTrialProgress.Phase.IDENTIFICATION_OBSERVED -> "ответ идентификации получен"
+        CarPlayTrialProgress.Phase.WIFI_DIALECT_OBSERVED -> "обнаружен вариант Wi-Fi обмена"
+        CarPlayTrialProgress.Phase.MFI_TRUST_REQUIRED -> "необходимо подтвердить MFi"
+        CarPlayTrialProgress.Phase.FINISHED_WITHOUT_CARPLAY -> "проверка завершилась без CarPlay"
+    }
+    val failure = when (s.blocker) {
+        CarPlayTrialProgress.Blocker.NONE -> ""
+        CarPlayTrialProgress.Blocker.BLUETOOTH_PERMISSION_OR_ADAPTER -> " · проверьте Bluetooth/разрешение"
+        CarPlayTrialProgress.Blocker.NO_EXISTING_TOYOTA_BOND -> " · нет нужной BT-пары"
+        CarPlayTrialProgress.Blocker.NO_TOYOTA_RFCOMM -> " · Toyota не открыла RFCOMM"
+        CarPlayTrialProgress.Blocker.IAP2_LINK_FAILED -> " · нет согласованного iAP2 LINK"
+        CarPlayTrialProgress.Blocker.MFI_CERTIFICATE_UNTRUSTED -> " · сертификат не доверен"
+        CarPlayTrialProgress.Blocker.MFI_SIGNATURE_UNVERIFIED -> " · подпись не проверена"
+        CarPlayTrialProgress.Blocker.IO_OR_TIMEOUT -> " · тайм-аут или ошибка ввода/вывода"
+        CarPlayTrialProgress.Blocker.STOPPED_BY_OWNER -> " · остановлено"
+    }
+    return stage + failure
 }
