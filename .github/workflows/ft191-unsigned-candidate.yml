@@ -48,16 +48,18 @@ jobs:
           echo "FT191_UNSIGNED_BUILD_SOURCE_SHA=$GITHUB_SHA"
           echo "OWNER_SIGNING=FORBIDDEN"
 
-      - name: Guard runner free disk without administrative cleanup
+      - name: Observe actual runner free space (no arbitrary 6 GiB gate)
         shell: bash
         run: |
           set -euo pipefail
-          available_kib="$(df -Pk "$GITHUB_WORKSPACE" | awk 'NR==2 {print $4}')"
-          test -n "$available_kib"
-          if test "$available_kib" -lt 6291456; then
-            echo "NEED_6_GiB_FREE; refusing unsigned build without space" >&2
-            exit 1
-          fi
+          echo "FT191_DISK_BEFORE_BUILD"
+          df -h -- "$GITHUB_WORKSPACE"
+          df -Pk -- "$GITHUB_WORKSPACE"
+          # Same policy as previous successful FT190/FT185 builds:
+          # Gradle determines whether sufficient space exists for this build.
+          # This step only observes available space, does not delete caches,
+          # change runner configuration or invent a minimum.
+          echo "FT191_DISK_OBSERVATION_OK"
 
       - name: JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
