@@ -19,8 +19,10 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 190
-        versionName = "3.9.76-xa60-ft190-tunnel-kalman-candidate"
+        // FT200 owner-only early test candidate; NOT a released or field-accepted CarPlay.
+        // Must be newer than existing FT191 owner-signed installations.
+        versionCode = 200
+        versionName = "4.0.0-xa60-ft200-carplay-early-test"
     }
 
     signingConfigs {

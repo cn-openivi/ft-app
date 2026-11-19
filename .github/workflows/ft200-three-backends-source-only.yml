@@ -34,7 +34,8 @@ jobs:
           test "$GITHUB_REF_NAME" = "openivi/ft200-carplay-three-backends-20261117"
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
-          grep -Fq 'versionCode = 190' app/build.gradle.kts
+          grep -Fq 'versionCode = 200' app/build.gradle.kts
+          grep -Fq 'versionName = "4.0.0-xa60-ft200-carplay-early-test"' app/build.gradle.kts
           grep -Fq 'CARPLAY("carplay", connectionReady = false)' app/src/main/java/app/ft/core/CarProtocol.kt
           grep -Fq 'enabled = option.enabled' app/src/main/java/app/ft/ui/components/OptionSheet.kt
           grep -Fq 'Option("Apple CarPlay (тест)"' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
