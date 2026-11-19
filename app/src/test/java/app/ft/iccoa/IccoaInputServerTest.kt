@@ -128,6 +128,29 @@ class IccoaInputServerTest {
         assertEquals(2, releases)
     }
 
+    @Test fun retiredNetworkCannotDispatchStaleUibcInputAfterSwitchToB() {
+        val payloads = LinkedBlockingQueue<String>()
+        val current = java.util.concurrent.atomic.AtomicBoolean(true)
+        val server = IccoaInputServer(InetSocketAddress(loopback, 0), loopback, { socket ->
+            payloads.add("stale:" + socket.inetAddress.hostAddress)
+        }, {}, current::get)
+        val executor = Executors.newSingleThreadExecutor()
+        val worker = executor.submit { server.run() }
+        try {
+            current.set(false) // Android onAvailable(B) invalidated Network(A).
+            Socket(loopback, server.localPort).use { socket ->
+                socket.getOutputStream().write("{\"type\":1}".toByteArray())
+                socket.shutdownOutput()
+            }
+            assertNull(payloads.poll(200, TimeUnit.MILLISECONDS))
+            worker.get(3, TimeUnit.SECONDS)
+        } finally {
+            server.close()
+            executor.shutdownNow()
+            assertTrue(executor.awaitTermination(3, TimeUnit.SECONDS))
+        }
+    }
+
     @Test fun truncatedConnectionIsFatalAndItsSocketIsClosed() {
         val server = IccoaInputServer(InetSocketAddress(loopback, 0), loopback, { socket ->
             IccoaInputReader.read(socket.getInputStream(), { it }, IccoaInputJson {})
