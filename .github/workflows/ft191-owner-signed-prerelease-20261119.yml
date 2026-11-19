@@ -1,0 +1,75 @@
+name: FT191 owner-signed GitHub PRE-RELEASE with Russian notes
+
+on:
+  push:
+    branches:
+      - openivi/ft191-stabilization-hotfix-20261118
+    paths:
+      - '.github/workflows/ft191-owner-signed-prerelease-20261119.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: ft191-prerelease-xa60-ft191-29a2f9d7
+  cancel-in-progress: false
+
+jobs:
+  publish-verified-owner-signed-prerelease:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 75
+    steps:
+      - name: Checkout and verify FT191 approved source with unchanged app/server
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate scope, provenance, APK identity and release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = 'cn-openivi/ft-app'
+          test "$GITHUB_REF_NAME" = 'openivi/ft191-stabilization-hotfix-20261118'
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git merge-base --is-ancestor c3e7ac15a6ed50700cbb5a3e9248f8625fb20279 "$GITHUB_SHA"
+          git diff --quiet 685f7988d812c6396d6592203146e3d2ad3e5f66 "$GITHUB_SHA" -- app server
+          test -s docs/releases/FT191-owner-signed-prerelease-20261119.md
+          test -s scripts/ft191_publish_prerelease.py
+          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
+          grep -Fq 'versionCode = 191' app/build.gradle.kts
+          echo 'FT191_APP_SOURCE_UNCHANGED_FROM_SIGNED_CANDIDATE=PASS'
+          echo 'FT191_INTENT=GITHUB_PRERELEASE_NOT_STABLE'
+      - name: Download exact existing signed build from verified GitHub CI artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p original verified
+          curl --fail --location --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/cn-openivi/ft-app/actions/artifacts/14508588416/zip' \
+            --output original/signed-ft191.zip
+          printf '%s  %s\n' 'ef417cb44a5e10c445e5cb1d3058246a224b82e281074eda78e1d1abd88d8afd' original/signed-ft191.zip | sha256sum --check
+          unzip -tqq original/signed-ft191.zip
+          unzip -q original/signed-ft191.zip -d verified
+          echo 'FT191_ORIGINAL_OWNER_SIGNED_GITHUB_ARCHIVE=PASS'
+      - name: Attach signed APK + checksum, publish PRE-RELEASE, and independently read back
+        shell: bash
+        env:
+          GH_RELEASE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ft191_publish_prerelease.py
+      - name: Clean temporary binary files after publishing
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in original verified; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
+          echo 'FT191_RELEASE_WORKSPACE_CLEANED=PASS'
