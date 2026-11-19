@@ -11,6 +11,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 
 /**
  * FT200.2 bounded, read-only observation of ONE ALREADY-PAIRED Toyota device.
@@ -25,7 +27,7 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
     enum class Result {
         PERMISSION_MISSING, NO_ADAPTER, ADAPTER_DISABLED, BAD_REMOTE_ADDRESS,
         NOT_BONDED, CACHED_UUIDS, SDP_REQUESTED, SDP_RECEIVED,
-        SDP_START_REJECTED, OBSERVATION_FAILED, CLOSED
+        SDP_START_REJECTED, SDP_TIMEOUT, OBSERVATION_FAILED, CLOSED
     }
 
     data class Observation(
@@ -38,6 +40,9 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
     private var receiver: BroadcastReceiver? = null
     private var callback: ((Observation) -> Unit)? = null
     private var address: String? = null
+    private val main = Handler(Looper.getMainLooper())
+    private val epoch = CarPlaySdpObservationEpoch()
+    private var deadline: Runnable? = null
 
     /**
      * Explicit owner/diagnostic invocation only. Request SDP for an existing bond.
@@ -84,11 +89,13 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
         }
         address = device.address
         emit(Result.CACHED_UUIDS, device.uuids?.map { it.uuid.toString() }?.sorted().orEmpty())
+        val run = epoch.begin()
 
         val filter = IntentFilter(BluetoothDevice.ACTION_UUID)
         val watcher = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                if (intent.action != BluetoothDevice.ACTION_UUID) return
+                if (receiver !== this || !epoch.accepts(run) ||
+                    intent.action != BluetoothDevice.ACTION_UUID) return
                 val observed: BluetoothDevice? =
                     if (Build.VERSION.SDK_INT >= 33) {
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
@@ -96,18 +103,21 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
                         @Suppress("DEPRECATION")
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                     }
-                if (observed?.address?.equals(address, ignoreCase = true) != true) return
+                if (observed?.address?.equals(device.address, ignoreCase = true) != true)
+                    return
                 // Re-read system's current remote UUID cache after the matching broadcast.
                 @SuppressLint("MissingPermission")
                 val uuidStrings = try {
                     observed.uuids?.map { it.uuid.toString() }?.sorted().orEmpty()
                 } catch (_: SecurityException) {
-                    emit(Result.PERMISSION_MISSING, null)
-                    close()
+                    if (epoch.complete(run)) emit(Result.PERMISSION_MISSING, null)
+                    if (receiver === this) close()
                     return
                 }
-                emit(Result.SDP_RECEIVED, uuidStrings, fresh = true)
-                close()
+                if (epoch.complete(run)) emit(Result.SDP_RECEIVED, uuidStrings, fresh = true)
+                // UI callbacks may synchronously start a NEW SDP observation.
+                // Its receiver must never be closed by this OLD callback.
+                if (receiver === this) close()
             }
         }
         try {
@@ -122,10 +132,19 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
             }
             receiver = watcher
             val started = device.fetchUuidsWithSdp()
-            if (started) emit(Result.SDP_REQUESTED, emptyList())
-            else {
+            if (started) {
+                emit(Result.SDP_REQUESTED, emptyList())
+                if (receiver === watcher && epoch.accepts(run)) {
+                    deadline = Runnable {
+                        if (receiver === watcher && epoch.complete(run)) {
+                            emit(Result.SDP_TIMEOUT, emptyList())
+                            if (receiver === watcher) close()
+                        }
+                    }.also { main.postDelayed(it, 15_000L) }
+                }
+            } else {
                 emit(Result.SDP_START_REJECTED, emptyList())
-                close()
+                if (receiver === watcher) close()
             }
         } catch (_: SecurityException) {
             emit(Result.PERMISSION_MISSING, emptyList())
@@ -141,6 +160,9 @@ internal class CarPlayBluetoothSdpProbe(private val context: Context) : AutoClos
     }
 
     override fun close() {
+        epoch.close()
+        deadline?.let { main.removeCallbacks(it) }
+        deadline = null
         val watcher = receiver
         receiver = null
         if (watcher != null) {

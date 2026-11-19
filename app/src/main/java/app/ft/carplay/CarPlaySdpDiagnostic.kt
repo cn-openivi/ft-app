@@ -43,6 +43,7 @@ internal fun CarPlaySdpDiagnostic() {
     val hfpContinuity = remember { CarPlayHfpContinuityLedger() }
     var diagnosticGeneration by remember { mutableStateOf(0L) }
     var hfpReadSerial by remember { mutableStateOf(0L) }
+    var iapProbeSerial by remember { mutableStateOf(0L) }
     var notice by remember { mutableStateOf("CarPlay: тестовый выбор. Настоящее подключение пока не подтверждено.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
@@ -56,6 +57,7 @@ internal fun CarPlaySdpDiagnostic() {
             probe.close()
             incoming.close()
             diagnosticGeneration++
+            iapProbeSerial++
             hfpContinuity.beginProbe(diagnosticGeneration)
             incomingEvents = emptyList()
             hfpStatus = "HFP: ещё не проверялся"
@@ -75,13 +77,20 @@ internal fun CarPlaySdpDiagnostic() {
                 OutlinedButton(onClick = {
                     observed = emptyList()
                     diagnosticGeneration++
+                    iapProbeSerial++
                     hfpContinuity.beginProbe(diagnosticGeneration)
                     selected = item
                     hfpStatus = "HFP: ещё не проверялся"
                     incoming.close()
                     incomingEvents = emptyList()
                     notice = "Проверяем выбранную BT-пару: ${item.name} (${item.shortAddress})"
+                    val run = diagnosticGeneration
+                    val currentToyota = item.address
                     probe.start(item.address) { observation ->
+                        // A broadcast from the previously selected Toyota must
+                        // never repaint SDP results for another active pair.
+                        if (!visible || run != diagnosticGeneration ||
+                            selected?.address != currentToyota) return@start
                         // No MAC, SSID, passphrase or raw packet bytes in durable logs.
                         DiagLog.i("FT200.SDP", "result=${observation.result} uuids=${observation.remoteUuidStrings.size} freshEvent=${observation.completedFreshSdp}; iAP2=UNVERIFIED")
                         observed = (observed + observation).takeLast(8)
@@ -118,9 +127,15 @@ internal fun CarPlaySdpDiagnostic() {
                 OutlinedButton(onClick = {
                     incoming.close()
                     incomingEvents = emptyList()
+                    val run = diagnosticGeneration
+                    val currentToyota = item.address
+                    val serial = ++iapProbeSerial
                     // Register an actual phone-side RFCOMM SDP service on Samsung.
                     // This is a physical, owner-triggered diagnostic, not a CarPlay session.
                     val result = incoming.listen(item.address) { event ->
+                        if (!visible || run != diagnosticGeneration ||
+                            serial != iapProbeSerial ||
+                            selected?.address != currentToyota) return@listen
                         incomingEvents = (incomingEvents + event).takeLast(12)
                         val message = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
                         DiagLog.i("FT200.IAP2", "incoming=${event.status} linkFrames=${event.validLinkFrames} controlId=$message tlvCount=${event.parameterCount} MFi=UNVERIFIED CarPlay=UNVERIFIED")
@@ -133,12 +148,18 @@ internal fun CarPlaySdpDiagnostic() {
                 OutlinedButton(onClick = {
                     incoming.close()
                     incomingEvents = emptyList()
+                    val run = diagnosticGeneration
+                    val currentToyota = item.address
+                    val serial = ++iapProbeSerial
                     // Separate owner-triggered, explicit experimental action.
                     // Never included in auto-connect or the passive SDP probe.
                     val result = incoming.listen(
                         item.address,
                         requestIdentification = true
                     ) { event ->
+                        if (!visible || run != diagnosticGeneration ||
+                            serial != iapProbeSerial ||
+                            selected?.address != currentToyota) return@listen
                         incomingEvents = (incomingEvents + event).takeLast(14)
                         val msg = event.messageId?.let { "0x" + it.toString(16) } ?: "none"
                         DiagLog.i("FT200.IAP2",
@@ -153,7 +174,9 @@ internal fun CarPlaySdpDiagnostic() {
                     Text("Эксперимент: iAP2 IdentificationRequest 0x1D00")
                 }
                 OutlinedButton(onClick = {
+                    iapProbeSerial++
                     incoming.close()
+                    incomingEvents = emptyList()
                 }) { Text("Остановить проверку iAP2") }
                 incomingEvents.forEach { e ->
                     val msg = e.messageId?.let { " · CONTROL=0x" + it.toString(16) + " TLV=${e.parameterCount}" }.orEmpty()
@@ -170,9 +193,16 @@ internal fun CarPlaySdpDiagnostic() {
             }
             Text("UUID/SDP — только наблюдение. Проверки iAP2, MFi, Wi-Fi, HFP и CarPlay ACTIVE ещё не пройдены.")
             Button(onClick = {
+                diagnosticGeneration++
+                iapProbeSerial++
+                hfpContinuity.beginProbe(diagnosticGeneration)
                 probe.close()
+                incoming.close()
+                incomingEvents = emptyList()
+                hfpStatus = "HFP: ещё не проверялся"
                 observed = emptyList()
                 candidates = emptyList()
+                selected = null
                 visible = false
             }) { Text("Закрыть BT-диагностику") }
         }
