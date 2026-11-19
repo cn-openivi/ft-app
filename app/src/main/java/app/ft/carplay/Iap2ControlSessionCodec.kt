@@ -17,6 +17,9 @@ package app.ft.carplay
 internal object Iap2ControlSessionCodec {
     const val CARPLAY_AVAILABILITY = 0x4300
     const val CARPLAY_START_SESSION = 0x4301
+    /** Alternate observed Wi-Fi-info dialect; never assume FAW Toyota uses it. */
+    const val REQUEST_ACCESSORY_WIFI_CONFIG = 0x5702
+    const val ACCESSORY_WIFI_CONFIG = 0x5703
     const val HEADER_BYTES = 6
     const val TLV_HEADER_BYTES = 4
     const val MAX_MESSAGE_BYTES = 65535
@@ -25,7 +28,8 @@ internal object Iap2ControlSessionCodec {
     data class Message(val id: Int, val parameters: List<Parameter>)
 
     enum class PhoneSideRole {
-        OUTBOUND_AVAILABILITY, INBOUND_START_SESSION, OTHER
+        OUTBOUND_AVAILABILITY, INBOUND_START_SESSION,
+        OUTBOUND_WIFI_REQUEST, INBOUND_WIFI_INFO, OTHER
     }
 
     /** Do not log parameter values. IDs and lengths are sufficient for redacted diagnostics. */
@@ -38,6 +42,8 @@ internal object Iap2ControlSessionCodec {
     fun classify(messageId: Int): PhoneSideRole = when (messageId) {
         CARPLAY_AVAILABILITY -> PhoneSideRole.OUTBOUND_AVAILABILITY
         CARPLAY_START_SESSION -> PhoneSideRole.INBOUND_START_SESSION
+        REQUEST_ACCESSORY_WIFI_CONFIG -> PhoneSideRole.OUTBOUND_WIFI_REQUEST
+        ACCESSORY_WIFI_CONFIG -> PhoneSideRole.INBOUND_WIFI_INFO
         else -> PhoneSideRole.OTHER
     }
 

@@ -44,6 +44,8 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
+        WIFI_DIALECT_GROUPED_HINT, WIFI_DIALECT_FLAT_HINT,
+        WIFI_DIALECT_AMBIGUOUS, WIFI_DIALECT_UNADVERTISED,
         ACCESSORY_AUTH_CERTIFICATE_RECEIVED_UNTRUSTED,
         ACCESSORY_AUTH_RESPONSE_RECEIVED_UNVERIFIED,
         LINK_DUPLICATE_IGNORED, LINK_GAP_IGNORED,
@@ -284,6 +286,26 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                         }
                                         emit(run, observation, messageId = message.id,
                                             parameterCount = message.parameters.size)
+                                        if (message.id ==
+                                            Iap2IdentificationInfoInspector.IDENTIFICATION_INFORMATION
+                                        ) {
+                                            // The actual Toyota's 0x0006/0x0007
+                                            // capability lists determine the dialect.
+                                            // This is only a structural hint; do not
+                                            // send CarPlayAvailability, assume MFi, or
+                                            // fabricate a local Bluetooth identifier.
+                                            val dialect = CarPlayWifiDialectPolicy.inspect(message)
+                                            val observedDialect = when (dialect.status) {
+                                                CarPlayWifiDialectPolicy.Status.GROUPED_4300_4301_HINT ->
+                                                    Observation.WIFI_DIALECT_GROUPED_HINT
+                                                CarPlayWifiDialectPolicy.Status.FLAT_5702_5703_HINT ->
+                                                    Observation.WIFI_DIALECT_FLAT_HINT
+                                                CarPlayWifiDialectPolicy.Status.AMBIGUOUS_BOTH_DIALECTS ->
+                                                    Observation.WIFI_DIALECT_AMBIGUOUS
+                                                else -> Observation.WIFI_DIALECT_UNADVERTISED
+                                            }
+                                            emit(run, observedDialect, messageId = message.id)
+                                        }
                                     }
                                 }
                                 continue
