@@ -24,6 +24,7 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
     enum class Stage {
         PERMISSION_MISSING, NETWORK_MANAGER_MISSING,
         AUTHENTICATION_REQUIRED, UNTRUSTED_START_SESSION,
+        UNAPPROVED_TOYOTA_WPA2_PROFILE,
         ALREADY_PENDING, USER_APPROVAL_PENDING,
         WIFI_NETWORK_AVAILABLE_UNVERIFIED, UNAVAILABLE, NETWORK_LOST,
         SECURITY_ERROR, CANCELLED
@@ -41,6 +42,36 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
     ): Stage {
         if (!authenticatedIap2AndToyotaHu) return Stage.AUTHENTICATION_REQUIRED
         if (candidate == null) return Stage.UNTRUSTED_START_SESSION
+        return requestWifi(candidate.ssid, candidate.passphrase, onStage)
+    }
+
+    /**
+     * Alternate physically advertised 0x5702/0x5703 dialect. The flat reply
+     * does not carry a trustworthy WPA2 security enum; require a separately
+     * verified FAW Toyota WPA2 profile before asking Android to connect.
+     * Never assume all CarPlay devices share a security scheme.
+     */
+    @Synchronized
+    fun startFlat(
+        candidate: CarPlayFlatWifiInfoExtractor.Candidate?,
+        authenticatedIap2AndToyotaHu: Boolean,
+        independentlyApprovedToyotaWpa2Profile: Boolean,
+        onStage: (Stage, Network?) -> Unit
+    ): Stage {
+        if (!authenticatedIap2AndToyotaHu) return Stage.AUTHENTICATION_REQUIRED
+        if (!independentlyApprovedToyotaWpa2Profile)
+            return Stage.UNAPPROVED_TOYOTA_WPA2_PROFILE
+        if (candidate == null) return Stage.UNTRUSTED_START_SESSION
+        return requestWifi(candidate.ssid, candidate.passphrase, onStage)
+    }
+
+    @SuppressLint("MissingPermission")
+    @Synchronized
+    private fun requestWifi(
+        verifiedSsid: String,
+        verifiedWpa2Passphrase: String,
+        onStage: (Stage, Network?) -> Unit
+    ): Stage {
         if (callback != null) return Stage.ALREADY_PENDING
         if (manager == null) return Stage.NETWORK_MANAGER_MISSING
         val wifiPermission = if (Build.VERSION.SDK_INT >= 33)
@@ -49,8 +80,8 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
             return Stage.PERMISSION_MISSING
         val spec = try {
             WifiNetworkSpecifier.Builder()
-                .setSsid(candidate.ssid)
-                .setWpa2Passphrase(candidate.passphrase)
+                .setSsid(verifiedSsid)
+                .setWpa2Passphrase(verifiedWpa2Passphrase)
                 .build()
         } catch (_: IllegalArgumentException) {
             return Stage.UNTRUSTED_START_SESSION
