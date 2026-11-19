@@ -40,6 +40,8 @@ jobs:
           grep -Fq 'Option("Apple CarPlay (тест)"' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           grep -Fq 'enabled = true' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           grep -Fq 'PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY' app/src/main/java/app/ft/core/CarConnection.kt
+          grep -Fq 'carPlayExperimentalSelected' app/src/main/java/app/ft/core/Prefs.kt
+          grep -Fq 'CarPlayExperimentalSelectionPolicy.display' app/src/main/java/app/ft/ui/components/CarProtocolState.kt
           test -f app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
           grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt

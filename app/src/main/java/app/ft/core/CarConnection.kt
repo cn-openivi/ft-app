@@ -54,16 +54,24 @@ object CarConnection {
         // The experimental third choice is selectable WITHOUT becoming a live
         // projection. Do not stop current Baidu/ICCOA/HFP on a diagnostic choice.
         when (CarPlayExperimentalSelectionPolicy.choose(prefs.carProtocol, protocol)) {
-            CarPlayExperimentalSelectionPolicy.Action.NO_CHANGE -> return
+            CarPlayExperimentalSelectionPolicy.Action.NO_CHANGE -> {
+                // Returning to the already-running real transport only closes
+                // the diagnostic selection, without unnecessary reconnect.
+                prefs.carPlayExperimentalSelected = (protocol == CarProtocol.CARPLAY)
+                return
+            }
             CarPlayExperimentalSelectionPolicy.Action.PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY -> {
-                prefs.carProtocol = protocol
+                // Deliberately do NOT update prefs.carProtocol: running Baidu
+                // and ICCOA check that production key while handling events.
+                prefs.carPlayExperimentalSelected = true
                 DiagLog.i("Connection",
-                    "Selected carplay experimental; projection=UNVERIFIED; existing backend preserved")
+                    "CarPlay experimental UI selected; production transport unchanged; CarPlay=UNVERIFIED")
                 return
             }
             CarPlayExperimentalSelectionPolicy.Action.SWITCH_READY_BACKEND -> Unit
         }
         if (!protocol.connectionReady) return
+        prefs.carPlayExperimentalSelected = false
         val wasOn = prefs.autoConnect || CarLifeService.state.value.running || IccoaService.state.value.running
         prefs.carProtocol = protocol
         if (CarLifeService.state.value.running) CarLifeService.stop(context)
@@ -73,10 +81,10 @@ object CarConnection {
         if (wasOn) switchOn(context)
     }
 
-    /** On an experimental CarPlay choice never interrupt an existing projection. */
+    /** Restart the real selected transport, independently of the test UI choice. */
     fun restart(context: Context) {
         if (!FTApp.instance.prefs.carProtocol.connectionReady) {
-            DiagLog.i("Connection", "Experimental CarPlay selected; keeping live backend; no auto-start")
+            DiagLog.i("Connection", "Unavailable production transport; no auto-start")
             return
         }
         if (CarLifeService.state.value.running) CarLifeService.stop(context)

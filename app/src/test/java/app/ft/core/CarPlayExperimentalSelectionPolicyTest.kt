@@ -14,6 +14,13 @@ class CarPlayExperimentalSelectionPolicyTest {
         assertFalse(CarProtocol.CARPLAY.connectionReady)
     }
 
+    @Test fun experimentalSelectionShowsCarPlayButKeepsRealBackendIdentity() {
+        for (production in listOf(CarProtocol.CARLIFE, CarProtocol.ICCOA)) {
+            assertEquals(CarProtocol.CARPLAY, p.display(production, true))
+            assertEquals(production, p.display(production, false))
+        }
+    }
+
     @Test fun existingBaiduAndIccoaStillSwitchNormally() {
         assertEquals(CarPlayExperimentalSelectionPolicy.Action.SWITCH_READY_BACKEND,
             p.choose(CarProtocol.CARLIFE, CarProtocol.ICCOA))

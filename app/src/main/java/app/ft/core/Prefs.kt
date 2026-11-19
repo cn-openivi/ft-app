@@ -176,6 +176,10 @@ class Prefs(context: Context) {
         }
     var autoConnect: Boolean get() = bool("autoConnect", false); set(v) = set("autoConnect", v)
     var carProtocol: CarProtocol get() = CarProtocol.fromId(str("carProtocol", "carlife")); set(v) = set("carProtocol", v.id)
+    /** FT200 owner-approved UI experiment; NEVER replaces live carProtocol. */
+    var carPlayExperimentalSelected: Boolean
+        get() = bool("carPlayExperimentalSelected", false)
+        set(v) = set("carPlayExperimentalSelected", v)
     /** Explicit GPS origin: CAR for ICCOA by default, PHONE for Baidu by default. */
     var gpsSourceMode: GpsSourceMode
         get() = GpsSourceMode.fromId(str("gpsSourceMode", GpsSourceMode.defaultFor(carProtocol).id))

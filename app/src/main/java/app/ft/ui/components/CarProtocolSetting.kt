@@ -12,15 +12,15 @@ import app.ft.carplay.CarPlaySdpDiagnostic
 internal fun CarProtocolSetting(): CarProtocol {
     val context = LocalContext.current
     val protocol = rememberCarProtocol()
-    // All three OEM transport choices are visible. CarPlay selection is only a
-    // diagnostic preference until real HU authentication/handshake is proven.
+    // Three selectable UI choices, but only two production-ready backends.
+    // CarPlay experiment does not replace the running Baidu/ICCOA preference.
     val protocols = listOf(CarProtocol.CARLIFE, CarProtocol.ICCOA, CarProtocol.CARPLAY)
     PickSetting(
         title = stringResource(R.string.car_protocol),
         options = listOf(
             Option("Baidu CarLife"),
             Option(stringResource(R.string.iccoa_title), stringResource(R.string.iccoa_experimental)),
-            Option("Apple CarPlay (тест)", "Эксперимент: BT/iAP2; подключение ещё не готово", enabled = true)
+            Option("Apple CarPlay (тест)", "Только диагностика BT/iAP2; Baidu/ICCOA продолжает работать", enabled = true)
         ),
         chosen = protocols.indexOf(protocol),
         about = stringResource(R.string.car_protocol_about),
