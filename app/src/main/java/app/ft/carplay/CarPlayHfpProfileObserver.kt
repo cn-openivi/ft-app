@@ -8,6 +8,8 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -18,7 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 internal object CarPlayHfpProfileObserver {
     enum class Error {
         NONE, MISSING_PERMISSION, ADAPTER_UNAVAILABLE, ADAPTER_OFF,
-        HEADSET_PROXY_UNAVAILABLE, PROFILE_DISCONNECTED, PROFILE_ACCESS_DENIED
+        HEADSET_PROXY_UNAVAILABLE, PROFILE_DISCONNECTED, PROFILE_ACCESS_DENIED,
+        PROFILE_QUERY_TIMEOUT
     }
     data class Snapshot(
         val error: Error,
@@ -57,9 +60,22 @@ internal object CarPlayHfpProfileObserver {
             return false
         }
         val delivered = AtomicBoolean(false)
+        val handler = Handler(Looper.getMainLooper())
+        // Some Android BT stacks accept getProfileProxy but never invoke the
+        // listener. Do not leave the diagnostic displaying an eternal pending
+        // state or accidentally accept a late callback as fresh evidence.
+        val deadline = Runnable {
+            if (delivered.compareAndSet(false, true)) {
+                onComplete(Snapshot(Error.PROFILE_QUERY_TIMEOUT,
+                    CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
+            }
+        }
         val listener = object : BluetoothProfile.ServiceListener {
             override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                if (profile != BluetoothProfile.HEADSET) return
+                if (profile != BluetoothProfile.HEADSET) {
+                    runCatching { adapter.closeProfileProxy(profile, proxy) }
+                    return
+                }
                 val result = try {
                     val connected = proxy.connectedDevices
                     val selected = connected.firstOrNull {
@@ -82,22 +98,34 @@ internal object CarPlayHfpProfileObserver {
                 } finally {
                     runCatching { adapter.closeProfileProxy(BluetoothProfile.HEADSET, proxy) }
                 }
-                if (delivered.compareAndSet(false, true)) onComplete(result)
+                if (delivered.compareAndSet(false, true)) {
+                    handler.removeCallbacks(deadline)
+                    onComplete(result)
+                }
             }
 
             override fun onServiceDisconnected(profile: Int) {
                 if (profile == BluetoothProfile.HEADSET &&
-                    delivered.compareAndSet(false, true))
+                    delivered.compareAndSet(false, true)) {
+                    handler.removeCallbacks(deadline)
                     onComplete(Snapshot(Error.PROFILE_DISCONNECTED,
                         CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
+                }
             }
         }
         val requested = try {
             adapter.getProfileProxy(context, listener, BluetoothProfile.HEADSET)
         } catch (_: SecurityException) { false }
-        if (!requested && delivered.compareAndSet(false, true))
-            onComplete(Snapshot(Error.HEADSET_PROXY_UNAVAILABLE,
-                CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
+        catch (_: RuntimeException) { false }
+        if (!requested) {
+            if (delivered.compareAndSet(false, true))
+                onComplete(Snapshot(Error.HEADSET_PROXY_UNAVAILABLE,
+                    CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE))
+        } else if (!delivered.get()) {
+            // If the callback races with postDelayed, the atomic gate still
+            // guarantees exactly one completion for this HFP read.
+            handler.postDelayed(deadline, 10_000L)
+        }
         return requested
     }
 }
