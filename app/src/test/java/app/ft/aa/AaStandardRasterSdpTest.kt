@@ -36,6 +36,16 @@ class AaStandardRasterSdpTest {
         assertEquals(1920 to 1080, check(1920, 1080))
     }
 
+    @Test fun fullHdKeepsRequested240DpiWithZeroPadding() {
+        val sdp = AaMessages.serviceDiscoveryResponse(1920, 1008, 30,
+            240, true, "OpenIVI")
+        val video = ProtoReader(sdp).messages(1)
+            .first { it.int(1) == AaProtocol.CH_VIDEO }.message(3)!!.message(4)!!
+        assertEquals(240, video.int(5))
+        assertEquals(0, video.int(3))
+        assertEquals(0, video.int(4))
+    }
+
     @Test fun nonstandardCarAndManualValuesCannotLeakToWire() {
         assertEquals(1920 to 1080, check(2422, 1272))
         assertEquals(1920 to 1080, check(1600, 900))
