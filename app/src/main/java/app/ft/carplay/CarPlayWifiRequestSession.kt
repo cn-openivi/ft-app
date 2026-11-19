@@ -55,13 +55,17 @@ internal class CarPlayWifiRequestSession {
                 Iap2ControlSessionCodec.Message(
                     Iap2ControlSessionCodec.REQUEST_ACCESSORY_WIFI_CONFIG, emptyList())
             CarPlayWifiDialectPolicy.Status.GROUPED_4300_4301_HINT -> {
-                val address = actualPhoneBluetoothAddress
-                if (!actualPhoneBluetoothIdentityVerified ||
-                    !isConcreteRealPhoneBluetoothAddress(address))
+                // Use the same single-phone unicast/placeholder rejection
+                // contract as HFP/CarPlay identity checks. A syntactically
+                // valid multicast BT MAC must not pass the wire gate.
+                val identity = CarPlayPhoneIdentity.fromRealLocalAddress(
+                    actualPhoneBluetoothAddress)
+                if (!actualPhoneBluetoothIdentityVerified || identity == null)
                     return Proposal(Result.VERIFIED_LOCAL_BLUETOOTH_IDENTITY_REQUIRED)
                 val attrsWired = tlv(0, byteArrayOf(0))
                 val attrsWireless = tlv(0, byteArrayOf(1)) +
-                    tlv(1, (address!! + "\u0000").toByteArray(StandardCharsets.US_ASCII))
+                    tlv(1, (identity.bluetoothAddress + "\u0000")
+                        .toByteArray(StandardCharsets.US_ASCII))
                 Iap2ControlSessionCodec.Message(
                     Iap2ControlSessionCodec.CARPLAY_AVAILABILITY,
                     listOf(
@@ -126,16 +130,6 @@ internal class CarPlayWifiRequestSession {
             activeGeneration = null
             awaitedReplyId = null
         }
-    }
-
-    private fun isConcreteRealPhoneBluetoothAddress(value: String?): Boolean {
-        if (value == null ||
-            !Regex("(?i)[0-9a-f]{2}(?::[0-9a-f]{2}){5}").matches(value)) return false
-        val normalized = value.uppercase()
-        return normalized != "02:00:00:00:00:00" &&
-            normalized != "02:00:00:00:00:01" &&
-            normalized != "00:00:00:00:00:00" &&
-            normalized != "FF:FF:FF:FF:FF:FF"
     }
 
     private fun tlv(id: Int, bytes: ByteArray): ByteArray {

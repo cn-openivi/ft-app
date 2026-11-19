@@ -63,7 +63,11 @@ class CarPlayWifiRequestSessionTest {
             request(s, 1, grouped).result)
         assertEquals(CarPlayWifiRequestSession.Result.VERIFIED_LOCAL_BLUETOOTH_IDENTITY_REQUIRED,
             request(s, 2, grouped, actualMac = true, mac = "02:00:00:00:00:00").result)
-        val p = request(s, 3, grouped, actualMac = true, mac = "AA:BB:CC:DD:EE:FF")
+        // A colon-formatted multicast address is not the owner's physical
+        // phone identity; a spoofed group address cannot appear on the wire.
+        assertEquals(CarPlayWifiRequestSession.Result.VERIFIED_LOCAL_BLUETOOTH_IDENTITY_REQUIRED,
+            request(s, 3, grouped, actualMac = true, mac = "01:22:33:44:55:66").result)
+        val p = request(s, 4, grouped, actualMac = true, mac = "AA:BB:CC:DD:EE:FF")
         assertEquals(CarPlayWifiRequestSession.Result.PREPARED_NOT_SENT, p.result)
         assertEquals(0x4300, p.message!!.id)
         val parsed = Iap2ControlSessionCodec.decode(
@@ -71,7 +75,7 @@ class CarPlayWifiRequestSessionTest {
         assertEquals(2, parsed.parameters.size)
         assertFalse(p.toString().contains("AA:BB:CC"))
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_OBSERVED_UNVERIFIED,
-            s.observeReply(3, true, groupedReply()))
+            s.observeReply(4, true, groupedReply()))
     }
 
     @Test fun newAttemptAndLinkLossRevokePreviousReply() {
