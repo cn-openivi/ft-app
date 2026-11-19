@@ -86,11 +86,19 @@ class AaBluetoothAdvertiser(private val context: Context, private val port: Int)
                             @Suppress("DEPRECATION")
                             cfg.ssid
                         }
-                        (name ?: "FT") to (cfg.passphrase ?: "")
+                        name.orEmpty() to cfg.passphrase.orEmpty()
                     } else {
                         @Suppress("DEPRECATION")
                         val cfg = reservation.wifiConfiguration
-                        (cfg?.SSID?.trim('"') ?: "FT") to (cfg?.preSharedKey ?: "")
+                        cfg?.SSID?.trim('"').orEmpty() to cfg?.preSharedKey.orEmpty()
+                    }
+                    if (!AaHotspotAddressPolicy.credentialsUsable(ssid, pass)) {
+                        _status.value = "hotspot-wpa2-credentials-unavailable"
+                        DiagLog.w(tag, "LOHS did not provide a valid WPA2 SSID/passphrase; no BT Wi-Fi advertisement")
+                        _info.value = null
+                        hotspotReady.countDown()
+                        runCatching { reservation.close() }
+                        return
                     }
                     // onStarted means SSID and credentials exist; the AP IPv4
                     // may be assigned later. Never advertise the station/VPN IP.
