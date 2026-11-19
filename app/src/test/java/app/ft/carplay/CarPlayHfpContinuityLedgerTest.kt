@@ -8,52 +8,75 @@ class CarPlayHfpContinuityLedgerTest {
     private val other = CarPlaySingleBondPolicy.Result.HFP_CONNECTED_OTHER_HU
     private val gone = CarPlaySingleBondPolicy.Result.HFP_DISCONNECTED
 
-    @Test fun observedProfileNeverClaimedToBeCarrierCallOrCarPlay() {
-        val ledger = CarPlayHfpContinuityLedger()
-        assertTrue(ledger.beginProbe(1))
-        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, ledger.observe(1, same, 100))
-        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, ledger.state(101))
+    @Test fun realReadOnlyProfileObservationNeverProvesCarrierSpeech() {
+        val q = CarPlayHfpContinuityLedger()
+        assertTrue(q.beginProbe(1))
+        assertTrue(q.beginRead(1, 1))
+        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, q.observe(1, 1, same, 100))
+        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, q.state(101))
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(1, 1, gone, 102))
     }
 
-    @Test fun lateCallbackFromEarlierToyotaIsIgnored() {
-        val ledger = CarPlayHfpContinuityLedger()
-        ledger.beginProbe(3)
-        ledger.observe(3, other, 100)
-        ledger.beginProbe(4)
-        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, ledger.observe(3, same, 101))
-        assertEquals(CarPlayHfpContinuityLedger.State.UNOBSERVED, ledger.state(102))
-        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, ledger.observe(4, same, 110))
+    @Test fun secondRequestToSameToyotaWinsOverOldCallback() {
+        val q = CarPlayHfpContinuityLedger()
+        q.beginProbe(1)
+        q.beginRead(1, 10)
+        assertTrue(q.beginRead(1, 11))
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(1, 10, same, 90))
+        assertEquals(CarPlayHfpContinuityLedger.State.UNOBSERVED, q.state(91))
+        assertEquals(CarPlayHfpContinuityLedger.State.HFP_DISCONNECTED, q.observe(1, 11, gone, 100))
+        assertEquals(CarPlayHfpContinuityLedger.State.HFP_DISCONNECTED, q.state(101))
     }
 
-    @Test fun hfpLossOrPeerSwitchRevokesPreviouslyGoodObservation() {
-        val ledger = CarPlayHfpContinuityLedger()
-        ledger.beginProbe(1)
-        ledger.observe(1, same, 100)
-        assertEquals(CarPlayHfpContinuityLedger.State.HFP_DISCONNECTED, ledger.observe(1, gone, 200))
-        assertEquals(CarPlayHfpContinuityLedger.State.DIFFERENT_HU, ledger.observe(1, other, 300))
+    @Test fun previousToyotaCallbackCannotCorruptNewSession() {
+        val q = CarPlayHfpContinuityLedger()
+        q.beginProbe(3)
+        q.beginRead(3, 11)
+        q.observe(3, 11, other, 100)
+        q.beginProbe(4)
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(3, 11, same, 101))
+        assertTrue(q.beginRead(4, 12))
+        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, q.observe(4, 12, same, 110))
+    }
+
+    @Test fun repeatedRequestsRevokePreviouslyPositiveProfile() {
+        val q = CarPlayHfpContinuityLedger()
+        q.beginProbe(1)
+        q.beginRead(1, 1)
+        q.observe(1, 1, same, 100)
+        q.beginRead(1, 2)
+        assertEquals(CarPlayHfpContinuityLedger.State.UNOBSERVED, q.state(101))
+        assertEquals(CarPlayHfpContinuityLedger.State.HFP_DISCONNECTED, q.observe(1, 2, gone, 200))
+        q.beginRead(1, 3)
+        assertEquals(CarPlayHfpContinuityLedger.State.DIFFERENT_HU, q.observe(1, 3, other, 300))
+        q.beginRead(1, 4)
         assertEquals(CarPlayHfpContinuityLedger.State.PROFILE_UNAVAILABLE,
-            ledger.observe(1, CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE, 301))
+            q.observe(1, 4, CarPlaySingleBondPolicy.Result.BT_STATE_UNAVAILABLE, 301))
     }
 
-    @Test fun expiredAndNonMonotonicResultsNeverRemainVerified() {
-        val ledger = CarPlayHfpContinuityLedger(freshnessMs = 100)
-        ledger.beginProbe(2)
-        ledger.observe(2, same, 100)
-        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, ledger.state(200))
-        assertEquals(CarPlayHfpContinuityLedger.State.EXPIRED, ledger.state(201))
-        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, ledger.observe(2, same, 99))
-        assertEquals(CarPlayHfpContinuityLedger.State.EXPIRED, ledger.state(250))
-        assertFalse(ledger.beginProbe(2))
-        assertTrue(ledger.beginProbe(3))
-        assertEquals(CarPlayHfpContinuityLedger.State.UNOBSERVED, ledger.state(250))
+    @Test fun expiredAndNonMonotonicReadCannotRemainConfirmed() {
+        val q = CarPlayHfpContinuityLedger(freshnessMs = 100)
+        q.beginProbe(2)
+        q.beginRead(2, 1)
+        q.observe(2, 1, same, 100)
+        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, q.state(200))
+        assertEquals(CarPlayHfpContinuityLedger.State.EXPIRED, q.state(201))
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(2, 1, same, 99))
+        assertFalse(q.beginRead(2, 1))
+        assertTrue(q.beginRead(2, 2))
+        assertEquals(CarPlayHfpContinuityLedger.State.UNOBSERVED, q.state(201))
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(2, 2, same, -1))
+        assertEquals(CarPlayHfpContinuityLedger.State.SAME_HU_PROFILE_ONLY, q.observe(2, 2, same, 250))
     }
 
-    @Test fun noBondAndNoValidDiagnosticGenerationNeverPass() {
-        val ledger = CarPlayHfpContinuityLedger()
-        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, ledger.observe(0, same, 5))
-        assertTrue(ledger.beginProbe(5))
+    @Test fun noBondOrUnauthorizedProbeCannotPass() {
+        val q = CarPlayHfpContinuityLedger()
+        assertFalse(q.beginRead(0, 1))
+        assertTrue(q.beginProbe(5))
+        assertFalse(q.beginRead(4, 1))
+        assertTrue(q.beginRead(5, 1))
         assertEquals(CarPlayHfpContinuityLedger.State.NO_BOND,
-            ledger.observe(5, CarPlaySingleBondPolicy.Result.NO_EXISTING_BOND, 10))
-        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, ledger.observe(5, same, -1))
+            q.observe(5, 1, CarPlaySingleBondPolicy.Result.NO_EXISTING_BOND, 10))
+        assertEquals(CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED, q.observe(5, 1, same, 11))
     }
 }

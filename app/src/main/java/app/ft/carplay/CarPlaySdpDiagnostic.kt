@@ -42,6 +42,7 @@ internal fun CarPlaySdpDiagnostic() {
     var hfpStatus by remember { mutableStateOf("HFP: ещё не проверялся") }
     val hfpContinuity = remember { CarPlayHfpContinuityLedger() }
     var diagnosticGeneration by remember { mutableStateOf(0L) }
+    var hfpReadSerial by remember { mutableStateOf(0L) }
     var notice by remember { mutableStateOf("CarPlay: тестовый выбор. Настоящее подключение пока не подтверждено.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
@@ -94,14 +95,17 @@ internal fun CarPlaySdpDiagnostic() {
                     hfpStatus = "HFP: запрошено состояние штатного профиля"
                     val run = diagnosticGeneration
                     val currentToyota = item.address
+                    val readId = ++hfpReadSerial
+                    if (!hfpContinuity.beginRead(run, readId)) return@OutlinedButton
                     CarPlayHfpProfileObserver.readOnce(context, currentToyota) { result ->
                         context.mainExecutor.execute {
                             val gate = hfpContinuity.observe(
-                                run, result.bondPolicy, SystemClock.elapsedRealtime())
-                            // Ignore late callbacks from the previously selected
-                            // Toyota or closed probe; no stale HFP indication.
-                            if (run != diagnosticGeneration ||
-                                selected?.address != currentToyota) return@execute
+                                run, readId, result.bondPolicy, SystemClock.elapsedRealtime())
+                            // Old result from the same Toyota is stale too if a
+                            // newer HFP request has already been issued.
+                            if (gate == CarPlayHfpContinuityLedger.State.STALE_PROBE_IGNORED ||
+                                run != diagnosticGeneration || readId != hfpReadSerial ||
+                                selected?.address != currentToyota || !visible) return@execute
                             hfpStatus = "HFP: $gate / ${result.error}; " +
                                 "сотовая речь НЕ ПРОВЕРЕНА"
                             DiagLog.i("FT200.HFP",

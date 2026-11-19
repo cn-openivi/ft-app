@@ -20,6 +20,8 @@ internal class CarPlayHfpContinuityLedger(
     }
 
     private var currentProbe = 0L
+    private var newestReadId = 0L
+    private var pendingRead = false
     private var lastObservedAtMs = -1L
     private var latest = State.UNOBSERVED
 
@@ -27,21 +29,38 @@ internal class CarPlayHfpContinuityLedger(
     fun beginProbe(generation: Long): Boolean {
         if (generation <= currentProbe || generation <= 0L) return false
         currentProbe = generation
+        newestReadId = 0L
+        pendingRead = false
         lastObservedAtMs = -1L
         latest = State.UNOBSERVED
+        return true
+    }
+
+    /** Each real public Android HFP profile read has a separate monotonic ID. */
+    @Synchronized
+    fun beginRead(generation: Long, requestId: Long): Boolean {
+        if (generation != currentProbe || generation <= 0L ||
+            requestId <= newestReadId || requestId <= 0L) return false
+        newestReadId = requestId
+        pendingRead = true
+        latest = State.UNOBSERVED
+        lastObservedAtMs = -1L
         return true
     }
 
     @Synchronized
     fun observe(
         generation: Long,
+        requestId: Long,
         result: CarPlaySingleBondPolicy.Result,
         monotonicMs: Long
     ): State {
         if (generation != currentProbe || generation <= 0L ||
+            requestId != newestReadId || !pendingRead ||
             monotonicMs < 0L ||
             (lastObservedAtMs >= 0L && monotonicMs < lastObservedAtMs))
             return State.STALE_PROBE_IGNORED
+        pendingRead = false // Duplicate callback cannot re-assert HFP state.
         latest = when (result) {
             CarPlaySingleBondPolicy.Result.HFP_CONNECTED_SAME_HU ->
                 State.SAME_HU_PROFILE_ONLY
