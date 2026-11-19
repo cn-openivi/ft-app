@@ -390,9 +390,15 @@ class CarLifeSession(
                 val pub = ProtoReader(c.payload).string(1) ?: ""
                 val request = crypto.aesKeyRequest(pub)
                 if (request == null) {
-                    // HU explicitly demanded encryption; silently continuing
-                    // in plaintext would misreport the negotiated security mode.
-                    throw IllegalStateException("Baidu required AES but OEM RSA key was invalid")
+                    // Unsolicited malformed public keys are ignored. Once the
+                    // OEM has requested an AES negotiation, however, never
+                    // resume a plaintext projection after the RSA error.
+                    DiagLog.w(tag, "Baidu OEM RSA public key invalid; AES not negotiated")
+                    if (crypto.started) {
+                        link.stop()
+                        closed("Baidu required encryption but OEM RSA key was invalid")
+                    }
+                    return
                 } else {
                     crypto.armIncoming()
                     if (cmd(CarLifeProtocol.CMD_MD_AES_KEY_SEND_REQUEST, ProtoWriter().string(1, request).toByteArray())) {
