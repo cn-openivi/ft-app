@@ -14,16 +14,13 @@ internal class CarPlayAudioFocusBridge(context: Context) : AutoCloseable {
     private val manager = context.getSystemService(AudioManager::class.java)
     private var request: AudioFocusRequest? = null
     private var activeType: Int? = null
+    private val focusGeneration = CarPlayAudioFocusGenerationFence()
     @Volatile var currentFocus: Int = AudioManager.AUDIOFOCUS_LOSS
         private set
 
     enum class Status {
         NATIVE_CALL_PRIORITY, CARPLAY_UNAVAILABLE, NO_AUDIO,
         FOCUS_GRANTED, FOCUS_DENIED, AUDIO_MANAGER_UNAVAILABLE
-    }
-
-    private val listener = AudioManager.OnAudioFocusChangeListener { next ->
-        currentFocus = next
     }
 
     @Synchronized
@@ -62,18 +59,24 @@ internal class CarPlayAudioFocusBridge(context: Context) : AutoCloseable {
                     .setUsage(if (voice) AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE
                         else AudioAttributes.USAGE_MEDIA)
                     .build()
+                val generation = focusGeneration.beginRequest()
+                val listener = AudioManager.OnAudioFocusChangeListener { next ->
+                    focusGeneration.accept(generation, next) { currentFocus = it }
+                }
                 val fresh = AudioFocusRequest.Builder(gain)
                     .setAudioAttributes(attrs)
                     .setAcceptsDelayedFocusGain(false)
                     .setOnAudioFocusChangeListener(listener)
                     .build()
-                val accepted = audio.requestAudioFocus(fresh)
+                val accepted = runCatching { audio.requestAudioFocus(fresh) }
+                    .getOrDefault(AudioManager.AUDIOFOCUS_REQUEST_FAILED)
                 if (accepted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
                     request = fresh
                     activeType = gain
                     currentFocus = AudioManager.AUDIOFOCUS_GAIN
                     Status.FOCUS_GRANTED
                 } else {
+                    focusGeneration.invalidate()
                     currentFocus = AudioManager.AUDIOFOCUS_LOSS
                     Status.FOCUS_DENIED
                 }
@@ -82,6 +85,7 @@ internal class CarPlayAudioFocusBridge(context: Context) : AutoCloseable {
     }
 
     @Synchronized override fun close() {
+        focusGeneration.invalidate()
         val req = request
         request = null
         activeType = null
