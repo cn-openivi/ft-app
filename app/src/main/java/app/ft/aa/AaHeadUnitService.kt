@@ -186,10 +186,10 @@ class AaHeadUnitService : Service() {
         }
         acceptJob = scope.launch {
             try {
-                // Bluetooth wireless mode must bind the SAME IPv4 actually
-                // assigned to the LOHS, never every interface or a guessed
-                // 192.168.x.x. Developer/self mode keeps its legacy listener.
-                var localIp: java.net.InetAddress? = null
+                // Both paths are scoped: wireless to the actual local-only
+                // hotspot IPv4, developer/self mode to 127.0.0.1 only.
+                // Never expose a wildcard listener to Wi-Fi/LTE/VPN.
+                var localIp = AaHeadUnitListenAddress.selected(false, null)
                 if (bluetooth) {
                     var ready: HotspotInfo? = null
                     repeat(72) {
@@ -203,7 +203,12 @@ class AaHeadUnitService : Service() {
                         _state.update { it.copy(listening = false, bluetooth = "hotspot-ip-unavailable") }
                         return@launch
                     }
-                    localIp = java.net.InetAddress.getByName(resolved.ip)
+                    localIp = AaHeadUnitListenAddress.selected(true, resolved.ip)
+                        ?: run {
+                            DiagLog.w(tag, "AA_WIRELESS_LISTENER_BLOCKED invalid hotspot IPv4")
+                            _state.update { it.copy(listening = false, bluetooth = "hotspot-ip-invalid") }
+                            return@launch
+                        }
                 }
                 val ss = NetUtil.listen(port, bindAddress = localIp) { isActive } ?: return@launch
                 if (!connections.withRun(run) {
