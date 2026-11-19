@@ -160,7 +160,7 @@ fun CarPreviewHeader(preview: CarPreviewState, pinned: Boolean) {
                             onClick = { preview.night = i == 1 },
                             shape = SegmentedButtonDefaults.itemShape(i, modes.size),
                             icon = { Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp)) }
-                        ) { Text(stringResource(label), maxLines = 1) }
+                        ) { FitText(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 1, smallest = 10.sp) }
                     }
                 }
             }
@@ -308,7 +308,7 @@ fun CarButtonSettings() {
         onClick = { save { p.carTiles = CarStyle.DEFAULT_TILES } },
         enabled = style.tiles != CarStyle.parseTiles(CarStyle.DEFAULT_TILES),
         modifier = Modifier.fillMaxWidth()
-    ) { Text(stringResource(R.string.look_default_buttons)) }
+    ) { FitText(stringResource(R.string.look_default_buttons), style = MaterialTheme.typography.labelLarge, maxLines = 1, smallest = 11.sp) }
 
     if (picking >= 0) {
         TilePicker(
@@ -499,7 +499,7 @@ private fun ChipBody(label: String, icon: @Composable () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically)
     ) {
         icon()
-        FitText(label, style = MaterialTheme.typography.labelLarge, maxLines = 2, smallest = 10.sp, align = TextAlign.Center)
+        FitText(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, smallest = 10.sp, align = TextAlign.Center)
     }
 }
 

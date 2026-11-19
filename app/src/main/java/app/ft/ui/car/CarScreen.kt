@@ -922,7 +922,7 @@ private fun Tile(modifier: Modifier, spec: TileSpec, onClick: () -> Unit) {
                 if (spec.app != null) Image(spec.app, contentDescription = null, modifier = Modifier.fillMaxSize())
                 else Icon(spec.icon ?: CarIcons.Apps, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(44.dp))
             }
-            FitText(spec.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 2, smallest = 15.sp)
+            FitText(spec.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 1, smallest = 12.sp)
         }
     }
 }
@@ -1176,7 +1176,7 @@ private fun AppCell(app: AppCatalog.App, px: Int, onClose: () -> Unit) {
             val i = icon
             if (i != null) Image(i, contentDescription = null, modifier = Modifier.size(72.dp))
             else Icon(CarIcons.Apps, contentDescription = null, modifier = Modifier.size(72.dp))
-            Text(app.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            FitText(app.label, style = MaterialTheme.typography.titleLarge.ownDirection(), maxLines = 1, smallest = 12.sp)
         }
     }
 }

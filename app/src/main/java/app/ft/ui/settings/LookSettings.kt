@@ -26,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.ft.ui.components.FitText
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import app.ft.FtTile
@@ -70,7 +72,7 @@ fun LookSettings() {
                     selected = mode == value,
                     onClick = { Looks.set(value) },
                     shape = SegmentedButtonDefaults.itemShape(i, modes.size)
-                ) { Text(stringResource(label), maxLines = 1) }
+                ) { FitText(stringResource(label), style = MaterialTheme.typography.labelLarge, maxLines = 1, smallest = 10.sp) }
             }
         }
     }

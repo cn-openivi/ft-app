@@ -31,7 +31,10 @@ class StringsTest {
     private val english = read("values")
     private val translations = mapOf(
         "Arabic" to read("values-ar"),
-        "Russian" to read("values-ru")
+        "Russian" to read("values-ru"),
+        "Turkish" to read("values-tr"),
+        "German" to read("values-de"),
+        "French" to read("values-fr")
     )
 
     private fun placeholders(s: String) = Regex("%(\\d+)\\$([sd])").findAll(s).map { it.value }.sorted().toList()
@@ -64,24 +67,16 @@ class StringsTest {
     }
 
     @Test
-    fun newLocalesHaveRealStarterTranslationsWithSafeEnglishFallback() {
-        // New locales are deliberately partial. Omitted Android resources fall
-        // back to default English rather than pretending all 664 strings have
-        // already been translated and linguistically reviewed.
-        mapOf(
-            "Turkish" to read("values-tr"),
-            "German" to read("values-de"),
-            "French" to read("values-fr")
-        ).forEach { (name, locale) ->
-            assertTrue("$name has too few reviewed starter strings", locale.strings.size >= 70)
-            locale.strings.forEach { (key, value) ->
-                assertTrue("$name unknown key $key", english.strings.containsKey(key))
-                assertEquals("$name placeholders for $key",
-                    placeholders(english.strings.getValue(key)), placeholders(value))
-                assertTrue("$name empty translation for $key", value.isNotBlank())
-            }
-            assertTrue("$name locale is all English",
-                locale.strings.any { (key, value) -> value != english.strings.getValue(key) })
+    fun newLocalesAreCompleteNotPartialEnglishFallbacks() {
+        listOf("Turkish", "German", "French").forEach { name ->
+            val locale = translations.getValue(name)
+            assertEquals("$name resource coverage", 664, locale.strings.size)
+            val unchanged = locale.strings.filter { (key, value) ->
+                value == english.strings.getValue(key)
+            }.keys
+            // Names of protocols, brands and units are intentionally unchanged.
+            assertTrue("$name still contains untranslated prose: $unchanged",
+                unchanged.size <= 40)
         }
     }
 

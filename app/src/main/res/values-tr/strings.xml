@@ -383,7 +383,7 @@
     <string name="backup_show_code">Kodu göster</string>
     <string name="backup_paste_code">Kod yapıştır</string>
     <string name="backup_look_applied">Araç görünümü aktarıldı</string>
-    <string name="tile_supercast">Telefon uygulamaları</string>
+    <string name="tile_supercast">Uygulamalar</string>
     <string name="supercast_pick">Burada açmak için aşağıdan uygulama seçin</string>
     <string name="supercast_swap">Tarafları değiştir</string>
     <string name="settings_supercast_title">Araçtaki uygulamalar</string>

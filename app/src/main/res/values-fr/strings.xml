@@ -280,7 +280,7 @@
     <string name="tile_apps">Toutes les applis</string>
     <string name="tile_maps">Cartes</string>
     <string name="tile_aa">Android Auto</string>
-    <string name="tile_phone">Écran du téléphone</string>
+    <string name="tile_phone">Écran tél.</string>
     <string name="car_allow_sound">Autorisez le son sur le téléphone</string>
     <string name="car_allow_share">Autorisez le partage d’écran sur le téléphone</string>
     <string name="car_sound_soon">Le son sera diffusé ici après autorisation</string>
@@ -383,7 +383,7 @@
     <string name="backup_show_code">Afficher le code</string>
     <string name="backup_paste_code">Coller un code</string>
     <string name="backup_look_applied">Apparence du véhicule importée</string>
-    <string name="tile_supercast">Applications du téléphone</string>
+    <string name="tile_supercast">Applis</string>
     <string name="supercast_pick">Choisissez ci-dessous une application à lancer ici</string>
     <string name="supercast_swap">Inverser les côtés</string>
     <string name="settings_supercast_title">Applications dans le véhicule</string>

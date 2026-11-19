@@ -280,7 +280,7 @@
     <string name="tile_apps">Alle Apps</string>
     <string name="tile_maps">Karten</string>
     <string name="tile_aa">Android Auto</string>
-    <string name="tile_phone">Telefonbildschirm</string>
+    <string name="tile_phone">Handydisplay</string>
     <string name="car_allow_sound">Ton auf Telefon erlauben</string>
     <string name="car_allow_share">Bildschirmfreigabe am Telefon erlauben</string>
     <string name="car_sound_soon">Nach der Freigabe wird der Ton hier abgespielt</string>

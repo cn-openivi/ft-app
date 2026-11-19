@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
@@ -31,6 +32,7 @@ fun FitText(
         modifier,
         style = style.copy(color = tint, textAlign = align ?: style.textAlign),
         maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
         autoSize = TextAutoSize.StepBased(minFontSize = smallest, maxFontSize = largest, stepSize = 0.5.sp)
     )
 }
