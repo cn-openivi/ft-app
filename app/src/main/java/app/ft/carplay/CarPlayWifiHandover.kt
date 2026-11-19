@@ -26,12 +26,14 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
         AUTHENTICATION_REQUIRED, UNTRUSTED_START_SESSION,
         UNAPPROVED_TOYOTA_WPA2_PROFILE,
         ALREADY_PENDING, USER_APPROVAL_PENDING,
-        WIFI_NETWORK_AVAILABLE_UNVERIFIED, UNAVAILABLE, NETWORK_LOST,
+        WIFI_NETWORK_AVAILABLE_UNVERIFIED, WIFI_NETWORK_REJECTED,
+        UNAVAILABLE, NETWORK_LOST,
         SECURITY_ERROR, CANCELLED
     }
     private val manager = context.getSystemService(ConnectivityManager::class.java)
     @Volatile private var callback: ConnectivityManager.NetworkCallback? = null
     @Volatile private var generation: Long = 0L
+    private val networkGate = CarPlayWifiCallbackGate<Network>()
 
     @SuppressLint("MissingPermission")
     @Synchronized
@@ -92,19 +94,36 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
             .setNetworkSpecifier(spec)
             .build()
         val id = ++generation
+        check(networkGate.begin(id))
         val cb = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                if (id == generation) onStage(Stage.WIFI_NETWORK_AVAILABLE_UNVERIFIED, network)
+                // Android reports capabilities in a subsequent callback;
+                // don't promote an address until Wi-Fi transport is observed.
+                networkGate.available(id, network)
+            }
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                when (networkGate.capabilities(id, network,
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI))) {
+                    CarPlayWifiCallbackGate.Verdict.NETWORK_WIFI_CANDIDATE -> {
+                        if (id == generation)
+                            onStage(Stage.WIFI_NETWORK_AVAILABLE_UNVERIFIED, network)
+                    }
+                    CarPlayWifiCallbackGate.Verdict.WRONG_TRANSPORT -> {
+                        try { if (id == generation) onStage(Stage.WIFI_NETWORK_REJECTED, null) }
+                        finally { if (id == generation) this@CarPlayWifiHandover.close() }
+                    }
+                    CarPlayWifiCallbackGate.Verdict.IGNORED -> Unit
+                }
             }
             override fun onUnavailable() {
                 // An obsolete callback MUST NOT close a newer Wi-Fi session.
-                if (id != generation) return
-                try { onStage(Stage.UNAVAILABLE, null) }
+                if (!networkGate.unavailable(id)) return
+                try { if (id == generation) onStage(Stage.UNAVAILABLE, null) }
                 finally { if (id == generation) this@CarPlayWifiHandover.close() }
             }
             override fun onLost(network: Network) {
-                if (id != generation) return
-                try { onStage(Stage.NETWORK_LOST, null) }
+                if (!networkGate.lost(id, network)) return
+                try { if (id == generation) onStage(Stage.NETWORK_LOST, null) }
                 finally { if (id == generation) this@CarPlayWifiHandover.close() }
             }
         }
@@ -114,16 +133,19 @@ internal class CarPlayWifiHandover(private val context: Context) : AutoCloseable
             Stage.USER_APPROVAL_PENDING
         } catch (_: SecurityException) {
             callback = null
+            networkGate.close()
             generation++
             Stage.SECURITY_ERROR
         } catch (_: IllegalArgumentException) {
             callback = null
+            networkGate.close()
             generation++
             Stage.UNTRUSTED_START_SESSION
         }
     }
 
     @Synchronized override fun close() {
+        networkGate.close()
         generation++
         val cb = callback
         callback = null

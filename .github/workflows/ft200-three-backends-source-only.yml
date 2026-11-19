@@ -113,7 +113,7 @@ jobs:
               'Iap2SynPayloadParserTest', 'Iap2ReliableLinkWindowTest', 'Iap2RetryDeadlineTest',
               'Iap2Ft200SafetyPolicyTest', 'Iap2CertificatePathFixtureTest', 'CarPlayMediaPreflightTest', 'CarPlayNmeaSentencesTest', 'CarPlayRtspCodecTest', 'CarPlayAirPlayEndpointPolicyTest', 'CarPlayWifiStartExtractorTest', 'CarPlayAudioFocusPolicyTest', 'CarPlayAudioFocusGenerationFenceTest', 'CarPlayAvcPassthroughTest',
               'CarPlayAirPlayNsdPolicyTest', 'CarPlayAirPlayNsdResolutionFenceTest',
-              'CarPlayWifiDialectPolicyTest', 'CarPlayWifiRequestSessionTest', 'CarPlayFlatWifiInfoExtractorTest', 'CarPlayFlatWifiInfoInspectorTest',
+              'CarPlayWifiDialectPolicyTest', 'CarPlayWifiRequestSessionTest', 'CarPlayWifiCallbackGateTest', 'CarPlayFlatWifiInfoExtractorTest', 'CarPlayFlatWifiInfoInspectorTest',
               'CarPlayTouchGeometryTest', 'CarPlayNmeaSubscriptionSessionTest',
               'CarPlayNmeaLatestOnlyBufferTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
