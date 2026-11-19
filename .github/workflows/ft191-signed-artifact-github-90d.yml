@@ -1,0 +1,111 @@
+name: FT191 signed TEST APK on GitHub Actions (90 days, NO RELEASE)
+
+on:
+  push:
+    branches:
+      - openivi/ft191-stabilization-hotfix-20261118
+    paths:
+      - '.github/workflows/ft191-signed-artifact-github-90d.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ft191-signed-github-actions-90d
+  cancel-in-progress: false
+
+jobs:
+  verify-and-store-signed-field-apk:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 60
+    steps:
+      - name: Checkout approved workflow
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Guard exact source and no GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
+          test "$GITHUB_REF_NAME" = "openivi/ft191-stabilization-hotfix-20261118"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          base="29a2f9d7e33f1a410986f157739fd089568bde28"
+          git merge-base --is-ancestor "$base" "$GITHUB_SHA"
+          test "$(git diff --name-only "$base" "$GITHUB_SHA")" = '.github/workflows/ft191-signed-artifact-github-90d.yml'
+          git diff --quiet "685f7988d812c6396d6592203146e3d2ad3e5f66" "$GITHUB_SHA" -- app server
+          echo 'SCOPE=EXISTING_OWNER_SIGNED_TEST_APK_ONLY'
+          echo 'RELEASE=NEVER'
+          echo 'SIGNING_KEYS=NOT_REQUIRED'
+
+      - name: Android SDK for offline signature verification
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+
+      - name: Fetch exact successful signed field-test artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN"
+          mkdir -p original verified
+          curl --fail --location --silent --show-error --retry 3 \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            --header 'Accept: application/vnd.github+json' \
+            'https://api.github.com/repos/cn-openivi/ft-app/actions/artifacts/14508588416/zip' \
+            --output original/ft191-owner-signed-original.zip
+          echo 'ef417cb44a5e10c445e5cb1d3058246a224b82e281074eda78e1d1abd88d8afd  original/ft191-owner-signed-original.zip' | sha256sum --check
+          unzip -tqq original/ft191-owner-signed-original.zip
+          unzip -q original/ft191-owner-signed-original.zip -d verified
+          echo 'FT191_ORIGINAL_GITHUB_ARCHIVE_SHA256=PASS'
+
+      - name: Independently verify signed APK and owner identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd verified
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 5
+          sha256sum --check SHA256SUMS
+          apk=FT191_XA60_OWNER_SIGNED_FIELD_CANDIDATE.apk
+          echo '72d78875125c7af6d050fef585a2d05c5d4cbca4d542867030a19c74f58e6ef8  FT191_XA60_OWNER_SIGNED_FIELD_CANDIDATE.apk' | sha256sum --check
+          test "$(stat -c%s "$apk")" -eq 41291541
+          grep -Fxq 'SOURCE_SHA=685f7988d812c6396d6592203146e3d2ad3e5f66' PROVENANCE.txt
+          grep -Fxq 'CI_SHA=29a2f9d7e33f1a410986f157739fd089568bde28' PROVENANCE.txt
+          grep -Fxq 'APP_ID=app.ft.xa60' PROVENANCE.txt
+          grep -Fxq 'VERSION_CODE=191' PROVENANCE.txt
+          grep -Fxq 'SIGNED=OWNER_CERT' PROVENANCE.txt
+          grep -Fxq 'PURPOSE=FIELD_TEST_ONLY' PROVENANCE.txt
+          grep -Fxq 'FIELD=NOT_TESTED' PROVENANCE.txt
+          grep -Fxq 'RELEASE=NOT_AUTHORIZED' PROVENANCE.txt
+          BT="$ANDROID_HOME/build-tools/36.0.0"
+          "$BT/aapt" dump badging "$apk" | grep -Fq "package: name='app.ft.xa60' versionCode='191'"
+          "$BT/apksigner" verify --verbose --print-certs "$apk" > cert.txt
+          grep -iq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' cert.txt
+          rm -f cert.txt
+          echo 'FT191_OWNER_SIGNED_APK_HASH_CERT_IDENTITY=PASS'
+          echo 'GITHUB_RELEASE_CREATED=NO'
+
+      - name: Retain signed TEST APK on GitHub Actions for 90 days (NO RELEASE)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FT191_XA60_OWNER_SIGNED_TEST_APK_90_DAYS
+          path: verified/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Clean this workflow's temporary files only
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in original verified; do
+            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
+          done
+          echo 'FT191_ARTIFACT_WORKSPACE_CLEAN=PASS'
