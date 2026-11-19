@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class AaHotspotAddressPolicyTest {
+    @Test fun wirelessWpa2NeverAdvertisesBlankOrUnsupportedPassphrase() {
+        assertFalse(AaHotspotAddressPolicy.credentialsUsable("", "12345678"))
+        assertFalse(AaHotspotAddressPolicy.credentialsUsable("MyHotspot", ""))
+        assertFalse(AaHotspotAddressPolicy.credentialsUsable("MyHotspot", "1234567"))
+        assertFalse(AaHotspotAddressPolicy.credentialsUsable("MyHotspot", "a".repeat(64)))
+        assertTrue(AaHotspotAddressPolicy.credentialsUsable("MyHotspot", "12345678"))
+        assertTrue(AaHotspotAddressPolicy.credentialsUsable("MyHotspot", "a".repeat(63)))
+    }
+
     @Test fun useUniqueRealPrivateApAddressOnly() {
         assertEquals("192.168.55.1", AaHotspotAddressPolicy.select(listOf("192.168.55.1")))
         assertEquals("172.20.10.1", AaHotspotAddressPolicy.select(listOf("172.20.10.1")))
