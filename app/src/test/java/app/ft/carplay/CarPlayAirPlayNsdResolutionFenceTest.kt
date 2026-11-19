@@ -42,7 +42,10 @@ class CarPlayAirPlayNsdResolutionFenceTest {
         assertNull(f.beginResolution(7, "B"))
         assertFalse(f.serviceLost(6, "A"))
         assertFalse(f.complete(first, "B"))
-        assertTrue(f.complete(first, "A"))
-        assertNotNull(f.beginResolution(7, "B"))
+        // Mismatched result invalidates the attempt; a later "correct" callback
+        // for the poisoned attempt must not revive the lost service.
+        assertFalse(f.complete(first, "A"))
+        val next = f.beginResolution(7, "B")!!
+        assertTrue(f.complete(next, "B"))
     }
 }
