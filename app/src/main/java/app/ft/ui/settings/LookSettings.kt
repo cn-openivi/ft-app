@@ -95,8 +95,9 @@ fun LookSettings() {
 private fun name(l: Language): String = when (l) {
     Language.SYSTEM -> stringResource(R.string.look_language_system)
     Language.ENGLISH -> "English"
+    Language.TURKISH -> "Türkçe"
+    Language.GERMAN -> "Deutsch"
+    Language.FRENCH -> "Français"
     Language.ARABIC -> "العربية"
-    Language.SORANI -> "کوردی (سۆرانی)"
-    Language.BADINI -> "کوردی (بادینی)"
     Language.RUSSIAN -> "Русский"
 }

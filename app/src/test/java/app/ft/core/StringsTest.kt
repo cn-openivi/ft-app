@@ -31,8 +31,6 @@ class StringsTest {
     private val english = read("values")
     private val translations = mapOf(
         "Arabic" to read("values-ar"),
-        "Sorani" to read("values-b+ckb"),
-        "Badini" to read("values-b+kmr+Arab"),
         "Russian" to read("values-ru")
     )
 
@@ -57,14 +55,46 @@ class StringsTest {
     }
 
     @Test
-    fun kurdishUsesKurdishLettersAndArabicUsesArabicOnes() {
-        val arabicOnly = "يكةىًٌٍَُِّْ".toSet()
+    fun arabicDoesNotContainKurdishSpecificLetters() {
         val kurdishOnly = "یکەڵڕێۆڤگچپژ".toSet()
-        fun all(t: Table) = t.strings.values + t.arrays.values.flatten()
-        all(translations.getValue("Arabic")).forEach { s -> assertTrue("Kurdish letter in Arabic: $s", s.none { it in kurdishOnly }) }
-        listOf("Sorani", "Badini").forEach { name ->
-            all(translations.getValue(name)).forEach { s -> assertTrue("Arabic-only letter in $name: $s", s.none { it in arabicOnly }) }
+        val arabic = translations.getValue("Arabic")
+        (arabic.strings.values + arabic.arrays.values.flatten()).forEach { value ->
+            assertTrue("Kurdish-specific letter in Arabic: $value", value.none { it in kurdishOnly })
         }
+    }
+
+    @Test
+    fun newLocalesHaveRealStarterTranslationsWithSafeEnglishFallback() {
+        // New locales are deliberately partial. Omitted Android resources fall
+        // back to default English rather than pretending all 664 strings have
+        // already been translated and linguistically reviewed.
+        mapOf(
+            "Turkish" to read("values-tr"),
+            "German" to read("values-de"),
+            "French" to read("values-fr")
+        ).forEach { (name, locale) ->
+            assertTrue("$name has too few reviewed starter strings", locale.strings.size >= 70)
+            locale.strings.forEach { (key, value) ->
+                assertTrue("$name unknown key $key", english.strings.containsKey(key))
+                assertEquals("$name placeholders for $key",
+                    placeholders(english.strings.getValue(key)), placeholders(value))
+                assertTrue("$name empty translation for $key", value.isNotBlank())
+            }
+            assertTrue("$name locale is all English",
+                locale.strings.any { (key, value) -> value != english.strings.getValue(key) })
+        }
+    }
+
+    @Test
+    fun visibleLanguagesAreExplicitAndLegacyKurdishPrefsFallBackSafely() {
+        assertEquals(
+            listOf("", "ru", "en", "tr", "de", "fr", "ar"),
+            Language.entries.map { it.key })
+        assertEquals(Language.SYSTEM, Language.of("ckb"))
+        assertEquals(Language.SYSTEM, Language.of("kmr"))
+        assertEquals(Language.TURKISH, Language.of("tr"))
+        assertEquals(Language.GERMAN, Language.of("de"))
+        assertEquals(Language.FRENCH, Language.of("fr"))
     }
 
     @Test

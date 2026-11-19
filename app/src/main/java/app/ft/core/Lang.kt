@@ -17,11 +17,12 @@ import java.util.Locale
 
 enum class Language(val key: String, val tag: String?) {
     SYSTEM("", null),
+    RUSSIAN("ru", "ru"),
     ENGLISH("en", "en"),
-    ARABIC("ar", "ar-u-nu-latn"),
-    SORANI("ckb", "ckb-u-nu-latn"),
-    BADINI("kmr", "kmr-Arab-u-nu-latn"),
-    RUSSIAN("ru", "ru");
+    TURKISH("tr", "tr"),
+    GERMAN("de", "de"),
+    FRENCH("fr", "fr"),
+    ARABIC("ar", "ar-u-nu-latn");
 
     companion object {
         fun of(key: String): Language = entries.firstOrNull { it.key == key } ?: SYSTEM
@@ -45,8 +46,8 @@ object Lang {
         language.tag?.let { Locale.forLanguageTag(it) } ?: Resources.getSystem().configuration.locales[0]
 
     fun rtl(language: Language = current.value): Boolean = when (language) {
-        Language.ARABIC, Language.SORANI, Language.BADINI -> true
-        Language.ENGLISH, Language.RUSSIAN -> false
+        Language.ARABIC -> true
+        Language.ENGLISH, Language.RUSSIAN, Language.TURKISH, Language.GERMAN, Language.FRENCH -> false
         Language.SYSTEM -> TextUtils.getLayoutDirectionFromLocale(locale(language)) == View.LAYOUT_DIRECTION_RTL
     }
 
