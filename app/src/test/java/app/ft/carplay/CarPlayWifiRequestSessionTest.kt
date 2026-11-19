@@ -12,6 +12,18 @@ class CarPlayWifiRequestSessionTest {
         Iap2ControlSessionCodec.Message(0x1D01, listOf(
             Iap2ControlSessionCodec.Parameter(6, byteArrayOf(0x57, 0x03)),
             Iap2ControlSessionCodec.Parameter(7, byteArrayOf(0x57, 0x02)))))
+    private fun c(value: String) = value.toByteArray(Charsets.UTF_8) + byteArrayOf(0)
+    private fun tlv(id: Int, value: ByteArray): ByteArray {
+        val n = value.size + 4
+        return byteArrayOf((n ushr 8).toByte(), n.toByte(), 0, id.toByte()) + value
+    }
+    private fun flatReply() = Iap2ControlSessionCodec.Message(0x5703, listOf(
+        Iap2ControlSessionCodec.Parameter(1,c("Toyota-WiFi")),
+        Iap2ControlSessionCodec.Parameter(2,c("TestPass123"))))
+    private fun groupedReply() = Iap2ControlSessionCodec.Message(0x4301, listOf(
+        Iap2ControlSessionCodec.Parameter(1,
+            tlv(0,c("Toyota-WiFi")) + tlv(1,c("TestPass123")) +
+            tlv(4,byteArrayOf(2)))))
     private fun request(
         s: CarPlayWifiRequestSession, gen: Long,
         dialect: CarPlayWifiDialectPolicy.Selection,
@@ -30,7 +42,7 @@ class CarPlayWifiRequestSessionTest {
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_ID_MISMATCH,
             s.observeReply(1, true, Iap2ControlSessionCodec.Message(0x4301, emptyList())))
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_OBSERVED_UNVERIFIED,
-            s.observeReply(1, true, Iap2ControlSessionCodec.Message(0x5703, emptyList())))
+            s.observeReply(1, true, flatReply()))
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_NOT_EXPECTED,
             s.observeReply(1, true, Iap2ControlSessionCodec.Message(0x5703, emptyList())))
     }
@@ -59,7 +71,7 @@ class CarPlayWifiRequestSessionTest {
         assertEquals(2, parsed.parameters.size)
         assertFalse(p.toString().contains("AA:BB:CC"))
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_OBSERVED_UNVERIFIED,
-            s.observeReply(3, true, Iap2ControlSessionCodec.Message(0x4301, emptyList())))
+            s.observeReply(3, true, groupedReply()))
     }
 
     @Test fun newAttemptAndLinkLossRevokePreviousReply() {
@@ -77,13 +89,48 @@ class CarPlayWifiRequestSessionTest {
         request(s, 7, flat)
         s.onLinkLost(6)
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_OBSERVED_UNVERIFIED,
-            s.observeReply(7, true, Iap2ControlSessionCodec.Message(0x5703, emptyList())))
+            s.observeReply(7, true, flatReply()))
         request(s, 8, flat)
         s.onLinkLost(8)
         assertEquals(CarPlayWifiRequestSession.Result.REPLY_NOT_EXPECTED,
             s.observeReply(8, true, Iap2ControlSessionCodec.Message(0x5703, emptyList())))
     }
 
+
+    @Test fun matchingReplyIdWithNoWifiFieldsIsMalformedAndCannotReplay() {
+        for (dialect in listOf(flat, grouped)) {
+            val session = CarPlayWifiRequestSession()
+            val request = request(session, 1, dialect,
+                actualMac = true, mac = "AA:BB:CC:DD:EE:FF")
+            assertEquals(CarPlayWifiRequestSession.Result.PREPARED_NOT_SENT, request.result)
+            val reply = Iap2ControlSessionCodec.Message(
+                dialect.expectedAccessoryReplyId!!, emptyList())
+            assertEquals(CarPlayWifiRequestSession.Result.REPLY_MALFORMED,
+                session.observeReply(1,true,reply))
+            assertEquals(CarPlayWifiRequestSession.Result.REPLY_NOT_EXPECTED,
+                session.observeReply(1,true,reply))
+            assertEquals(CarPlayWifiRequestSession.Result.INVALID_GENERATION,
+                request(session,1,dialect,actualMac=true,mac="AA:BB:CC:DD:EE:FF").result)
+        }
+    }
+
+    @Test fun onlySuccessfulRealDialectStructureCanBeRecognized() {
+        val flatSession = CarPlayWifiRequestSession()
+        request(flatSession, 1, flat)
+        val duplicated = Iap2ControlSessionCodec.Message(0x5703, listOf(
+            Iap2ControlSessionCodec.Parameter(1,c("Toyota")),
+            Iap2ControlSessionCodec.Parameter(1,c("Other")),
+            Iap2ControlSessionCodec.Parameter(2,c("TestPass123"))))
+        assertEquals(CarPlayWifiRequestSession.Result.REPLY_MALFORMED,
+            flatSession.observeReply(1,true,duplicated))
+        val groupedSession = CarPlayWifiRequestSession()
+        request(groupedSession,1,grouped,actualMac=true,mac="AA:BB:CC:DD:EE:FF")
+        val withoutPassword = Iap2ControlSessionCodec.Message(0x4301,listOf(
+            Iap2ControlSessionCodec.Parameter(1,
+                tlv(0,c("Toyota")) + tlv(4,byteArrayOf(2)))))
+        assertEquals(CarPlayWifiRequestSession.Result.REPLY_MALFORMED,
+            groupedSession.observeReply(1,true,withoutPassword))
+    }
     @Test fun untrustedReplyRevokesRequestWithoutBecomingAuthorizedSession() {
         val s = CarPlayWifiRequestSession()
         request(s, 1, flat)

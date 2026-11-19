@@ -16,7 +16,7 @@ internal class CarPlayWifiRequestSession {
         HU_IDENTITY_UNVERIFIED, DIALECT_UNSUPPORTED,
         VERIFIED_LOCAL_BLUETOOTH_IDENTITY_REQUIRED,
         REQUEST_ALREADY_PREPARED, REPLY_NOT_EXPECTED,
-        REPLY_ID_MISMATCH, REPLY_UNAUTHENTICATED,
+        REPLY_ID_MISMATCH, REPLY_MALFORMED, REPLY_UNAUTHENTICATED,
         REPLY_OBSERVED_UNVERIFIED
     }
 
@@ -97,11 +97,27 @@ internal class CarPlayWifiRequestSession {
         }
         if (message.id != awaitedReplyId)
             return Result.REPLY_ID_MISMATCH
-        // A reply ID is just source-only evidence; content, passwords, network,
-        // real AirPlay authentication and field proof require separate gates.
+        // A matching message ID alone is insufficient. Require the *actual*
+        // wire dialect's minimum Wi-Fi structure before emitting the already
+        // limited source-only REPLY_OBSERVED_UNVERIFIED evidence.
+        val structurallyUsable = when (message.id) {
+            Iap2ControlSessionCodec.CARPLAY_START_SESSION -> {
+                val summary = Iap2CarPlayStartSchema.inspect(message)
+                summary.result == Iap2CarPlayStartSchema.Result.STRUCTURE_OBSERVED &&
+                    summary.unknownCount == 0 && summary.duplicateScalarCount == 0 &&
+                    summary.fieldNames.containsAll(setOf("ssid", "pass", "securityType"))
+            }
+            Iap2ControlSessionCodec.ACCESSORY_WIFI_CONFIG ->
+                CarPlayFlatWifiInfoInspector.inspect(message).shape ==
+                    CarPlayFlatWifiInfoInspector.Shape.STRUCTURE_OBSERVED_ONLY
+            else -> false
+        }
         activeGeneration = null
         awaitedReplyId = null
-        return Result.REPLY_OBSERVED_UNVERIFIED
+        // A malformed matching reply cannot be retried using the same
+        // authenticated generation (prevents replay/downgrade ambiguity).
+        return if (structurallyUsable) Result.REPLY_OBSERVED_UNVERIFIED
+            else Result.REPLY_MALFORMED
     }
 
     @Synchronized
