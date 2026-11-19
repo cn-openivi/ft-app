@@ -136,7 +136,7 @@ class IccoaSession(
     private val context: Context,
     private val onStatus: (String) -> Unit,
     private val onPinRequired: () -> Unit,
-    private val onReady: (Network, String) -> Unit,
+    private val onReady: (Network, String, String) -> Unit,
     private val onMessage: (Int, Int, ByteArray) -> Unit,
     private val onClosed: (IccoaCloseEvent) -> Unit,
     private val onControlReady: () -> Unit = {},
@@ -153,6 +153,10 @@ class IccoaSession(
     private val trustedCarKey by lazy { IccoaTrustedCarKey(context) }
     @Volatile private var current: Attempt? = null
     val cipher: IccoaControl.Cipher? get() = current?.cipher
+
+    /** A media listener or RTP socket belongs only to this live Wi-Fi generation. */
+    fun ownsNetwork(network: Network): Boolean =
+        current?.let { !it.closed && it.networkGate.isCurrent(network) } == true
     @Volatile var verifiedReceiverId: String? = null
         private set
     @Volatile var verifiedLegacyPrimary: Boolean = false
@@ -539,8 +543,21 @@ class IccoaSession(
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).setNetworkSpecifier(specifier).build()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) = post(attempt) {
+                val replaced = attempt.network != null && attempt.network != network
                 DiagLog.i("ICCOA", "WiFi network available handle=$network " +
-                    "replacingCurrent=${attempt.network != null && attempt.network != network}")
+                    "replacingCurrent=$replaced")
+                // Once authenticated, all RTSP/UIBC/RTP sockets belong to A.
+                // Never reuse the old projection with Network B. Tear down the
+                // entire session and re-enter through the existing bounded
+                // reconnect path; verified Quick Auth trust is not erased.
+                if (IccoaNetworkReplacementPolicy.mustRestartSession(
+                        replaced, attempt.cipher != null)) {
+                    DiagLog.w("ICCOA", "ICCOA_NETWORK_REPLACED_AFTER_AUTH " +
+                        "restart_full_media_session=true cached_trust_kept=true")
+                    fail(attempt, Lang.str(R.string.iccoa_err_wifi_lost),
+                        transportFailure = true)
+                    return@post
+                }
                 // A queued auth worker for the previous Network must not monopolize
                 // authStarted when Android replaces the Wi-Fi handle before TCP bind.
                 if (attempt.network != network) {
@@ -673,20 +690,20 @@ class IccoaSession(
 
     private fun authenticate(attempt: Attempt, network: Network, local: String, peer: String,
                              pin: String?, pinned: ByteArray?) {
-        var stage = "tcp-bind"
+        var stage = "tcp-network-create"
         fun progress(value: String) {
             stage = value
             if (active(attempt)) DiagLog.i("ICCOA", "AUTH $value")
         }
         try {
-            // Android 17/Samsung may reject Network.bindSocket(Socket()) before connect.
-            // Ask the selected Network itself to create a correctly bound socket.
-            // Never fall back to the process default (mobile/VPN) network.
-            var networkSocket: Socket? = null
+            // Select the ICCOA Wi-Fi Network at socket creation, not by
+            // rebinding an unconnected Socket() (rejected on some Samsung builds).
+            // No process-default, mobile-data or VPN socket fallback.
+            var ownedSocket: Socket? = null
             if (!attempt.networkGate.bindIfCurrent(network) {
-                    networkSocket = network.socketFactory.createSocket()
-                }) return // Stale Wi-Fi handle: do not create an unpinned socket.
-            val socket = networkSocket ?: return
+                    ownedSocket = network.socketFactory.createSocket()
+                }) return // Replaced Network; cannot create a stale auth socket.
+            val socket = ownedSocket ?: return
             if (!track(attempt, socket)) return
             progress("tcp-connect")
             socket.connect(InetSocketAddress(peer, 57209), 8_000)
@@ -737,7 +754,7 @@ class IccoaSession(
             if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             // External callbacks may acquire their owner's lifecycle lock. Never hold ours here.
             progress("open-media-listeners")
-            onReady(network, peer)
+            onReady(network, local, peer)
             if (!active(attempt) || !attempt.networkGate.isCurrent(network)) return
             progress("send-confirm")
             socket.getOutputStream().run { write(IccoaControl.frame(3, 3, 0, auth.confirm(key, local), 2)); flush() }
@@ -776,7 +793,7 @@ class IccoaSession(
             val reason = (e as? IccoaHandshakeException)?.diagnostic ?: e.javaClass.simpleName
             val location = e.stackTrace.firstOrNull { it.className.startsWith("app.ft.iccoa.") }
                 ?.let { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }.orEmpty()
-            val bindCode = if (stage == "tcp-bind") IccoaBindFailureReason.classify(e) else "NA"
+            val bindCode = if (stage == "tcp-network-create") IccoaBindFailureReason.classify(e) else "NA"
             DiagLog.w("ICCOA", "AUTH failed stage=$stage reason=$reason bindCode=$bindCode at=$location")
             val hint = when ((e as? IccoaHandshakeException)?.reason) {
                 IccoaHandshakeException.Reason.PIN_MAC -> Lang.str(R.string.iccoa_err_pin_mismatch)
@@ -797,7 +814,7 @@ class IccoaSession(
             val quickRejected = pinned != null && e is IccoaHandshakeException &&
                 e.reason == IccoaHandshakeException.Reason.RESPONSE_RESULT && (e.result == 1L || e.result == 2L)
             fail(attempt, Lang.str(R.string.iccoa_err_auth_stage, stage, reason, hint),
-                transportFailure = (stage == "tcp-bind" || stage == "tcp-connect") &&
+                transportFailure = (stage == "tcp-network-create" || stage == "tcp-connect") &&
                     e !is IccoaHandshakeException, quickNormalFallback = quickRejected)
         }
     }

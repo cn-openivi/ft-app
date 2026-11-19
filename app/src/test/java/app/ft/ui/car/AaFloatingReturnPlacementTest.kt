@@ -4,8 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AaFloatingReturnPlacementTest {
-    @Test fun holdToDragRequiresFourSeconds() {
-        assertEquals(4_000L, AaFloatingReturnPlacement.HOLD_MS)
+    @Test fun holdToDragRequiresTwoPointFiveSeconds() {
+        assertEquals(2_500L, AaFloatingReturnPlacement.HOLD_MS)
     }
 
     @Test fun cornerDefaultsKeepPreviousAaCornerPlacement() {
