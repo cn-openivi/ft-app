@@ -39,7 +39,7 @@ internal class CarPlayAirPlayNsdProbe(private val context: Context) : AutoClosea
     private val main = Handler(Looper.getMainLooper())
     private var discovery: NsdManager.DiscoveryListener? = null
     @Volatile private var active = false
-    @Volatile private var resolutionPending = false
+    private val resolutionFence = CarPlayAirPlayNsdResolutionFence()
     private var deadline: Runnable? = null
     @Volatile private var generation = 0L
 
@@ -58,6 +58,7 @@ internal class CarPlayAirPlayNsdProbe(private val context: Context) : AutoClosea
             return Status.WIFI_NETWORK_WRONG
         val nsd = manager ?: return Status.NSD_MANAGER_MISSING
         val run = ++generation
+        resolutionFence.begin(run)
 
         fun emitIfCurrent(status: Status, result: CarPlayAirPlayNsdPolicy.Result? = null) {
             if (generation == run) onEvent(Event(status, result))
@@ -82,24 +83,29 @@ internal class CarPlayAirPlayNsdProbe(private val context: Context) : AutoClosea
             override fun onDiscoveryStopped(serviceType: String) = Unit
 
             override fun onServiceFound(info: NsdServiceInfo) {
-                if (generation != run || resolutionPending) return
+                if (generation != run) return
                 if (!CarPlayAirPlayNsdPolicy.isAirPlayVideoService(info.serviceType)) return
                 if (info.network != verifiedNetwork) {
                     emitIfCurrent(Status.WRONG_NETWORK)
                     return
                 }
-                resolutionPending = true
+                val attempt = resolutionFence.beginResolution(run, info.serviceName)
+                    ?: return
                 emitIfCurrent(Status.SERVICE_FOUND_UNVERIFIED)
                 try {
                     nsd.resolveService(info, context.mainExecutor, object : NsdManager.ResolveListener {
                         override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                            if (generation != run) return
-                            resolutionPending = false
+                            if (generation != run ||
+                                !resolutionFence.complete(attempt, serviceInfo.serviceName))
+                                return
                             emitIfCurrent(Status.RESOLUTION_FAILED)
                         }
                         override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                            if (generation != run) return
-                            resolutionPending = false
+                            if (generation != run ||
+                                !resolutionFence.complete(attempt, serviceInfo.serviceName))
+                                return
+                            // A resolved callback arriving after NSD SERVICE_LOST
+                            // is not a valid current Toyota endpoint candidate.
                             val addresses = if (Build.VERSION.SDK_INT >= 34)
                                 serviceInfo.hostAddresses
                             else listOfNotNull(serviceInfo.host)
@@ -119,17 +125,19 @@ internal class CarPlayAirPlayNsdProbe(private val context: Context) : AutoClosea
                         }
                     })
                 } catch (_: SecurityException) {
-                    resolutionPending = false
-                    emitIfCurrent(Status.RESOLUTION_FAILED)
+                    if (resolutionFence.complete(attempt, info.serviceName))
+                        emitIfCurrent(Status.RESOLUTION_FAILED)
                 } catch (_: RuntimeException) {
-                    resolutionPending = false
-                    emitIfCurrent(Status.RESOLUTION_FAILED)
+                    if (resolutionFence.complete(attempt, info.serviceName))
+                        emitIfCurrent(Status.RESOLUTION_FAILED)
                 }
             }
 
             override fun onServiceLost(info: NsdServiceInfo) {
-                if (generation == run && info.network == verifiedNetwork)
+                if (generation == run && info.network == verifiedNetwork) {
+                    resolutionFence.serviceLost(run, info.serviceName)
                     emitIfCurrent(Status.SERVICE_LOST)
+                }
             }
         }
         discovery = listener
@@ -154,11 +162,11 @@ internal class CarPlayAirPlayNsdProbe(private val context: Context) : AutoClosea
 
     @Synchronized override fun close() {
         generation++
+        resolutionFence.close()
         deadline?.let { main.removeCallbacks(it) }
         deadline = null
         val listener = discovery
         discovery = null
-        resolutionPending = false
         if (active && listener != null) {
             active = false
             runCatching { manager?.stopServiceDiscovery(listener) }
