@@ -80,6 +80,37 @@ class CarPlayAvcPassthroughTest {
             gate.offer(pframe,43) { _,_ -> true })
     }
 
+    @Test fun droppedPredictedFrameInvalidatesDecoderReferenceChain() {
+        val gate = CarPlayAvcPassthrough()
+        gate.configure(csd,30,peer)
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(idr,1000) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.BACKPRESSURE_DROP,
+            gate.offer(pframe,2000) { _,_ -> false })
+        var delivered = false
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR,
+            gate.offer(pframe,3000) { _,_ -> delivered = true; true })
+        assertFalse(delivered)
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(idr,4000) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(pframe,5000) { _,_ -> true })
+    }
+
+    @Test fun discontinuousPtsRequiresNewIdrInsteadOfResumingPredictedVideo() {
+        val gate = CarPlayAvcPassthrough(maxDecodeGapUs = 100_000L)
+        gate.configure(csd,30,peer)
+        gate.offer(idr,100L) { _,_ -> true }
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR_AFTER_GAP,
+            gate.offer(pframe,200_101L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.NEED_IDR_AFTER_GAP,
+            gate.offer(pframe,200_102L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(idr,200_103L) { _,_ -> true })
+        assertEquals(CarPlayAvcPassthrough.Result.ORIGINAL_COMPRESSED_AU_CONSUMED,
+            gate.offer(pframe,200_104L) { _,_ -> true })
+    }
+
     @Test fun duplicatedTimestampsAndDisconnectResetAreSafe() {
         val gate = CarPlayAvcPassthrough()
         gate.configure(csd,30,peer)

@@ -11,10 +11,13 @@ import app.ft.iccoa.IccoaDirectAvc
  * The receiver callback MUST consume immediately and non-blockingly; its false
  * return means "busy/drop" without delaying AA MEDIA_ACK or queueing stale video.
  */
-internal class CarPlayAvcPassthrough {
+internal class CarPlayAvcPassthrough(
+    private val maxDecodeGapUs: Long = 1_000_000L
+) {
+    init { require(maxDecodeGapUs in 50_000L..10_000_000L) }
     enum class Result {
         NO_CONFIG, CONFIG_READY_WAITING_IDR, SOURCE_SPS_INVALID, AIRPLAY_PEER_UNVERIFIED,
-        FRAME_TOO_LARGE, TIMESTAMP_INVALID, NEED_IDR,
+        FRAME_TOO_LARGE, TIMESTAMP_INVALID, NEED_IDR, NEED_IDR_AFTER_GAP,
         PROFILE_OR_SECURITY_MISMATCH, BACKPRESSURE_DROP,
         ORIGINAL_COMPRESSED_AU_CONSUMED
     }
@@ -56,8 +59,15 @@ internal class CarPlayAvcPassthrough {
             return Result.FRAME_TOO_LARGE
         if (ptsUs < 0 || (previousPts != Long.MIN_VALUE && ptsUs <= previousPts))
             return Result.TIMESTAMP_INVALID
-        if (!hasIdr && !IccoaDirectAvc.isIdr(encodedAccessUnit))
-            return Result.NEED_IDR
+        val isIdr = IccoaDirectAvc.isIdr(encodedAccessUnit)
+        // If a long stall occurred, the decoder reference chain is no longer
+        // proven continuous. Demand a new keyframe before handing off P/B AUs.
+        if (previousPts != Long.MIN_VALUE &&
+            ptsUs - previousPts > maxDecodeGapUs) {
+            hasIdr = false
+            if (!isIdr) return Result.NEED_IDR_AFTER_GAP
+        }
+        if (!hasIdr && !isIdr) return Result.NEED_IDR
         val candidate = CarPlayMediaPreflight.Video(
             width = sps.width, height = sps.height,
             fps = selectedFps, profile = sps.profileIdc,
@@ -69,8 +79,12 @@ internal class CarPlayAvcPassthrough {
             return Result.PROFILE_OR_SECURITY_MISMATCH
         // A slow, failed or throwing downstream does NOT become a phantom
         // successful video frame, and is never scheduled for later replay.
-        if (!runCatching { consumer(encodedAccessUnit, ptsUs) }.getOrDefault(false))
+        if (!runCatching { consumer(encodedAccessUnit, ptsUs) }.getOrDefault(false)) {
+            // One dropped compressed AU may be referenced by later predicted
+            // frames. Never send P/B AUs until a fresh IDR re-establishes state.
+            hasIdr = false
             return Result.BACKPRESSURE_DROP
+        }
         hasIdr = true
         previousPts = ptsUs
         return Result.ORIGINAL_COMPRESSED_AU_CONSUMED
