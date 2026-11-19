@@ -4,6 +4,8 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
@@ -207,6 +209,18 @@ internal fun CarPlaySdpDiagnostic() {
                 }) { Text("Остановить проверку iAP2") }
                 Text("Результат пробного запуска: ${carPlayTrialStatus(trialState)}")
                 Text("MFi: не подтверждён · AirPlay: не запущен · CarPlay ACTIVE: нет")
+                OutlinedButton(onClick = {
+                    // Explicit owner action. Only enum/status/count evidence is
+                    // exported: NO MAC, SSID, PSK, phone, certificate or raw bytes.
+                    val text = CarPlayTrialReport.format(
+                        trialState, hfpContinuity.state(SystemClock.elapsedRealtime()), incomingEvents)
+                    val copied = runCatching {
+                        context.getSystemService(ClipboardManager::class.java)
+                            ?.setPrimaryClip(ClipData.newPlainText("FT200 CarPlay test", text))
+                    }.isSuccess
+                    notice = if (copied) "Протокол без личных данных скопирован"
+                        else "Не удалось скопировать протокол"
+                }) { Text("Скопировать результат CarPlay-теста") }
                 incomingEvents.forEach { e ->
                     val msg = e.messageId?.let { " · CONTROL=0x" + it.toString(16) + " TLV=${e.parameterCount}" }.orEmpty()
                     Text("Toyota→Samsung: ${e.status} · LINK frames: ${e.validLinkFrames}$msg")
