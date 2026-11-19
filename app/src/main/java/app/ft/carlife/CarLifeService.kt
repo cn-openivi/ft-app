@@ -36,6 +36,7 @@ import app.ft.aa.AaSession
 import app.ft.core.CarAudioBus
 import app.ft.core.CarBluetoothReconnect
 import app.ft.core.DiagLog
+import app.ft.core.ServiceForegroundPolicy
 import app.ft.core.MirrorPanelSaver
 import app.ft.core.MirrorOrientationLock
 import app.ft.core.CarProtocol
@@ -472,6 +473,7 @@ class CarLifeService : Service() {
         HotspotClients(scope, { NetUtil.hotspotAddresses(this) }, { mode == 0 && wifiLink?.connected != true }) { list -> onHotspotClients(list) }
     }
     private val busyPorts: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private val boundWifiPorts: MutableSet<Int> = java.util.concurrent.ConcurrentHashMap.newKeySet()
     private val discovery by lazy { CarDiscovery(scope) { from -> sameWay(from) } }
     @Volatile private var p2pIface: String? = null
     @Volatile private var carP2pIp: String? = null
@@ -550,7 +552,7 @@ class CarLifeService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_AUDIO -> {
-                foreground(note, projection = true, microphone = canRecord())
+                if (!foreground(note, projection = true, microphone = canRecord())) return START_NOT_STICKY
                 val pending = pendingLaunch
                 pendingLaunch = null
                 if (pending == null) _state.update { it.copy(waitingForShare = false, shareForSound = false) }
@@ -591,7 +593,7 @@ class CarLifeService : Service() {
                     useUsb(acc)
                 } else {
                     DiagLog.w(tag, "USB: Android did not pass on the car's accessory")
-                    foreground(note)
+                    if (!foreground(note)) return START_NOT_STICKY
                     if (mode == -1) startChosenWay()
                 }
             }
@@ -601,7 +603,7 @@ class CarLifeService : Service() {
                 startChosenWay()
             }
         }
-        return START_STICKY
+        return if (foregroundDenied) START_NOT_STICKY else START_STICKY
     }
 
     private fun logEnvironment() {
@@ -625,7 +627,7 @@ class CarLifeService : Service() {
     private fun startChosenWay() {
         listenForTestCable()
         if (mode == 2 && usbLink != null) {
-            foreground(note)
+            if (!foreground(note)) return
             DiagLog.i(tag, "the car is on the USB cable, staying on it")
             return
         }
@@ -641,14 +643,14 @@ class CarLifeService : Service() {
         }
         if (wanted == 2) {
             mode = 2
-            foreground(waitingNote())
+            if (!foreground(waitingNote())) return
             _state.update { it.copy(direct = false, usb = true) }
             step("Plug the phone into the car's USB and open CarLife on the car")
             return
         }
         val fresh = mode != wanted || wifiLink == null
         mode = wanted
-        foreground(if (fresh) waitingNote() else note)
+        if (!foreground(if (fresh) waitingNote() else note)) return
         _state.update { it.copy(direct = wanted == 1, usb = false) }
         startWifiLink()
         if (fresh) {
@@ -712,7 +714,7 @@ class CarLifeService : Service() {
         mode = 2
         usbAccessory = acc
         usbStartedAt = android.os.SystemClock.elapsedRealtime()
-        foreground({ Lang.str(R.string.note_usb_connected) })
+        if (!foreground({ Lang.str(R.string.note_usb_connected) })) return
         _state.update { it.copy(direct = false, usb = true, listening = true) }
         val l = AccessoryLink("USB", what, open)
         usbLink = l
@@ -769,7 +771,9 @@ class CarLifeService : Service() {
         }
     }
 
-    private fun foreground(text: () -> String, projection: Boolean = false, microphone: Boolean = false) {
+    @Volatile private var foregroundDenied = false
+
+    private fun foreground(text: () -> String, projection: Boolean = false, microphone: Boolean = false): Boolean {
         note = text
         val keepProjection = projection || this.projection != null
         val keepMicrophone = microphone || audio.active
@@ -778,13 +782,24 @@ class CarLifeService : Service() {
         if (keepMicrophone) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
         val built = notification(text())
         val fallback = type and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE.inv()
-        runCatching { startForeground(NOTIFICATION_ID, built, type) }
-            .onFailure { t ->
-                DiagLog.w(tag, "foreground type $type refused (${t.message}), continuing without the microphone type")
-                runCatching { startForeground(NOTIFICATION_ID, built, fallback) }
-            }
+        val accepted = ServiceForegroundPolicy.acceptedType(type, fallback) { requested ->
+            runCatching { startForeground(NOTIFICATION_ID, built, requested) }
+                .onFailure { DiagLog.w(tag, "foreground type=$requested denied ${it.javaClass.simpleName}") }
+                .isSuccess
+        }
+        if (accepted == null) {
+            foregroundDenied = true
+            DiagLog.w(tag, "FOREGROUND_START_FAILED; open FT to retry with granted permissions")
+            _state.update { it.copy(running = false, listening = false, step = "Open FT and allow foreground permissions") }
+            stopSelf()
+            return false
+        }
+        foregroundDenied = false
+        if (keepMicrophone && accepted and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE == 0)
+            DiagLog.w(tag, "FOREGROUND_NO_MICROPHONE; audio capture unavailable until permission granted")
         awake()
         _state.update { it.copy(running = true, ip = NetUtil.localIpv4()) }
+        return true
     }
 
     private fun holdWifiSteady() {
@@ -820,6 +835,7 @@ class CarLifeService : Service() {
     private fun startWifiLink() {
         if (wifiLink != null) return
         val p = app.prefs
+        boundWifiPorts.clear()
         val l = WifiChannelLink(
             mapOf(
                 CarLifeProtocol.CH_CMD to p.cmdPort,
@@ -831,10 +847,23 @@ class CarLifeService : Service() {
             ),
             refuse = { socket -> wrongWay(socket) },
             onBusy = { port -> portBusy(port) },
-            onBound = { port -> portBound(port) }
+            onBound = { port -> portBound(port) },
+            bindAddress = {
+                // These are the existing P2P/group or hotspot interfaces,
+                // not the process default route (which may be mobile/VPN).
+                val ip = when (mode) {
+                    1 -> NetUtil.wifiDirectIpv4(p2pIface)
+                    0 -> NetUtil.hotspotAddresses(this)
+                        .map { it.first.hostAddress }.distinct().singleOrNull()
+                    else -> null
+                }
+                ip?.let { runCatching { java.net.InetAddress.getByName(it) }.getOrNull() }
+            }
         )
         wifiLink = l
-        _state.update { it.copy(listening = true) }
+        // Six listeners are launched asynchronously. Do not claim listening
+        // before they all bind the verified P2P/hotspot local address.
+        _state.update { it.copy(listening = false) }
         attachSession(l)
         discovery.start()
     }
@@ -877,9 +906,12 @@ class CarLifeService : Service() {
     }
 
     private fun portBound(port: Int) {
-        if (!busyPorts.remove(port) || busyPorts.isNotEmpty()) return
-        DiagLog.i(tag, "CarLife's ports are free again, FT is listening")
-        _state.update { it.copy(blocked = 0) }
+        boundWifiPorts.add(port)
+        busyPorts.remove(port)
+        if (busyPorts.isEmpty() && boundWifiPorts.size >= 6) {
+            DiagLog.i(tag, "CarLife six network-scoped TCP ports bound on selected interface")
+            _state.update { it.copy(blocked = 0, listening = true) }
+        }
     }
 
     private fun installed(pkg: String): Boolean = runCatching { packageManager.getPackageInfo(pkg, 0); true }.getOrDefault(false)
@@ -1007,6 +1039,7 @@ class CarLifeService : Service() {
         usbAccessory = null
         hotspotClients.stop()
         busyPorts.clear()
+        boundWifiPorts.clear()
         pendingLaunch = null
         carDisplay.stop()
         _state.update {
@@ -2085,7 +2118,7 @@ class CarLifeService : Service() {
                 return null
             }
             try {
-                foreground(reason, projection = true, microphone = canRecord())
+                if (!foreground(reason, projection = true, microphone = canRecord())) return null
                 val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
                 val mp = mpm.getMediaProjection(code, data)
                 forgetGrant(data)

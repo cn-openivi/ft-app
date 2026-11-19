@@ -2,19 +2,13 @@ package app.ft.iccoa
 
 import app.ft.aa.AaProtocol
 
-/** Keep the car's aspect ratio inside the largest frame supported by our AA protocol. */
+/**
+ * Choose a real Android Auto VIDEO raster using the negotiated WFD
+ * VIDEO stream dimensions, NOT the Toyota physical panel or the full
+ * FT virtual-display aspect. The visible AA viewport is measured by
+ * AaOverlay, and its touch bounds are handled separately. No 1920x1008.
+ */
 internal object IccoaAaSize {
-    fun fit(width: Int, height: Int): Pair<Int, Int> {
-        val w = width.coerceAtLeast(1)
-        val h = height.coerceAtLeast(1)
-        val (maxWidth, maxHeight) = AaProtocol.standardSize(w, h)
-        if (w <= maxWidth && h <= maxHeight) return w to h
-        return if (w.toLong() * maxHeight >= h.toLong() * maxWidth) {
-            maxWidth to even(h.toLong() * maxWidth / w)
-        } else {
-            even(w.toLong() * maxHeight / h) to maxHeight
-        }
-    }
-
-    private fun even(value: Long): Int = (value.toInt() and -2).coerceAtLeast(2)
+    fun fit(width: Int, height: Int): Pair<Int, Int> =
+        AaProtocol.standardSize(width.coerceAtLeast(1), height.coerceAtLeast(1))
 }
