@@ -2,7 +2,8 @@ package app.ft.core
 
 /**
  * Stable OEM projection transport IDs. Android Auto is content, not a fourth HU transport.
- * A declared protocol is NOT proof that its real wire adapter is ready.
+ * A declared or UI-selected protocol is NOT proof its real wire adapter is ready.
+ * CarPlay stays connectionReady=false even when its experimental UI entry is enabled.
  */
 enum class CarProtocol(val id: String, val connectionReady: Boolean = true) {
     CARLIFE("carlife"), ICCOA("iccoa"), CARPLAY("carplay", connectionReady = false);

@@ -31,6 +31,8 @@ class CarProtocolFt200CompatibilityTest {
         assertEquals(CarProtocol.CARPLAY, CarProtocol.fromExplicitId("carplay"))
         assertEquals(CarProtocol.CARPLAY, CarProtocol.fromId("carplay"))
         assertFalse(CarProtocol.CARPLAY.connectionReady)
+        assertEquals(CarPlayExperimentalSelectionPolicy.Action.PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY,
+            CarPlayExperimentalSelectionPolicy.choose(CarProtocol.CARLIFE, CarProtocol.CARPLAY))
         assertTrue(CarProtocol.CARLIFE.connectionReady)
         assertTrue(CarProtocol.ICCOA.connectionReady)
     }

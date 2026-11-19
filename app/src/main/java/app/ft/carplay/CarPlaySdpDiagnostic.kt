@@ -39,7 +39,7 @@ internal fun CarPlaySdpDiagnostic() {
     var selected by remember { mutableStateOf<PairedDevice?>(null) }
     var incomingEvents by remember { mutableStateOf<List<CarPlayIncomingIapProbe.Event>>(emptyList()) }
     var hfpStatus by remember { mutableStateOf("HFP: ещё не проверялся") }
-    var notice by remember { mutableStateOf("CarPlay отключён: требуется штатная Toyota и реальный iAP2.") }
+    var notice by remember { mutableStateOf("CarPlay: тестовый выбор. Настоящее подключение пока не подтверждено.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
 
     DisposableEffect(probe, incoming) { onDispose { probe.close(); incoming.close() } }

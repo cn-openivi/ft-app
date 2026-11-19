@@ -37,7 +37,10 @@ jobs:
           grep -Fq 'versionCode = 190' app/build.gradle.kts
           grep -Fq 'CARPLAY("carplay", connectionReady = false)' app/src/main/java/app/ft/core/CarProtocol.kt
           grep -Fq 'enabled = option.enabled' app/src/main/java/app/ft/ui/components/OptionSheet.kt
-          grep -Fq 'enabled = false' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
+          grep -Fq 'Option("Apple CarPlay (тест)"' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
+          grep -Fq 'enabled = true' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
+          grep -Fq 'PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY' app/src/main/java/app/ft/core/CarConnection.kt
+          test -f app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
           grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
@@ -96,7 +99,8 @@ jobs:
           import xml.etree.ElementTree as ET
           folder = Path('app/build/test-results/testUnsignedTransitUnitTest')
           names = (
-              'CarProtocolFt200CompatibilityTest', 'CarPlayPhoneIdentityTest',
+              'CarProtocolFt200CompatibilityTest', 'CarPlayExperimentalSelectionPolicyTest',
+              'CarPlayPhoneIdentityTest',
               'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
               'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
               'Iap2PhoneIdentificationProbeTest', 'Iap2IdentificationInfoInspectorTest', 'Iap2CarPlayStartSchemaTest',

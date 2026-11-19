@@ -12,25 +12,24 @@ import app.ft.carplay.CarPlaySdpDiagnostic
 internal fun CarProtocolSetting(): CarProtocol {
     val context = LocalContext.current
     val protocol = rememberCarProtocol()
-    // Keep the original two transports selectable and list the third one explicitly disabled.
-    // A restored CarPlay preference must never appear as "Baidu" in the selector.
+    // All three OEM transport choices are visible. CarPlay selection is only a
+    // diagnostic preference until real HU authentication/handshake is proven.
     val protocols = listOf(CarProtocol.CARLIFE, CarProtocol.ICCOA, CarProtocol.CARPLAY)
     PickSetting(
         title = stringResource(R.string.car_protocol),
         options = listOf(
             Option("Baidu CarLife"),
             Option(stringResource(R.string.iccoa_title), stringResource(R.string.iccoa_experimental)),
-            Option("Apple CarPlay", "FT200: connection not implemented yet", enabled = false)
+            Option("Apple CarPlay (тест)", "Эксперимент: BT/iAP2; подключение ещё не готово", enabled = true)
         ),
         chosen = protocols.indexOf(protocol),
         about = stringResource(R.string.car_protocol_about),
         onPick = { index ->
             protocols.getOrNull(index)
-                ?.takeIf { it.connectionReady }
                 ?.let { CarConnection.selectProtocol(context, it) }
         }
     )
-    // Read-only, explicitly user-triggered SDP survey. Does NOT select or enable CarPlay.
+    // Explicitly owner-triggered diagnostics; never claim CarPlay ACTIVE.
     CarPlaySdpDiagnostic()
     return protocol
 }
