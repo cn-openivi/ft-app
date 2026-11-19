@@ -531,7 +531,8 @@
     <string name="wireless_pair_error">Причина: %1$s</string>
     <string name="wireless_pair_no_auth">Беспроводная отладка ещё не подключена. Откройте сопряжение с помощью кода в настройках Android</string>
     <string name="wireless_pair_debugging_off">Беспроводная отладка выключена или порт подключения не обнаружен. Откройте настройки Android.</string>
-    <string name="wireless_pair_tls_mismatch">Сохранённый ключ не прошёл проверку TLS. Выполните сопряжение заново; не используйте незащищённый режим.</string>
+    <string name="wireless_pair_tls_mismatch">Ключ ADB-сервера подключения изменился или не подтверждён. Новый код нужен только для явного повторного сопряжения; обычный TCP не включайте.</string>
+    <string name="wireless_pair_connect_failed">Сопряжение прошло, но защищённое ADB-подключение не установлено. Проверьте беспроводную отладку и повторите подключение — новый код пока не нужен.</string>
     <string name="wireless_pair_helper_failed">Телефон сопряжён, но вспомогательный процесс не подключился к FT. Проверьте журнал и повторите.</string>
     <string name="wireless_pair_hide_expert">Скрыть дополнительные способы</string>
     <string name="wireless_pair_show_expert">Дополнительные способы</string>

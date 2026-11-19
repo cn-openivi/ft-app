@@ -79,6 +79,7 @@ fun SuperCastSettings() {
     val paired = WirelessAdbEngine.isPaired(context)
 
     fun setUp() {
+        WirelessPairingService.clearCompletedResult()
         failed = false
         scope.launch {
             busy = true
@@ -89,6 +90,7 @@ fun SuperCastSettings() {
     }
 
     fun startPairing() {
+        failed = false
         // The click authorizes a one-shot Accessibility read (only when FT's
         // already-enabled service is available). RemoteInput remains fallback.
         val autoRead = app.ft.supercast.adb.WirelessPairingAutoCode.canUse(context)
@@ -128,42 +130,49 @@ fun SuperCastSettings() {
 
     Status(ready, busy)
     if (!ready) {
-        if (failed) Text(stringResource(R.string.apps_failed),
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-        val specific = when (reason) {
-            SuperCast.StartReason.NEED_PAIRING -> R.string.wireless_pair_no_auth
-            SuperCast.StartReason.DEBUGGING_OFF -> R.string.wireless_pair_debugging_off
-            SuperCast.StartReason.TLS_REJECTED -> R.string.wireless_pair_tls_mismatch
-            SuperCast.StartReason.HELPER_UNREACHABLE -> R.string.wireless_pair_helper_failed
-            else -> null
-        }
-        if (specific != null) Text(stringResource(specific),
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-        if (pairing.phase != WirelessPairingService.Phase.IDLE) {
-            val p = when (pairing.phase) {
+        val pairingActive = pairing.phase in listOf(
+            WirelessPairingService.Phase.SEARCHING,
+            WirelessPairingService.Phase.CODE_READY,
+            WirelessPairingService.Phase.PAIRING,
+            WirelessPairingService.Phase.CONNECTING
+        )
+        // One current status only. Do NOT stack a stale setup error, a
+        // misleading TLS rejection and a generic "pair again" message.
+        val currentMessage = when {
+            busy -> null
+            pairingActive -> when (pairing.phase) {
                 WirelessPairingService.Phase.SEARCHING -> R.string.wireless_pair_search
                 WirelessPairingService.Phase.CODE_READY -> R.string.wireless_pair_enter_code
                 WirelessPairingService.Phase.PAIRING -> R.string.wireless_pair_in_progress
-                WirelessPairingService.Phase.CONNECTING -> R.string.wireless_pair_connecting
-                WirelessPairingService.Phase.READY -> R.string.wireless_pair_success
-                WirelessPairingService.Phase.FAILED -> R.string.wireless_pair_failed
-                WirelessPairingService.Phase.IDLE -> R.string.wireless_pair_search
+                else -> R.string.wireless_pair_connecting
             }
-            Text(stringResource(p), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (pairing.phase == WirelessPairingService.Phase.FAILED) {
-                val detail = when (pairing.reason) {
-                    "notifications_disabled" -> R.string.wireless_pair_notifications
-                    "foreground_denied", "background_restricted" -> R.string.wireless_pair_background_error
-                    "expired_code", "timed_out" -> R.string.wireless_pair_expired_error
-                    "pairing_failed" -> R.string.wireless_pair_wrong_code_error
-                    "helper_failed" -> R.string.wireless_pair_helper_failed
-                    "unsupported" -> R.string.wireless_pair_unsupported
-                    else -> R.string.wireless_pair_failed
-                }
-                Text(stringResource(detail),
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            pairing.phase == WirelessPairingService.Phase.FAILED -> when (pairing.reason) {
+                "notifications_disabled" -> R.string.wireless_pair_notifications
+                "foreground_denied", "background_restricted" -> R.string.wireless_pair_background_error
+                "expired_code", "timed_out" -> R.string.wireless_pair_expired_error
+                "pairing_failed" -> R.string.wireless_pair_wrong_code_error
+                "connect_not_found" -> R.string.wireless_pair_debugging_off
+                "tls_peer_changed" -> R.string.wireless_pair_tls_mismatch
+                "connect_failed" -> R.string.wireless_pair_connect_failed
+                "helper_failed" -> R.string.wireless_pair_helper_failed
+                "unsupported" -> R.string.wireless_pair_unsupported
+                else -> R.string.wireless_pair_failed
             }
+            failed -> when (reason) {
+                SuperCast.StartReason.NEED_PAIRING -> R.string.wireless_pair_no_auth
+                SuperCast.StartReason.DEBUGGING_OFF -> R.string.wireless_pair_debugging_off
+                SuperCast.StartReason.TLS_REJECTED -> R.string.wireless_pair_tls_mismatch
+                SuperCast.StartReason.CONNECT_FAILED -> R.string.wireless_pair_connect_failed
+                SuperCast.StartReason.HELPER_UNREACHABLE -> R.string.wireless_pair_helper_failed
+                else -> R.string.apps_failed
+            }
+            else -> null
+        }
+        if (currentMessage != null) {
+            Text(stringResource(currentMessage),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (pairingActive) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.error)
         }
 
         if (root || paired) {

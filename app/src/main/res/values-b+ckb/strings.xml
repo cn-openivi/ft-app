@@ -532,6 +532,7 @@
     <string name="wireless_pair_no_auth">Wireless debugging not connected yet; open Pair with code in Android Settings</string>
     <string name="wireless_pair_debugging_off">Wireless debugging is off or its connection port is not being advertised. Open Android Wireless debugging.</string>
     <string name="wireless_pair_tls_mismatch">The saved ADB identity could not authenticate this TLS endpoint. Pair again; do not use a plain-text fallback.</string>
+    <string name="wireless_pair_connect_failed">Pairing succeeded, but the encrypted ADB connection failed. Check Wireless debugging and retry Connect; a fresh code is not needed yet.</string>
     <string name="wireless_pair_helper_failed">Paired, but the phone helper did not connect to FT. Review the detailed log before retrying.</string>
     <string name="wireless_pair_hide_expert">Hide advanced ways</string>
     <string name="wireless_pair_show_expert">Advanced setup</string>

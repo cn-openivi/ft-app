@@ -24,11 +24,15 @@ internal class WirelessAdbDiscovery(
         const val PAIRING = "_adb-tls-pairing._tcp"
         const val CONNECT = "_adb-tls-connect._tcp"
 
-        suspend fun findConnect(context: Context, timeoutMs: Long = 5_000): Int? {
+        suspend fun findConnect(context: Context, pairedGuid: String, timeoutMs: Long = 5_000): Int? {
             val scanner = WirelessAdbDiscovery(context.applicationContext, CONNECT)
             return try {
                 scanner.start()
-                withTimeoutOrNull(timeoutMs) { scanner.endpoint.filterNotNull().first().port }
+                withTimeoutOrNull(timeoutMs) {
+                    scanner.endpoint.filterNotNull().first {
+                        AdbServiceIdentity.matchesConnect(it.serviceName, pairedGuid)
+                    }.port
+                }
             } finally {
                 scanner.stop()
             }
