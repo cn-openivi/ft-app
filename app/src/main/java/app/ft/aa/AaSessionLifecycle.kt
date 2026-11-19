@@ -29,10 +29,14 @@ internal class AaSessionLifecycle(
     }
 
     fun close(why: String) {
-        if (reason.compareAndSet(null, why)) interrupt()
-        // A write failure / BYEBYE can close from inside dispatch. Finish only after
-        // that handler returns, so it cannot revive audio or video after cleanup.
-        if (!Thread.holdsLock(gate)) synchronized(gate) { finishLocked() }
+        try {
+            if (reason.compareAndSet(null, why)) interrupt()
+        } finally {
+            // Socket shutdown itself can fail. Never leave the session's media
+            // ownership alive because the interrupt hook threw.
+            // When invoked inside dispatch, dispatch's finally owns cleanup.
+            if (!Thread.holdsLock(gate)) synchronized(gate) { finishLocked() }
+        }
     }
 
     private fun finishLocked() {
