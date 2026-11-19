@@ -1,6 +1,8 @@
 package app.ft.ui.components
 
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import app.ft.R
@@ -29,6 +31,14 @@ internal fun CarProtocolSetting(): CarProtocol {
                 ?.let { CarConnection.selectProtocol(context, it) }
         }
     )
+    if (protocol == CarProtocol.CARPLAY) {
+        Text(
+            "CarPlay: только диагностика. Рабочий протокол не изменён; " +
+                "реальное подключение CarPlay пока недоступно.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
     // Explicitly owner-triggered diagnostics; never claim CarPlay ACTIVE.
     CarPlaySdpDiagnostic()
     return protocol
