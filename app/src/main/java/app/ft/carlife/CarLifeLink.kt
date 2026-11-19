@@ -43,7 +43,6 @@ class WifiChannelLink(
     private val sockets = HashMap<Int, Socket>()
     private val writers = HashMap<Int, CarLifeWriter<ByteArray>>()
     private val jobs = ArrayList<Job>()
-    private var cmdGeneration = 0
     private var closedHook: ((String) -> Unit)? = null
     private var watch: Job? = null
 
@@ -92,15 +91,13 @@ class WifiChannelLink(
                             onClosed("head unit connected again")
                         }
                         var replaced: Pair<Socket?, CarLifeWriter<ByteArray>?>? = null
-                        val generation = synchronized(sockets) {
+                        synchronized(sockets) {
                             if (!running.get()) {
                                 s.close()
                                 return@launch
                             }
                             replaced = sockets.put(channel, s) to writers.remove(channel)
                             writers[channel] = CarLifeWriter("ft-wifi-send-$channel") { write(channel, s, it) }
-                            if (channel == CarLifeProtocol.CH_CMD) cmdGeneration++
-                            cmdGeneration
                         }
                         replaced?.let { (oldSocket, oldWriter) ->
                             runCatching { oldSocket?.close() }
@@ -123,6 +120,17 @@ class WifiChannelLink(
                         }
                         scope.launch(Dispatchers.IO) {
                             readLoop(channel, s, onMessage)
+                            if (channel == CarLifeProtocol.CH_CMD) {
+                                // Command EOF ends the whole Baidu session, not just
+                                // this lane. Close auxiliary writers and release the
+                                // pinned peer before a new command is accepted.
+                                // The exact socket guard cannot tear down a newer CMD.
+                                if (dropAll(expectedCommand = s)) {
+                                    onEvent("WIFI ${CarLifeProtocol.channelName(channel)} disconnected")
+                                    onClosed("head unit disconnected")
+                                }
+                                return@launch
+                            }
                             var writer: CarLifeWriter<ByteArray>? = null
                             val current = synchronized(sockets) {
                                 val mine = sockets[channel] === s
@@ -130,15 +138,11 @@ class WifiChannelLink(
                                     sockets.remove(channel)
                                     writer = writers.remove(channel)
                                 }
-                                mine && (channel != CarLifeProtocol.CH_CMD || generation == cmdGeneration)
+                                mine
                             }
                             writer?.close()
                             if (!current) return@launch
                             onEvent("WIFI ${CarLifeProtocol.channelName(channel)} disconnected")
-                            if (channel == CarLifeProtocol.CH_CMD) {
-                                watch?.cancel()
-                                onClosed("head unit disconnected")
-                            }
                         }
                     }
                 } catch (t: Throwable) {
@@ -175,7 +179,6 @@ class WifiChannelLink(
             val list = sockets.values.toList() to writers.values.toList()
             sockets.clear()
             writers.clear()
-            cmdGeneration++
             list
         }
         watch?.cancel()
