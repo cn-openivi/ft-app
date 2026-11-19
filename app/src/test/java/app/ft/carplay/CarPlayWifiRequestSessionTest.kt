@@ -100,9 +100,9 @@ class CarPlayWifiRequestSessionTest {
     @Test fun matchingReplyIdWithNoWifiFieldsIsMalformedAndCannotReplay() {
         for (dialect in listOf(flat, grouped)) {
             val session = CarPlayWifiRequestSession()
-            val request = request(session, 1, dialect,
+            val proposal = request(session, 1, dialect,
                 actualMac = true, mac = "AA:BB:CC:DD:EE:FF")
-            assertEquals(CarPlayWifiRequestSession.Result.PREPARED_NOT_SENT, request.result)
+            assertEquals(CarPlayWifiRequestSession.Result.PREPARED_NOT_SENT, proposal.result)
             val reply = Iap2ControlSessionCodec.Message(
                 dialect.expectedAccessoryReplyId!!, emptyList())
             assertEquals(CarPlayWifiRequestSession.Result.REPLY_MALFORMED,
