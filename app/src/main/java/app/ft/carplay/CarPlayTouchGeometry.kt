@@ -25,8 +25,48 @@ internal object CarPlayTouchGeometry {
         val rotation: Rotation
     )
 
+    /**
+     * Independently measured VISIBLE video rectangle within the HU screen.
+     * Toyota left navigation and bottom climate control regions are not
+     * projection pixels. Never infer this from the full HU or SPS raster.
+     */
+    data class HuViewport(val left: Int, val top: Int, val width: Int, val height: Int)
+
     class Mapped(val status: Status, val phoneX: Int? = null, val phoneY: Int? = null) {
         override fun toString(): String = "CarPlayTouchMapping(status=$status, touch redacted)"
+    }
+
+    /**
+     * Screen-origin touches are converted to the actual projection viewport
+     * only after its physical bounds are known. Outside presses are rejected,
+     * never clamped to the nearest AA/CarPlay control.
+     *
+     * The caller must supply measured viewport coordinates; there is no
+     * hardcoded XA60 15.6-inch panel, virtual HVAC area or display scaling.
+     * SOURCE_ONLY: no Apple HID message or vehicle write is generated.
+     */
+    fun inverseFromHuScreen(
+        screenX: Int, screenY: Int,
+        screenWidth: Int, screenHeight: Int,
+        viewport: HuViewport, frame: Frame,
+        authenticatedSessionAndObservedHuTouchProfile: Boolean
+    ): Mapped {
+        if (!authenticatedSessionAndObservedHuTouchProfile)
+            return Mapped(Status.SESSION_OR_PROFILE_UNVERIFIED)
+        if (screenWidth !in 1..8192 || screenHeight !in 1..8192 ||
+            viewport.left < 0 || viewport.top < 0 ||
+            viewport.width !in 1..8192 || viewport.height !in 1..8192 ||
+            viewport.width != frame.huVideoWidth ||
+            viewport.height != frame.huVideoHeight ||
+            viewport.left.toLong() + viewport.width > screenWidth.toLong() ||
+            viewport.top.toLong() + viewport.height > screenHeight.toLong())
+            return Mapped(Status.INVALID_GEOMETRY)
+        if (screenX < viewport.left || screenY < viewport.top ||
+            screenX.toLong() >= viewport.left.toLong() + viewport.width ||
+            screenY.toLong() >= viewport.top.toLong() + viewport.height)
+            return Mapped(Status.OUTSIDE_DISPLAY_OR_LETTERBOX)
+        return inverse(screenX - viewport.left, screenY - viewport.top,
+            frame, authenticatedSessionAndObservedHuTouchProfile = true)
     }
 
     fun inverse(

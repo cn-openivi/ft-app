@@ -42,6 +42,38 @@ class CarPlayTouchGeometryTest {
         assertEquals(25, center.phoneY)
     }
 
+    @Test fun leftRailAndBottomClimateControlTouchesAreExcluded() {
+        val video = f(CarPlayTouchGeometry.Rotation.NONE,hw=200,hh=100)
+        val viewport = CarPlayTouchGeometry.HuViewport(40,20,200,100)
+        // The total HU UI remains 300x180; only 200x100 holds projection.
+        val center = g.inverseFromHuScreen(140,70,300,180,viewport,video,true)
+        assertEquals(CarPlayTouchGeometry.Status.CANDIDATE_NOT_SENT,center.status)
+        assertEquals(50,center.phoneX)
+        assertEquals(25,center.phoneY)
+        assertEquals(CarPlayTouchGeometry.Status.OUTSIDE_DISPLAY_OR_LETTERBOX,
+            g.inverseFromHuScreen(20,70,300,180,viewport,video,true).status)
+        assertEquals(CarPlayTouchGeometry.Status.OUTSIDE_DISPLAY_OR_LETTERBOX,
+            g.inverseFromHuScreen(140,145,300,180,viewport,video,true).status)
+        assertEquals(CarPlayTouchGeometry.Status.OUTSIDE_DISPLAY_OR_LETTERBOX,
+            g.inverseFromHuScreen(240,70,300,180,viewport,video,true).status)
+    }
+
+    @Test fun actualViewportAndRotationAreRequiredAndNoFullscreenGuessing() {
+        val video = f(CarPlayTouchGeometry.Rotation.CLOCKWISE_90,hw=50,hh=100)
+        val viewport = CarPlayTouchGeometry.HuViewport(25,10,50,100)
+        val mapped = g.inverseFromHuScreen(25,10,130,150,viewport,video,true)
+        assertEquals(0,mapped.phoneX)
+        assertEquals(49,mapped.phoneY)
+        assertEquals(CarPlayTouchGeometry.Status.SESSION_OR_PROFILE_UNVERIFIED,
+            g.inverseFromHuScreen(25,10,130,150,viewport,video,false).status)
+        assertEquals(CarPlayTouchGeometry.Status.INVALID_GEOMETRY,
+            g.inverseFromHuScreen(25,10,130,150,viewport.copy(left=120),video,true).status)
+        assertEquals(CarPlayTouchGeometry.Status.INVALID_GEOMETRY,
+            g.inverseFromHuScreen(25,10,130,150,viewport.copy(width=49),video,true).status)
+        assertEquals(CarPlayTouchGeometry.Status.OUTSIDE_DISPLAY_OR_LETTERBOX,
+            g.inverseFromHuScreen(-1,40,130,150,viewport,video,true).status)
+    }
+
     @Test fun unverifiedOrInvalidNeverMapsAndDoesNotLeakTouch() {
         val frame = f(CarPlayTouchGeometry.Rotation.NONE)
         assertEquals(CarPlayTouchGeometry.Status.SESSION_OR_PROFILE_UNVERIFIED,
