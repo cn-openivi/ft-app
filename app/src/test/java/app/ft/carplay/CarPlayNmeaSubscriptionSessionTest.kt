@@ -24,6 +24,7 @@ class CarPlayNmeaSubscriptionSessionTest {
         val one = gate.encode(4, fix(1730000000000L), true)
         assertEquals(CarPlayNmeaSubscriptionSession.Outcome.ENCODED_NOT_SENT, one.outcome)
         assertNotNull(one.sentences)
+        assertEquals(1730000000000L, one.fixUtcEpochMillis)
         assertTrue(one.sentences!!.gga.startsWith("$"+"GPGGA"))
         assertEquals(CarPlayNmeaSubscriptionSession.Outcome.FIX_NOT_NEWER, gate.encode(4, fix(1730000000000L), true).outcome)
         assertEquals(CarPlayNmeaSubscriptionSession.Outcome.FIX_NOT_NEWER, gate.encode(4, fix(1729999999999L), true).outcome)

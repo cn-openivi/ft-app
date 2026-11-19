@@ -18,7 +18,9 @@ internal class CarPlayNmeaSubscriptionSession {
     }
     class Emission(
         val outcome: Outcome,
-        val sentences: CarPlayNmeaSentences.PairOfSentences? = null
+        val sentences: CarPlayNmeaSentences.PairOfSentences? = null,
+        /** The exact source epoch; never reconstructed by a downstream queue. */
+        val fixUtcEpochMillis: Long? = null
     ) {
         override fun toString(): String = "CarPlayGpsEmission($outcome, coordinates redacted)"
     }
@@ -70,7 +72,7 @@ internal class CarPlayNmeaSubscriptionSession {
         val sentences = CarPlayNmeaSentences.encodeIfApproved(preflight, fix)
             ?: return Emission(Outcome.ENCODE_REJECTED)
         lastEpochMillis = fix.utcEpochMillis
-        return Emission(Outcome.ENCODED_NOT_SENT, sentences)
+        return Emission(Outcome.ENCODED_NOT_SENT, sentences, fix.utcEpochMillis)
     }
 
     @Synchronized
