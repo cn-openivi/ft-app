@@ -11,6 +11,7 @@ import app.ft.server.IFtServer
 import app.ft.supercast.adb.WirelessAdbDiscovery
 import app.ft.supercast.adb.WirelessAdbEngine
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.security.SecureRandom
@@ -31,9 +32,10 @@ object SuperCast {
     private val _ready = MutableStateFlow(false)
     val ready: StateFlow<Boolean> = _ready
 
-    enum class StartReason { NONE, NEED_PAIRING, DEBUGGING_OFF, TLS_REJECTED, HELPER_UNREACHABLE, LEGACY_DISABLED }
+    enum class StartReason { NONE, NEED_PAIRING, DEBUGGING_OFF, TLS_REJECTED, CONNECT_FAILED, HELPER_UNREACHABLE, LEGACY_DISABLED }
     private val _startReason = MutableStateFlow(StartReason.NONE)
     val startReason: StateFlow<StartReason> = _startReason
+    private val startLock = java.util.concurrent.locks.ReentrantLock()
 
     val client: IFtClient = object : IFtClient.Stub() {
         override fun onServer(bound: IFtServer?, sent: String?) {
@@ -52,10 +54,7 @@ object SuperCast {
             when (event?.getString("event")) {
                 "phone-touch" -> app.ft.core.MirrorPanelSaver.onPhysicalTouch(FTApp.instance)
                 "phone-touch-monitor-ready" -> physicalTouchMonitorActive = true
-                "phone-touch-monitor-unavailable" -> {
-                    physicalTouchMonitorActive = false
-                    app.ft.core.MirrorPanelSaver.monitorUnavailable(FTApp.instance)
-                }
+                "phone-touch-monitor-unavailable" -> physicalTouchMonitorActive = false
                 else -> DiagLog.i(TAG, "helper event: ${event?.getString("event")}")
             }
         }
@@ -230,12 +229,15 @@ object SuperCast {
         drop()
     }
 
-    fun start(context: android.content.Context): Boolean {
+    fun start(context: android.content.Context): Boolean = startLock.withLock {
         if (_ready.value && ping()) {
             _startReason.value = StartReason.NONE
             return true
         }
         if (_ready.value) drop()
+        _startReason.value = StartReason.NONE
+        WirelessAdbEngine.markStage(WirelessAdbEngine.Stage.IDLE)
+        helperUid = -1
         val fresh = freshToken()
         if (Root.ensure()) {
             if (Helper.startWithRoot(context, fresh) { _ready.value && ping() }) {
@@ -246,31 +248,54 @@ object SuperCast {
             }
         }
 
-        // Rediscover the current Android 11+ TLS port on EVERY startup.
+        // Pairing GUID was authenticated by SPAKE2. Discover a fresh connect
+        // port belonging to the SAME local Android device on every attempt.
         if (WirelessAdbEngine.isPaired(context)) {
+            val pairedGuid = requireNotNull(WirelessAdbEngine.pairedGuid(context))
+            WirelessAdbEngine.markStage(WirelessAdbEngine.Stage.CONNECT_DISCOVERY)
             val found = runBlocking {
-                WirelessAdbDiscovery.findConnect(context.applicationContext, timeoutMs = 5_000)
+                WirelessAdbDiscovery.findConnect(context.applicationContext, pairedGuid, timeoutMs = 5_000)
             }
             if (found == null) {
                 _startReason.value = StartReason.DEBUGGING_OFF
             } else {
+                var transportError: Throwable? = null
                 val dispatched = runCatching {
                     runBlocking { WirelessAdbEngine.startHelper(context.applicationContext, found, fresh) }
                 }.onFailure {
-                    DiagLog.w(TAG, "verified TLS debug bridge failed: " + it.javaClass.simpleName)
+                    transportError = it
+                    DiagLog.w(TAG, WirelessAdbEngine.sanitizedFailure(it))
                 }.getOrDefault(false)
-                if (dispatched && waitForHandshake() && ping()) {
-                    FTApp.instance.prefs.supercastWay = WAY_TLS
-                    _startReason.value = StartReason.NONE
-                    return true
+
+                if (dispatched && waitForHandshake() && ping() && helperUid == 2000) {
+                    if (WirelessAdbEngine.commitVerifiedConnect(context.applicationContext)) {
+                        FTApp.instance.prefs.supercastWay = WAY_TLS
+                        _startReason.value = StartReason.NONE
+                        return true
+                    }
+                    DiagLog.w(TAG, "ADB_TLS_FAILURE stage=COMMIT_VERIFIED_PEER")
+                    drop()
+                    _startReason.value = StartReason.TLS_REJECTED
+                } else {
+                    _startReason.value = when {
+                        dispatched -> StartReason.HELPER_UNREACHABLE
+                        transportError?.let { WirelessAdbEngine.hasCertificateMismatch(it) } == true ->
+                            StartReason.TLS_REJECTED
+                        else -> StartReason.CONNECT_FAILED
+                    }
+                    if (!dispatched && transportError == null) {
+                        DiagLog.w(TAG, "ADB_TLS_FAILURE stage=" + WirelessAdbEngine.stage.name + " result=NOT_DISPATCHED")
+                    }
                 }
-                _startReason.value = if (dispatched) StartReason.HELPER_UNREACHABLE else StartReason.TLS_REJECTED
             }
         } else {
             _startReason.value = StartReason.NEED_PAIRING
         }
 
-        // Plain TCP :5555 is an EXPLICIT expert fallback.
+        // Never downgrade a paired Android 11+ TLS session to insecure TCP.
+        // Legacy :5555 is an independent explicit expert route only when
+        // there is no authenticated modern pairing to protect.
+        if (WirelessAdbEngine.isPaired(context)) return false
         if (!FTApp.instance.prefs.supercastLegacyAdb) return false
         val legacy = Helper.startWithAdb(context, fresh)
         if (legacy == Helper.Adb.STARTED && waitForHandshake() && ping()) {
