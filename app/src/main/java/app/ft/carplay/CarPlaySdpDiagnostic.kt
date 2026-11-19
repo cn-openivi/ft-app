@@ -205,7 +205,8 @@ internal fun CarPlaySdpDiagnostic() {
                     trialState = CarPlayTrialProgress.observe(trialState,
                         CarPlayIncomingIapProbe.Observation.CANCELLED)
                     incoming.close()
-                    incomingEvents = emptyList()
+                    // Keep observed evidence visible for the owner's Copy
+                    // Report action even after the physical trial is stopped.
                 }) { Text("Остановить проверку iAP2") }
                 Text("Результат пробного запуска: ${carPlayTrialStatus(trialState)}")
                 Text("MFi: не подтверждён · AirPlay: не запущен · CarPlay ACTIVE: нет")
@@ -215,9 +216,11 @@ internal fun CarPlaySdpDiagnostic() {
                     val text = CarPlayTrialReport.format(
                         trialState, hfpContinuity.state(SystemClock.elapsedRealtime()), incomingEvents)
                     val copied = runCatching {
-                        context.getSystemService(ClipboardManager::class.java)
-                            ?.setPrimaryClip(ClipData.newPlainText("FT200 CarPlay test", text))
-                    }.isSuccess
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                            ?: return@runCatching false
+                        clipboard.setPrimaryClip(ClipData.newPlainText("FT200 CarPlay test", text))
+                        true
+                    }.getOrDefault(false)
                     notice = if (copied) "Протокол без личных данных скопирован"
                         else "Не удалось скопировать протокол"
                 }) { Text("Скопировать результат CarPlay-теста") }

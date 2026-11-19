@@ -46,6 +46,28 @@ class CarPlayTrialProgressTest {
             CarPlayIncomingIapProbe.Observation.LINK_ACK_NOT_OBSERVED)
         assertEquals(CarPlayTrialProgress.Blocker.IAP2_LINK_FAILED, b.blocker)
     }
+    @Test fun timeoutPreservesFurthestRealHandshakePhaseAndMfiBlocker() {
+        var s = CarPlayTrialProgress.start()
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.LINK_NEGOTIATED)
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.PROBE_TIMEOUT)
+        assertTrue(s.terminal)
+        assertEquals(CarPlayTrialProgress.Phase.IAP2_LINK_NEGOTIATED, s.phase)
+        assertTrue(s.realLinkObserved)
+        assertEquals(CarPlayTrialProgress.Blocker.IO_OR_TIMEOUT, s.blocker)
+
+        var auth = CarPlayTrialProgress.start()
+        auth = CarPlayTrialProgress.observe(auth,
+            CarPlayIncomingIapProbe.Observation.ACCESSORY_AUTH_CERTIFICATE_RECEIVED_UNTRUSTED)
+        auth = CarPlayTrialProgress.observe(auth,
+            CarPlayIncomingIapProbe.Observation.PROBE_TIMEOUT)
+        assertTrue(auth.terminal)
+        assertEquals(CarPlayTrialProgress.Phase.MFI_TRUST_REQUIRED, auth.phase)
+        assertEquals(CarPlayTrialProgress.Blocker.MFI_CERTIFICATE_UNTRUSTED, auth.blocker)
+        assertFalse(auth.carPlayActive)
+    }
+
     @Test fun ownerStopAndRetryResetEvidence() {
         val old = CarPlayTrialProgress.observe(CarPlayTrialProgress.start(),
             CarPlayIncomingIapProbe.Observation.CANCELLED)

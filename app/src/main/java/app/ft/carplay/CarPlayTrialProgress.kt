@@ -55,9 +55,19 @@ internal object CarPlayTrialProgress {
                 Blocker.STOPPED_BY_OWNER
             else -> null
         }
-        if (failure != null) return current.copy(
-            phase = Phase.FINISHED_WITHOUT_CARPLAY, blocker = failure, terminal = true
-        )
+        if (failure != null) {
+            // A 30-second deadline must not erase a previously observed
+            // RFCOMM/LINK/CONTROL phase or an MFi trust blocker. Keep the
+            // furthest authentic evidence when the physical probe ends.
+            val retainedBlocker = if (current.phase == Phase.MFI_TRUST_REQUIRED &&
+                failure == Blocker.IO_OR_TIMEOUT) current.blocker else failure
+            return current.copy(
+                phase = if (current.phase == Phase.WAITING_FOR_TOYOTA)
+                    Phase.FINISHED_WITHOUT_CARPLAY else current.phase,
+                blocker = retainedBlocker,
+                terminal = true
+            )
+        }
         val advanced = when (event) {
             CarPlayIncomingIapProbe.Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED ->
                 Phase.TOYOTA_RFCOMM_CONNECTED

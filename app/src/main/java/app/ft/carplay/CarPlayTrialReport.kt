@@ -17,6 +17,7 @@ internal object CarPlayTrialReport {
             "FT200 CarPlay early physical diagnostic (redacted)",
             "phase=${trial.phase.name}",
             "blocker=${trial.blocker.name}",
+            "trial_ended=${trial.terminal}",
             "real_iap2_link=${trial.realLinkObserved}",
             "real_iap2_control=${trial.realControlObserved}",
             "mfi_authenticated=UNVERIFIED",
