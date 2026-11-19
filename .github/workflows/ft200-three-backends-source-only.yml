@@ -44,6 +44,7 @@ jobs:
           grep -Fq 'CarPlayExperimentalSelectionPolicy.display' app/src/main/java/app/ft/ui/components/CarProtocolState.kt
           test -f app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayHfpContinuityLedgerTest.kt
+          test -f app/src/test/java/app/ft/carplay/CarPlayNmeaLatestOnlyBufferTest.kt
           test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
           grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
           test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
@@ -112,6 +113,7 @@ jobs:
               'Iap2SynPayloadParserTest', 'Iap2ReliableLinkWindowTest', 'Iap2RetryDeadlineTest',
               'Iap2Ft200SafetyPolicyTest', 'Iap2CertificatePathFixtureTest', 'CarPlayMediaPreflightTest', 'CarPlayNmeaSentencesTest', 'CarPlayRtspCodecTest', 'CarPlayAirPlayEndpointPolicyTest', 'CarPlayWifiStartExtractorTest', 'CarPlayAudioFocusPolicyTest', 'CarPlayAvcPassthroughTest',
               'CarPlayTouchGeometryTest', 'CarPlayNmeaSubscriptionSessionTest',
+              'CarPlayNmeaLatestOnlyBufferTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
               'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
