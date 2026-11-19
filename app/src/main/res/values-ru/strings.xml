@@ -686,4 +686,5 @@
     <string name="iccoa_touch_edge_verify">Центр совпал. Теперь коснитесь зелёной метки справа — проверим точность координат по всему экрану.</string>
     <string name="iccoa_touch_edge_failed">Обнаружено смещение вне центра. Нажмите метку справа ещё раз; при повторном промахе откроется калибровка.</string>
     <string name="iccoa_touch_center_failed">Проверка центра не пройдена. Нажмите «ОК» ещё раз. При повторном промахе откроется калибровка.</string>
+    <string name="ft191_return_to_ft_on_car">Вернуться в FT на ГУ</string>
 </resources>
