@@ -80,4 +80,39 @@
     <string name="look_phone_style">Uygulama görünümü</string>
     <string name="look_phone_classic">Varsayılan</string>
     <string name="look_phone_modern">Alternatif</string>
+    <string name="look_note">Otomatik tema, telefonun koyu modunu izler. Araç ekranı burada seçilen dili kullanır; renkleri Araç ekranı bölümünden ayarlanır.</string>
+    <string name="made_by">Geliştiren: %1$s</string>
+    <string name="aa_missing_title">Bu telefonda Android Auto yok</string>
+    <string name="aa_missing_body">Play Store’dan yükleyin veya Android Auto dosyasını seçin; FT uygulamayı kurup otomatik başlatabilir.</string>
+    <string name="aa_action_pick_file">Dosya seç</string>
+    <string name="aa_own_copy">FT tarafından kurulan Android Auto</string>
+    <string name="aa_own_copy_body">FT, Android Auto’yu kurdu; araç bağlandığında otomatik açılır. Eski sürümler Google tarafından devre dışı bırakılabildiğinden Play Store üzerinden güncel tutun.</string>
+    <string name="aa_server_option">Android Auto ana ünite sunucusu</string>
+    <string name="aa_server_option_body">FT, Android Auto’yu bu sunucu üzerinden araçta başlatır. Android Auto ayarlarında etkinleştirebilirsiniz; ancak telefon yeniden başlatıldığında veya Android Auto güncellendiğinde sunucu kapanır.</string>
+    <string name="aa_show_me_how">Nasıl yapılır?</string>
+    <string name="aa_open_aa">Android Auto’yu aç</string>
+    <string name="aa_open_store">Play Store’u aç</string>
+    <string name="aa_help_title">Ana ünite sunucusunu açın</string>
+    <string name="aa_help_1">Android Auto ayarlarını açın</string>
+    <string name="aa_help_1_body">FT doğrudan bu ekrana götürür. Sonraki adım için buraya dönün.</string>
+    <string name="aa_help_2">Android Auto ayarlarının altındaki Sürüm bölümünü bulun</string>
+    <string name="aa_help_2_body">Sürüm bilgisi kapalıysa Sürüm’e dokunarak açın. Ardından Sürüm ve izin bilgileri seçeneğine 10 kez dokunup onaylayın. Bu, telefonun değil Android Auto’nun geliştirici modudur.</string>
+    <string name="aa_help_3">Sağ üstteki üç noktaya dokunun</string>
+    <string name="aa_help_4">Start head unit server seçeneğine dokunun</string>
+    <string name="aa_help_4_body">FT otomatik bağlanır. Telefon yeniden başlatılırsa veya Android Auto güncellenirse 1., 3. ve 4. adımları tekrarlayın.</string>
+    <string name="aa_quality_tier_info">Otomatik ayar, alıcıyla kararlaştırılan video modunu kullanır. SD, HD ve Full HD doğrulanmış Android Auto modlarıdır. QHD ve UHD henüz deneyseldir; bu sürüm Android Auto’ya en fazla Full HD bildirir.</string>
+    <string name="aa_high_tier_pending">Deneysel QHD/UHD seçildi. Daha yüksek Android Auto video modu doğrulanana kadar görüntü Full HD (1080p) ile sınırlıdır. Seçiminiz kaydedildi.</string>
+    <string name="aa_compact_return_button_body">Android Auto üzerinde küçük, koyu, yuvarlak bir FT dönüş düğmesi gösterir. Kapatıldığında önceki düğme kullanılır.</string>
+    <string name="aa_cluster_navigation_body">Araç destekliyorsa Android Auto dönüş talimatlarını gösterge panelinde veya HUD üzerinde gösterir. Değişiklik hemen uygulanır.</string>
+    <string name="adv_network_details_show">Ağ kanalları (%1$s)</string>
+    <string name="adv_network_details_hide">Ağ kanallarını gizle (%1$s)</string>
+    <string name="adv_network_source_note">Yapılandırılmış aktarım kanalları; etkin soket bağlantısının kanıtı değildir.</string>
+    <string name="adv_carlife_channel_map">CarLife TCP: komut %1$d, video %2$d, medya %3$d, TTS %4$d, ses %5$d, dokunma %6$d.</string>
+    <string name="adv_carlife_edit_ports">CarLife TCP portlarını düzenle (gelişmiş)</string>
+    <string name="adv_carlife_hide_edit">CarLife port düzenleyicisini gizle</string>
+    <string name="adv_iccoa_channel_map">ICCOA kaynak yapılandırması: kontrol 57219, ses 57229, sensör 57239, diğer kanallar 57249/57259, RTSP 7236, UIBC 4321. RTP hedef portunu alıcı belirler.</string>
+    <string name="car_p2p_label">Wi-Fi Direct adı (boş = herhangi bir CarLife)</string>
+    <string name="car_bt_label">Otomatik başlatma için Bluetooth adı (boş = herhangi biri)</string>
+    <string name="car_bt_reconnect_about">FT açıkken bağlantı koptuğunda, yalnızca son eşleşen araç yakındaysa en fazla üç kez yeniden bağlanmayı dener. Araç keşfedilebilir olmalıdır. Kullanılabilirlik telefona bağlıdır.</string>
+    <string name="car_join_timeout">Wi-Fi Direct bağlantı zaman aşımı</string>
 </resources>

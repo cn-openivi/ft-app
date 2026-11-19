@@ -80,4 +80,39 @@
     <string name="look_phone_style">Apparence de l’application</string>
     <string name="look_phone_classic">Par défaut</string>
     <string name="look_phone_modern">Alternative</string>
+    <string name="look_note">Le thème automatique suit le mode sombre du téléphone. L’écran du véhicule utilise la langue choisie ici ; ses couleurs se règlent dans Écran du véhicule.</string>
+    <string name="made_by">Créé par %1$s</string>
+    <string name="aa_missing_title">Android Auto n’est pas installé sur ce téléphone</string>
+    <string name="aa_missing_body">Installez Android Auto depuis le Play Store ou choisissez son fichier : FT l’installera et pourra le démarrer automatiquement.</string>
+    <string name="aa_action_pick_file">Choisir un fichier</string>
+    <string name="aa_own_copy">Android Auto installé par FT</string>
+    <string name="aa_own_copy_body">FT a installé Android Auto : il démarre automatiquement lorsque le véhicule se connecte. Maintenez-le à jour via le Play Store, car Google peut désactiver les anciennes versions.</string>
+    <string name="aa_server_option">Serveur d’unité principale Android Auto</string>
+    <string name="aa_server_option_body">FT lance Android Auto dans le véhicule via ce serveur. Vous pouvez l’activer dans les paramètres Android Auto, mais il sera désactivé après un redémarrage ou une mise à jour.</string>
+    <string name="aa_show_me_how">Voir les étapes</string>
+    <string name="aa_open_aa">Ouvrir Android Auto</string>
+    <string name="aa_open_store">Ouvrir Play Store</string>
+    <string name="aa_help_title">Activer le serveur de l’unité principale</string>
+    <string name="aa_help_1">Ouvrir les paramètres Android Auto</string>
+    <string name="aa_help_1_body">FT ouvre directement cette page. Revenez ici pour l’étape suivante.</string>
+    <string name="aa_help_2">Recherchez Version en bas des paramètres Android Auto</string>
+    <string name="aa_help_2_body">Si les informations sont repliées, appuyez sur Version. Appuyez ensuite dix fois sur Version et informations sur les autorisations, puis confirmez. Il s’agit du mode développeur d’Android Auto, pas du téléphone.</string>
+    <string name="aa_help_3">Appuyez sur les trois points en haut à droite</string>
+    <string name="aa_help_4">Appuyez sur Start head unit server</string>
+    <string name="aa_help_4_body">FT se connecte automatiquement. Après un redémarrage ou une mise à jour d’Android Auto, répétez les étapes 1, 3 et 4.</string>
+    <string name="aa_quality_tier_info">Le mode Auto utilise la résolution négociée avec le récepteur. SD, HD et Full HD sont des modes Android Auto vérifiés. QHD et UHD sont expérimentaux ; cette version annonce au maximum le Full HD.</string>
+    <string name="aa_high_tier_pending">QHD/UHD expérimental sélectionné. La vidéo Android Auto reste limitée au Full HD (1080p) tant qu’un mode supérieur n’est pas vérifié. Le choix est mémorisé.</string>
+    <string name="aa_compact_return_button_body">Affiche un petit bouton rond sombre pour revenir à FT au-dessus d’Android Auto. Désactivé, le bouton d’origine est conservé.</string>
+    <string name="aa_cluster_navigation_body">Affiche les indications de virage Android Auto sur le combiné d’instruments ou l’affichage tête haute si le véhicule le permet. Le changement est immédiat.</string>
+    <string name="adv_network_details_show">Canaux réseau (%1$s)</string>
+    <string name="adv_network_details_hide">Masquer les canaux réseau (%1$s)</string>
+    <string name="adv_network_source_note">Canaux de transport configurés, sans preuve de connexion réseau active.</string>
+    <string name="adv_carlife_channel_map">CarLife TCP : commandes %1$d, vidéo %2$d, média %3$d, TTS %4$d, voix %5$d, tactile %6$d.</string>
+    <string name="adv_carlife_edit_ports">Modifier les ports TCP CarLife (avancé)</string>
+    <string name="adv_carlife_hide_edit">Masquer l’éditeur de ports CarLife</string>
+    <string name="adv_iccoa_channel_map">Configuration source ICCOA : commande 57219, audio 57229, capteurs 57239, autres canaux 57249/57259, RTSP 7236, UIBC 4321. Le récepteur négocie le port RTP de destination.</string>
+    <string name="car_p2p_label">Nom Wi-Fi Direct (vide = tout CarLife)</string>
+    <string name="car_bt_label">Nom Bluetooth pour démarrage auto (vide = tout appareil)</string>
+    <string name="car_bt_reconnect_about">Tant que FT fonctionne, jusqu’à trois tentatives sont effectuées après une déconnexion, uniquement si le dernier véhicule associé est à proximité. Le véhicule doit être détectable. Disponibilité selon le téléphone.</string>
+    <string name="car_join_timeout">Délai de connexion Wi-Fi Direct</string>
 </resources>
