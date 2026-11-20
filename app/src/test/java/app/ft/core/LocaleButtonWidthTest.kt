@@ -3,16 +3,15 @@ package app.ft.core
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
-import java.awt.Font
-import java.awt.font.FontRenderContext
-import java.awt.geom.AffineTransform
 import java.io.File
 import javax.xml.parsers.DocumentBuilderFactory
 
 /**
- * Desktop-JVM source preflight for localized one-line controls.
- * Dialog 10pt is only a rough glyph-width proxy for Compose autosize, not
- * a screenshot test of the exact Toyota head unit.
+ * Deterministic, Android-unit-test-compatible source preflight for short
+ * localized control labels. Uses approximate Latin glyph advances in em.
+ *
+ * This IS NOT a real pixel measurement: Roboto metrics, system font scale,
+ * device width and Compose layout must be verified separately on devices.
  */
 class LocaleButtonWidthTest {
     private fun read(folder: String): Map<String, String> {
@@ -25,11 +24,18 @@ class LocaleButtonWidthTest {
         }
     }
 
-    private fun width(text: String, pt: Int): Double {
-        System.setProperty("java.awt.headless", "true")
-        val font = Font("Dialog", Font.PLAIN, pt)
-        val ctx = FontRenderContext(AffineTransform(), true, true)
-        return font.getStringBounds(text, ctx).width
+    private fun width(text: String, minSp: Int): Double {
+        val estimatedEm = text.sumOf { ch ->
+            when {
+                ch == ' ' || ch == '\t' -> 0.35
+                ch in "!.,:;'\`|ijlI()[]" -> 0.31
+                ch in "MW@%ÖÜŒ" -> 0.93
+                ch.isDigit() -> 0.58
+                ch.isUpperCase() -> 0.71
+                else -> 0.61
+            }
+        }
+        return estimatedEm * minSp
     }
 
     @Test fun vehicleTilesFitOneLineAtAutoSizeMinimum() {
