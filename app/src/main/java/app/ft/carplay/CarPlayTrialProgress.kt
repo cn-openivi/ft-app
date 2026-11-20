@@ -15,7 +15,8 @@ internal object CarPlayTrialProgress {
     enum class Blocker {
         NONE, BLUETOOTH_PERMISSION_OR_ADAPTER, NO_EXISTING_TOYOTA_BOND,
         NO_TOYOTA_RFCOMM, IAP2_LINK_FAILED, MFI_CERTIFICATE_UNTRUSTED,
-        MFI_SIGNATURE_UNVERIFIED, IO_OR_TIMEOUT, STOPPED_BY_OWNER
+        MFI_SIGNATURE_UNVERIFIED, IO_OR_TIMEOUT, PEER_STREAM_CLOSED,
+        READ_LIMIT_REACHED, STOPPED_BY_OWNER
     }
     data class State(
         val phase: Phase = Phase.NOT_STARTED,
@@ -51,6 +52,10 @@ internal object CarPlayTrialProgress {
             CarPlayIncomingIapProbe.Observation.PROBE_TIMEOUT,
             CarPlayIncomingIapProbe.Observation.IO_FAILURE ->
                 Blocker.IO_OR_TIMEOUT
+            CarPlayIncomingIapProbe.Observation.PEER_STREAM_CLOSED ->
+                Blocker.PEER_STREAM_CLOSED
+            CarPlayIncomingIapProbe.Observation.READ_LIMIT_REACHED ->
+                Blocker.READ_LIMIT_REACHED
             CarPlayIncomingIapProbe.Observation.CANCELLED ->
                 Blocker.STOPPED_BY_OWNER
             else -> null
@@ -60,7 +65,8 @@ internal object CarPlayTrialProgress {
             // RFCOMM/LINK/CONTROL phase or an MFi trust blocker. Keep the
             // furthest authentic evidence when the physical probe ends.
             val retainedBlocker = if (current.phase == Phase.MFI_TRUST_REQUIRED &&
-                failure == Blocker.IO_OR_TIMEOUT) current.blocker else failure
+                failure in setOf(Blocker.IO_OR_TIMEOUT, Blocker.PEER_STREAM_CLOSED,
+                    Blocker.READ_LIMIT_REACHED)) current.blocker else failure
             return current.copy(
                 phase = if (current.phase == Phase.WAITING_FOR_TOYOTA)
                     Phase.FINISHED_WITHOUT_CARPLAY else current.phase,
