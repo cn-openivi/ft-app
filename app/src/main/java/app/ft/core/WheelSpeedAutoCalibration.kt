@@ -83,6 +83,8 @@ internal class WheelSpeedAutoCalibration(
     }
 
     fun observeWheel(sample: WheelMotion): Estimate {
+        // A saved coefficient is immutable during ordinary trips.
+        if (confident) return estimate()
         if (vehicleId == null || !sample.verifiedWheelAndYawUnits ||
             !sample.verifiedForwardGear || sample.monotonicMs <= 0L ||
             !sample.forwardSpeedMps.isFinite() ||
@@ -121,6 +123,8 @@ internal class WheelSpeedAutoCalibration(
      * an unfinished calibration segment, unrelated to DR activation.
      */
     fun observeGnss(fix: IndependentGnss): Estimate {
+        // Never adjust the multiplier once one calibration has been accepted.
+        if (confident) return estimate()
         val motion = previousWheel
         if (vehicleId == null || !fix.independentCarGnssVerified ||
             !fix.monotonicFixEpochVerified || fix.fixMonotonicMs <= 0L ||
@@ -171,8 +175,7 @@ internal class WheelSpeedAutoCalibration(
                 completedRatios.addLast(ratio)
                 if (completedRatios.size > maxSegments) completedRatios.removeFirst()
                 if (completedRatios.size >= minimumSegments) {
-                    multiplier = (0.90 * multiplier +
-                        0.10 * requireNotNull(median(completedRatios)))
+                    multiplier = requireNotNull(median(completedRatios))
                         .coerceIn(0.90, 1.10)
                     confident = true
                     pendingPersistence = true
