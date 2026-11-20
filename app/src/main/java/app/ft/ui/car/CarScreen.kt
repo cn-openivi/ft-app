@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -115,6 +116,7 @@ import app.ft.FTTouchService
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSession
 import app.ft.aa.AaVideoSink
+import app.ft.aa.AaPictureRecoveryGate
 import app.ft.projection.CarControls
 import app.ft.projection.CarControls.Phase
 import app.ft.projection.CarControls.ScreenState
@@ -932,47 +934,110 @@ private fun AaOverlay(aa: app.ft.aa.AaState, modifier: Modifier = Modifier) {
     val prefs = FTApp.instance.prefs
     val (fullW, fullH) = app.ft.aa.AaProtocol.standardSize(prefs.aaWidth, prefs.aaHeight)
     val real by AaVideoSink.frame.collectAsState()
+    val surface by AaVideoSink.surface.collectAsState()
+    val firstFrame by AaVideoSink.firstRendered.collectAsState()
     val (frameW, frameH) = real ?: (fullW to fullH)
     val layout = AaVideoLayout.forFrame(prefs.aaWidth, prefs.aaHeight, frameW, frameH)
-    DisposableEffect(Unit) { onDispose { AaTouchViewport.bounds = null } }
+    var viewGeneration by remember { mutableIntStateOf(0) }
+    var viewportReady by remember { mutableStateOf(false) }
+    var manualRetry by remember { mutableStateOf(false) }
+    val recovery = remember { AaPictureRecoveryGate() }
+    val pictureReady = aa.phase == AaSession.Phase.STREAMING && firstFrame &&
+        surface?.isValid == true && viewportReady
+    DisposableEffect(viewGeneration) {
+        onDispose { AaTouchViewport.bounds = null; viewportReady = false }
+    }
+    LaunchedEffect(aa.connected, aa.phase) {
+        if (!aa.connected || aa.phase != AaSession.Phase.STREAMING) {
+            recovery.reset()
+            manualRetry = false
+            return@LaunchedEffect
+        }
+        while (true) {
+            val liveSurface = AaVideoSink.surface.value?.isValid == true
+            val viewport = AaTouchViewport.bounds
+            val ready = liveSurface && AaVideoSink.firstRendered.value &&
+                viewport != null && viewport.width > 0 && viewport.height > 0
+            when (recovery.check(android.os.SystemClock.elapsedRealtime(), true, ready, liveSurface)) {
+                AaPictureRecoveryGate.Action.RECREATE_SURFACE -> {
+                    AaTouchViewport.bounds = null
+                    viewportReady = false
+                    viewGeneration++
+                    DiagLog.w("Car", "AA_SURFACE_RECOVERY_RECREATE generation=" + viewGeneration)
+                }
+                AaPictureRecoveryGate.Action.REQUEST_FRESH_PICTURE -> {
+                    DiagLog.w("Car", "AA_SURFACE_RECOVERY_REQUEST_IDR")
+                    AaHeadUnitService.current?.askForAFreshPicture()
+                }
+                AaPictureRecoveryGate.Action.SHOW_MANUAL_RETRY -> {
+                    manualRetry = true
+                    DiagLog.w("Car", "AA_SURFACE_RECOVERY_MANUAL_AVAILABLE")
+                }
+                else -> Unit
+            }
+            if (ready) manualRetry = false
+            delay(1000)
+        }
+    }
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds().background(Color.Black)) {
         val ratio = layout.contentWidth.toFloat() / layout.contentHeight
         val picture = if (maxWidth / maxHeight > ratio) {
             Modifier.fillMaxHeight().aspectRatio(ratio)
         } else Modifier.fillMaxWidth().aspectRatio(ratio)
-        LaunchedEffect(Unit) {
-            delay(3000)
-            if (AaVideoSink.surface.value == null) DiagLog.w("Car", "Android Auto is on the car but its picture still has no place to be drawn")
+        key(viewGeneration) {
+            AndroidView(
+                factory = { ctx -> AaVideoView(ctx).apply { setVideoLayout(layout) } },
+                update = { v -> v.setVideoLayout(layout) },
+                modifier = picture.align(Alignment.Center).onGloballyPositioned { coords ->
+                    val b = coords.boundsInWindow()
+                    val bounds = AaViewport(b.left.toInt(), b.top.toInt(), b.width.toInt(), b.height.toInt())
+                    AaTouchViewport.bounds = bounds
+                    viewportReady = bounds.width > 0 && bounds.height > 0
+                }
+            )
         }
-        AndroidView(
-            factory = { ctx ->
-                AaVideoView(ctx).apply { setVideoLayout(layout) }
-            },
-            update = { v -> v.setVideoLayout(layout) },
-            modifier = picture.align(Alignment.Center).onGloballyPositioned { coordinates ->
-                val b = coordinates.boundsInWindow()
-                AaTouchViewport.bounds = AaViewport(b.left.toInt(), b.top.toInt(), b.width.toInt(), b.height.toInt())
-            }
-        )
-        AnimatedVisibility(visible = aa.phase != AaSession.Phase.STREAMING, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = !pictureReady, enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.fillMaxSize()
+        ) {
             Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(0.78f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     LoadingIndicator()
                     Text(
                         when {
-                            aa.connected -> stringResource(R.string.car_aa_connecting, aa.deviceName.ifBlank { stringResource(R.string.car_aa_your_phone) })
+                            aa.connected -> stringResource(R.string.car_aa_connecting,
+                                aa.deviceName.ifBlank { stringResource(R.string.car_aa_your_phone) })
                             aa.listening -> stringResource(R.string.car_aa_waiting, aa.port)
                             else -> stringResource(R.string.car_aa_starting)
                         },
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge
+                        color = Color.White, style = MaterialTheme.typography.titleLarge,
+                        maxLines = 2
                     )
+                    if (manualRetry) {
+                        Button(onClick = {
+                            recovery.reset()
+                            manualRetry = false
+                            AaTouchViewport.bounds = null
+                            viewportReady = false
+                            viewGeneration++
+                            AaHeadUnitService.current?.askForAFreshPicture()
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.home_try_again), maxLines = 1)
+                        }
+                        OutlinedButton(onClick = { CarControls.goHome() },
+                            modifier = Modifier.fillMaxWidth()) {
+                            Text(stringResource(R.string.aa_return_to_ft), maxLines = 1)
+                        }
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun MirrorOverlay(corner: Int) {
     val frame by MirrorSink.frame.collectAsState()
