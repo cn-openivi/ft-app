@@ -28,7 +28,7 @@ class LocaleButtonWidthTest {
         val estimatedEm = text.sumOf { ch ->
             when {
                 ch == ' ' || ch == '\t' -> 0.35
-                ch in "!.,:;'\`|ijlI()[]" -> 0.31
+                ch in "!.,:;'`|ijlI()[]" -> 0.31
                 ch in "MW@%ÖÜŒ" -> 0.93
                 ch.isDigit() -> 0.58
                 ch.isUpperCase() -> 0.71
