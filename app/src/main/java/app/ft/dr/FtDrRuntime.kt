@@ -156,6 +156,22 @@ internal object FtDrRuntime {
         return true
     }
 
+    /** Adopt an independently measured, successfully saved per-car coefficient.
+     * This does not reset the live position/heading filter or alter any ECU.
+     */
+    @Synchronized
+    fun applyWheelCalibrationSnapshot(snapshot: WheelSpeedAutoCalibration.Snapshot): Boolean {
+        if (verifiedVehicleId != snapshot.vehicleId ||
+            !snapshot.multiplier.isFinite() ||
+            snapshot.multiplier !in 0.90..1.10) return false
+        val locked = WheelSpeedAutoCalibration()
+        if (!locked.bindVehicle(snapshot.vehicleId, snapshot)) return false
+        calibrationEpoch++
+        calibrationCommitInFlight = false
+        wheelCalibration = locked
+        return true
+    }
+
     @Synchronized
     fun reset() {
         fusion.reset()
