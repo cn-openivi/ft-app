@@ -52,7 +52,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         LINK_DUPLICATE_IGNORED, LINK_GAP_IGNORED,
         LINK_UNEXPECTED_SESSION, IDENTIFICATION_REQUEST_ACKED,
         LINK_DATA_ACK_SENT, LINK_DATA_RETRIED, LINK_DATA_RETRY_EXHAUSTED,
-        PROBE_TIMEOUT, IO_FAILURE, CANCELLED
+        PROBE_TIMEOUT, PEER_STREAM_CLOSED, READ_LIMIT_REACHED, IO_FAILURE, CANCELLED
     }
 
     data class Event(
@@ -176,17 +176,19 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                 // A first read might contain only a fragment; do not reject it
                 // prematurely. Limit total data and receive operations.
                 var bytesSeen = 0
-                var found = false
+                var linkFramesSeen = false
+                var readOperations = 0
                 for (attempt in 0 until 64) {
                     if (!active.get() || generation != run || bytesSeen >= 65535) break
                     // read() may block; close() cancels by closing the socket.
+                    readOperations++
                     val count = connection.inputStream.read(received)
                     if (count <= 0) break
                     bytesSeen += count
                     val event = observer.accept(received.copyOf(count))
                     if (event.detectSeen) {
                         emit(run, Observation.IAP2_DETECT_SEEN)
-                        found = true
+                        // Detect alone is NOT a valid LINK frame.
                         // A physical accessory's legacy iAP detect is echoed verbatim.
                         // This is a real response on the selected bonded RFCOMM socket,
                         // not an MFi response or a fabricated transport ACK.
@@ -196,7 +198,7 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                     }
                     if (event.linkFrameCount > 0) {
                         emit(run, Observation.REAL_LINK_FRAME_SEEN, event.linkFrameCount)
-                        found = true
+                        linkFramesSeen = true
                         for (frame in event.frames) {
                             if (negotiator.phase == Iap2LinkNegotiator.Phase.LINK_NEGOTIATED) {
                                 // The real accessory chose the CONTROL session ID in SYN.
@@ -420,9 +422,14 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                     }
                 }
                 if (active.get() && generation == run) {
-                    if (!found) emit(run, Observation.NO_IAP2_LINK_FRAME)
+                    if (!linkFramesSeen) emit(run, Observation.NO_IAP2_LINK_FRAME)
                     else if (negotiator.phase == Iap2LinkNegotiator.Phase.AWAITING_ACCESSORY_ACK)
                         emit(run, Observation.LINK_ACK_NOT_OBSERVED)
+                    else if (bytesSeen >= 65535 || readOperations >= 64)
+                        emit(run, Observation.READ_LIMIT_REACHED)
+                    else
+                        // Real LINK/CONTROL evidence remains, but the RFCOMM stream ended.
+                        emit(run, Observation.PEER_STREAM_CLOSED)
                 }
             } catch (_: SocketTimeoutException) {
                 if (active.get() && generation == run) emit(run, Observation.ACCEPT_TIMEOUT)
