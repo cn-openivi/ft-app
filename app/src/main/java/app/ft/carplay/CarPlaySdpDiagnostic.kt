@@ -6,6 +6,8 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.SystemClock
@@ -49,6 +51,26 @@ internal fun CarPlaySdpDiagnostic() {
     var iapProbeSerial by remember { mutableStateOf(0L) }
     var notice by remember { mutableStateOf("CarPlay: тестовый выбор. Настоящее подключение пока не подтверждено.") }
     var observed by remember { mutableStateOf<List<CarPlayBluetoothSdpProbe.Observation>>(emptyList()) }
+    val bluetoothRuntimePermission = CarPlayTrialPermissionPolicy.runtimePermission(Build.VERSION.SDK_INT)
+    var hasBluetoothConnect by remember(context) {
+        mutableStateOf(bluetoothRuntimePermission == null ||
+            context.checkSelfPermission(bluetoothRuntimePermission) ==
+                PackageManager.PERMISSION_GRANTED)
+    }
+    val requestBluetooth = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        hasBluetoothConnect = granted
+        if (granted) {
+            val inventory = readPairedDevices(context)
+            candidates = inventory.second
+            notice = inventory.first
+        } else {
+            candidates = emptyList()
+            selected = null
+            notice = "Bluetooth запрещён. Разрешите доступ к уже сопряжённой Toyota."
+        }
+    }
 
     DisposableEffect(probe, incoming) { onDispose { probe.close(); incoming.close() } }
 
@@ -67,15 +89,30 @@ internal fun CarPlaySdpDiagnostic() {
             hfpStatus = "HFP: ещё не проверялся"
             selected = null
             observed = emptyList()
-            val inventory = readPairedDevices(context)
-            candidates = inventory.second
-            notice = inventory.first
             visible = true
+            val permission = bluetoothRuntimePermission
+            hasBluetoothConnect = permission == null ||
+                context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+            if (!hasBluetoothConnect && permission != null) {
+                candidates = emptyList()
+                notice = "Для чтения штатной BT-пары требуется разрешение Android."
+                requestBluetooth.launch(permission)
+            } else {
+                val inventory = readPairedDevices(context)
+                candidates = inventory.second
+                notice = inventory.first
+            }
         }) {
             Text("FT200: Bluetooth / SDP Toyota (диагностика)")
         }
         if (visible) {
             Text(notice)
+            if (!hasBluetoothConnect) {
+                Text("Bluetooth разрешён только для существующей пары: без поиска и сопряжения.")
+                OutlinedButton(onClick = {
+                    bluetoothRuntimePermission?.let { requestBluetooth.launch(it) }
+                }) { Text("Разрешить Bluetooth для проверки Toyota") }
+            }
             Text("Выберите свою Toyota из уже сопряжённых устройств. Новая пара НЕ создаётся.")
             candidates.forEach { item ->
                 OutlinedButton(onClick = {
