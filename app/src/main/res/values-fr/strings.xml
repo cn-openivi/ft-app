@@ -688,4 +688,6 @@
         <item>novembre</item>
         <item>décembre</item>
     </string-array>
+    <string name="picture_aa_normal_video_priority">Priorité vidéo Android Auto (Normal)</string>
+    <string name="picture_aa_normal_video_priority_about">Conserve manuellement la fréquence maximale lorsque Android Auto est visible en mode ICCOA Normal. Réinitialisé à la déconnexion. Direct H.264 reste inchangé ; utile avec l’économie d’énergie activée.</string>
 </resources>

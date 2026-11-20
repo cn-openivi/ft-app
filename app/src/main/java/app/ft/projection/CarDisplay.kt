@@ -13,8 +13,16 @@ import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import app.ft.FTApp
 import app.ft.core.DiagLog
+import app.ft.media.CarPlayer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 class CarDisplay(private val context: Context) {
     private val tag = "Display"
@@ -22,6 +30,8 @@ class CarDisplay(private val context: Context) {
     private var encoder: SurfaceEncoder? = null
     private var sessionEpoch = 0L
     private var gate: FrameGate? = null
+    private var videoPriorityJob: Job? = null
+    private val aaNormalVideoPriority = MutableStateFlow(false)
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: CarPresentation? = null
     private var downTime = 0L
@@ -146,7 +156,10 @@ class CarDisplay(private val context: Context) {
             enc.surface ?: throw IllegalStateException("no encoder surface")
         }
         encoder = enc
-        if (gate != null) startThermalWatch()
+        if (gate != null) {
+            startThermalWatch()
+            observeVideoPriority()
+        }
         val dm = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
         // FT UI is normalized to its *actual* content viewport so a fixed
         // icon size occupies the same fraction of a 720p, 1080p or 4K screen.
@@ -190,6 +203,25 @@ class CarDisplay(private val context: Context) {
         val asked = encoder?.requestKeyframe() ?: false
         gate?.redraw()
         return asked
+    }
+
+    /** ICCOA Normal only; manual selection never changes AA's source encoder. */
+    fun setAaNormalVideoPriority(enabled: Boolean) {
+        aaNormalVideoPriority.value = enabled
+    }
+
+    private fun observeVideoPriority() {
+        videoPriorityJob?.cancel()
+        videoPriorityJob = CoroutineScope(Dispatchers.Main.immediate).launch {
+            combine(CarPlayer.state, CarControls.state, aaNormalVideoPriority) { player, screen, manual ->
+                VideoPriorityPolicy.shouldBoost(
+                    localVideoPlaying = player.playing && player.track?.video == true,
+                    aaVisible = screen.aaOverlay,
+                    mirroring = screen.mirroring,
+                    aaNormalPriority = manual
+                )
+            }.distinctUntilChanged().collect { gate?.setVideoPriority(it) }
+        }
     }
 
     fun wake() {
@@ -358,6 +390,9 @@ class CarDisplay(private val context: Context) {
         onVideoChanged?.invoke(null)
         watch.stop()
         stopThermalWatch()
+        videoPriorityJob?.cancel()
+        videoPriorityJob = null
+        aaNormalVideoPriority.value = false
         main.removeCallbacks(ticker)
         main.removeCallbacks(flushMove)
         synchronized(moveLock) { pendingMove = null }

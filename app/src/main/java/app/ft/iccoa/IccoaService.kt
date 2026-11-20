@@ -56,6 +56,8 @@ data class IccoaState(
     /** Actual video path, never inferred from the user-selected preference. */
     val effectiveVideoMode: Int = 0,
     val videoFallbackReason: String? = null,
+    /** Session-local Normal AA full-FPS preference; Direct is never paced here. */
+    val aaNormalVideoPriority: Boolean = false,
     val verifiedReceiverId: String? = null,
     val btIdentityDelivery: IccoaBtIdentityDelivery = IccoaBtIdentityDelivery.NOT_ATTEMPTED
 )
@@ -896,6 +898,7 @@ class IccoaService : Service() {
         directVideo = null
         connectionVideoMode = 0
         _state.update { it.copy(effectiveVideoMode = 0, videoFallbackReason = null,
+            aaNormalVideoPriority = false,
             verifiedReceiverId = null,
             btIdentityDelivery = IccoaBtIdentityDelivery.NOT_ATTEMPTED) }
         main.removeCallbacks(connectionTimeout)
@@ -1009,6 +1012,14 @@ class IccoaService : Service() {
         /** Safety control usable on the phone even when the HU cannot display direct H.264. */
         fun restoreNormalVideo() {
             instance?.let { service -> service.main.post { service.directVideo?.restoreNormalByUser() } }
+        }
+        /** Applies only to a connected composited ICCOA session, never persisted. */
+        fun setAaNormalVideoPriority(enabled: Boolean) {
+            instance?.let { service -> service.main.post {
+                if (!_state.value.connected || _state.value.effectiveVideoMode != 0) return@post
+                service.projection?.setAaNormalVideoPriority(enabled)
+                _state.update { it.copy(aaNormalVideoPriority = enabled) }
+            } }
         }
         fun stop(context: Context) { if (instance != null) send(context, STOP) }
         private fun send(context: Context, action: String, address: String? = null, pin: String? = null) {

@@ -805,6 +805,15 @@ private fun IccoaPictureSettings() {
         prefs.encoderSavePower,
         stringResource(R.string.picture_save_power_body)
     ) { prefs.encoderSavePower = it }
+    if (iccoa.connected && iccoa.effectiveVideoMode == 0) {
+        key(iccoa.aaNormalVideoPriority, iccoa.connected) {
+            BoolSetting(
+                stringResource(R.string.picture_aa_normal_video_priority),
+                iccoa.aaNormalVideoPriority,
+                stringResource(R.string.picture_aa_normal_video_priority_about)
+            ) { IccoaService.setAaNormalVideoPriority(it) }
+        }
+    }
     VideoPacingLive(iccoa.effectiveVideoMode == 1)
 }
 

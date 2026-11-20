@@ -104,6 +104,15 @@ class FrameGate(
         }
     }
 
+    fun setVideoPriority(enabled: Boolean) {
+        val h = handler ?: return
+        h.post {
+            if (handler !== h) return@post
+            pacer.setVideoPriority(enabled)
+            refreshRate()
+        }
+    }
+
     fun setThermalCap(fps: Int) {
         val h = handler ?: return
         h.post {

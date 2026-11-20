@@ -688,4 +688,6 @@
     <string name="iccoa_touch_edge_failed">Обнаружено смещение вне центра. Нажмите метку справа ещё раз; при повторном промахе откроется калибровка.</string>
     <string name="iccoa_touch_center_failed">Проверка центра не пройдена. Нажмите «ОК» ещё раз. При повторном промахе откроется калибровка.</string>
     <string name="ft191_return_to_ft_on_car">Вернуться в FT на ГУ</string>
+    <string name="picture_aa_normal_video_priority">Приоритет видео Android Auto</string>
+    <string name="picture_aa_normal_video_priority_about">Вручную сохраняет полную частоту кадров, пока Android Auto открыт в обычном режиме ICCOA. Сбрасывается при отключении. На Direct H.264 не влияет. Нужна включённая умная экономия.</string>
 </resources>

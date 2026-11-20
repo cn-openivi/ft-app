@@ -53,6 +53,41 @@ class SmartVideoPacerTest {
         assertEquals(8, p.state().fps)
     }
 
+    @Test fun explicitVideoPriorityPreventsCruiseButKeepsStaticAndThermalSafety() {
+        var ms = 1_000L
+        val p = SmartVideoPacer(true) { ms }
+        p.setRequestedFps(30)
+        p.onFreshBuffer()
+        ms += 45_000L
+        p.onFreshBuffer()
+        assertEquals(SmartVideoPacer.State(15, SmartVideoPacer.Mode.CRUISE), p.state())
+
+        p.setVideoPriority(true)
+        assertEquals(SmartVideoPacer.State(30, SmartVideoPacer.Mode.ACTIVE), p.state())
+        ms += 60 * 60 * 1_000L
+        p.onFreshBuffer()
+        assertEquals(30, p.state().fps) // Long movie without any touch
+        p.setThermalCeiling(20)
+        assertEquals(SmartVideoPacer.State(20, SmartVideoPacer.Mode.THERMAL), p.state())
+        p.setThermalCeiling(0)
+        ms += SmartVideoPacer.STATIC_AFTER_MS
+        assertEquals(SmartVideoPacer.State(5, SmartVideoPacer.Mode.STATIC), p.state())
+
+        p.onFreshBuffer()
+        assertEquals(30, p.state().fps)
+        p.setVideoPriority(false)
+        assertEquals(SmartVideoPacer.State(15, SmartVideoPacer.Mode.CRUISE), p.state())
+    }
+
+    @Test fun videoPriorityRequiresTrustedPlaybackOrExplicitAaNormalAndNeverMirror() {
+        assertTrue(VideoPriorityPolicy.shouldBoost(true, false, false, false))
+        assertFalse(VideoPriorityPolicy.shouldBoost(false, false, false, false))
+        assertFalse(VideoPriorityPolicy.shouldBoost(true, true, false, false)) // AA navigation
+        assertTrue(VideoPriorityPolicy.shouldBoost(false, true, false, true)) // explicit AA Normal
+        assertFalse(VideoPriorityPolicy.shouldBoost(true, false, true, true)) // phone mirror
+        assertFalse(VideoPriorityPolicy.shouldBoost(false, true, true, true))
+    }
+
     @Test fun urgentSignalOnlyOnceAndOnlyForFreshBufferWithinWindow() {
         var ns = 1_000_000_000L
         val urgent = UrgentFreshFrame { ns }

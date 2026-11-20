@@ -121,6 +121,7 @@ class IccoaProjection(
     /** Generation of the active H.264 projection; stale worker failures are ignored. */
     private var displayEpoch = 0L
     private var displayPlan: VideoPlan? = null
+    private var aaNormalVideoPriority = false
     private var aaVideoProfile: IccoaAaVideoProfile.Selection? = null
 
     /** Set by ICCOA PLAY before projection/AA startup; scope is this WFD session. */
@@ -200,6 +201,7 @@ class IccoaProjection(
             // its audio/mirror capture and the Android Auto session across PLAY/resume.
             display.start(plan, onConfig, { _, _ -> }, onTimedFrame,
                 onFailure = { projectionFailed(it, epoch) }) { CarScreen() }
+            display.setAaNormalVideoPriority(aaNormalVideoPriority)
             displayPlan = plan
             mutableState.update { it.copy(
                 phase = CarControls.Phase.PROJECTING, via = "ICCOA",
@@ -219,6 +221,12 @@ class IccoaProjection(
         stopInternal()
         DiagLog.e("ICCOA", "could not create FT's car display", error)
         onFailure("Could not create FT's car display (${error.javaClass.simpleName})")
+    }
+
+    /** Manual per-connection exception for composited Android Auto only. */
+    fun setAaNormalVideoPriority(enabled: Boolean) = onMain {
+        aaNormalVideoPriority = enabled
+        if (!directVideoActive) display.setAaNormalVideoPriority(enabled)
     }
 
     fun requestKeyFrame() = onMain { if (!directVideoActive) display.requestKeyframe() }
@@ -877,6 +885,7 @@ class IccoaProjection(
         directAaSize = null
         active = false
         displayPlan = null
+        aaNormalVideoPriority = false
         aaVideoProfile = null
         hideMirror()
         stopAa()

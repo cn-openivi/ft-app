@@ -693,4 +693,6 @@
     <string name="iccoa_touch_edge_failed">موضع اللمس خارج الوسط غير متطابق. حاول لمس العلامة اليمنى مرة أخرى؛ عند تكرار الإخفاق ستبدأ المعايرة.</string>
     <string name="iccoa_touch_center_failed">فشل فحص إحداثيات اللمس: لم يصل اللمس إلى دائرة OK. لن يتم تأكيد نجاح الفحص أو بدء المعايرة تلقائيًا. أرفق تقرير التشخيص.</string>
     <string name="ft191_return_to_ft_on_car">العودة إلى FT على شاشة السيارة</string>
+    <string name="picture_aa_normal_video_priority">أولوية فيديو Android Auto (العادي)</string>
+    <string name="picture_aa_normal_video_priority_about">يحافظ يدويًا على معدل الإطارات الكامل عند عرض Android Auto في الوضع العادي لـ ICCOA. يُعاد ضبطه عند فصل الاتصال. لا يتغير Direct H.264، ويُستخدم مع توفير الطاقة الذكي.</string>
 </resources>

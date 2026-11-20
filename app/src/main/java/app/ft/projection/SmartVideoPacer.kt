@@ -20,12 +20,15 @@ internal class SmartVideoPacer(
 
     private var requestedFps = 30
     private var thermalCeiling = 0
+    private var videoPriority = false
     private var lastInputMs = clockMs()
     private var lastFreshMs = lastInputMs
     private var hasFresh = false
 
     fun setRequestedFps(fps: Int) { requestedFps = fps.coerceIn(1, 60) }
     fun setThermalCeiling(fps: Int) { thermalCeiling = if (fps > 0) fps.coerceIn(1, 60) else 0 }
+    /** Explicit video playback priority; never infer it from incoming frame rate. */
+    fun setVideoPriority(enabled: Boolean) { videoPriority = enabled }
     fun onInput() { lastInputMs = clockMs() }
     fun onFreshBuffer() {
         hasFresh = true
@@ -36,6 +39,9 @@ internal class SmartVideoPacer(
         val now = clockMs()
         val baseMode = when {
             !enabled -> Mode.OFF
+            // Paused/buffering video still gets STATIC when buffers stop arriving.
+            videoPriority && hasFresh && now - lastFreshMs >= STATIC_AFTER_MS -> Mode.STATIC
+            videoPriority -> Mode.ACTIVE
             now - lastInputMs < CRUISE_AFTER_MS -> Mode.ACTIVE
             hasFresh && now - lastFreshMs >= STATIC_AFTER_MS -> Mode.STATIC
             else -> Mode.CRUISE
@@ -90,4 +96,14 @@ internal object VideoPacingStatus {
 
     fun publish(fps: Int, mode: SmartVideoPacer.Mode) { _state.value = Effective(fps, mode) }
     fun clear() { _state.value = null }
+}
+
+/** A trusted UI state, not frame-rate or pixel heuristics, selects full-FPS video. */
+internal object VideoPriorityPolicy {
+    fun shouldBoost(
+        localVideoPlaying: Boolean,
+        aaVisible: Boolean,
+        mirroring: Boolean,
+        aaNormalPriority: Boolean
+    ): Boolean = !mirroring && if (aaVisible) aaNormalPriority else localVideoPlaying
 }
