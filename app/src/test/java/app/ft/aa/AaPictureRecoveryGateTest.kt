@@ -1,0 +1,46 @@
+package app.ft.aa
+
+import org.junit.Assert.*
+import org.junit.Test
+
+class AaPictureRecoveryGateTest {
+    @Test fun boundedAutomaticRecoveryAndExhaustion() {
+        val g = AaPictureRecoveryGate()
+        val a = AaPictureRecoveryGate.Action
+        assertEquals(a.NONE, g.check(0L, true, false, false))
+        assertEquals(a.NONE, g.check(3999L, true, false, false))
+        assertEquals(a.RECREATE_SURFACE, g.check(4000L, true, false, false))
+        assertEquals(a.NONE, g.check(5000L, true, false, false))
+        assertEquals(a.RECREATE_SURFACE, g.check(9000L, true, false, false))
+        assertEquals(a.SHOW_MANUAL_RETRY, g.check(14000L, true, false, false))
+        repeat(30) { assertEquals(a.NONE, g.check(15000L + it * 1000L, true, false, false)) }
+    }
+
+    @Test fun attachedSurfaceRequestsIdrBeforeRecreatingTexture() {
+        val g = AaPictureRecoveryGate()
+        val a = AaPictureRecoveryGate.Action
+        assertEquals(a.NONE, g.check(100L, true, false, true))
+        assertEquals(a.REQUEST_FRESH_PICTURE, g.check(4100L, true, false, true))
+        assertEquals(a.RECREATE_SURFACE, g.check(9100L, true, false, true))
+    }
+
+    @Test fun renderedFrameAndDisconnectResetRecovery() {
+        val g = AaPictureRecoveryGate()
+        val a = AaPictureRecoveryGate.Action
+        g.check(0L, true, false, false)
+        assertEquals(a.RECREATE_SURFACE, g.check(4000L, true, false, false))
+        assertEquals(a.NONE, g.check(4010L, true, true, true))
+        assertEquals(a.NONE, g.check(4020L, true, false, false))
+        assertEquals(a.NONE, g.check(5000L, false, false, false))
+        assertEquals(a.NONE, g.check(5050L, true, false, false))
+    }
+
+    @Test fun monotonicClockRewindDoesNotCauseRapidRetry() {
+        val g = AaPictureRecoveryGate()
+        val a = AaPictureRecoveryGate.Action
+        g.check(10000L, true, false, false)
+        assertEquals(a.NONE, g.check(9000L, true, false, false))
+        assertEquals(a.NONE, g.check(12000L, true, false, false))
+        assertEquals(a.RECREATE_SURFACE, g.check(13000L, true, false, false))
+    }
+}
