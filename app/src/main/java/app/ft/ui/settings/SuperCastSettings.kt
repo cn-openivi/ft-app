@@ -202,7 +202,7 @@ fun SuperCastSettings() {
                     context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                         .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
                 }
-            }) { Text(stringResource(R.string.home_allow_notifications)) }
+            }) { Text(stringResource(R.string.wireless_pair_notifications)) }
         }
         if (pairing.phase in listOf(
                 WirelessPairingService.Phase.SEARCHING, WirelessPairingService.Phase.CODE_READY,
