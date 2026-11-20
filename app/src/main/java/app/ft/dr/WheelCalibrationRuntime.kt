@@ -35,6 +35,7 @@ internal object WheelCalibrationRuntime {
     private var listener: LocationListener? = null
     private var generation = 0L
     private var saving = false
+    private var pendingStartKm: Int? = null
 
     @Synchronized fun bindVerifiedCar(context: Context, authenticatedId: String) {
         if (authenticatedId.isBlank() || authenticatedId.length > 256) return
@@ -44,9 +45,23 @@ internal object WheelCalibrationRuntime {
         vehicleId = authenticatedId
         store = WheelCalibrationStore(AndroidWheelCalibrationStorage(context.applicationContext))
         coefficient = store?.restore(authenticatedId)?.multiplier
+        val pending = pendingStartKm
+        if (pending != null) {
+            pendingStartKm = null
+            _status.value = WheelCalibrationSession.Status()
+            start(context, pending)
+        }
     }
 
     @Synchronized fun onCarDisconnect() {
+        // A user-armed session may wait for ICCOA connection without requiring
+        // a second tap. Do not cancel that pending request during discovery.
+        if (pendingStartKm != null) {
+            vehicleId = null
+            store = null
+            coefficient = null
+            return
+        }
         // Do not mix two authenticated sessions into one straight-road segment.
         if (isActive()) {
             stop("Соединение с автомобилем прервано")
@@ -62,21 +77,32 @@ internal object WheelCalibrationRuntime {
     @Synchronized fun start(context: Context, kilometres: Int): Boolean {
         if (kilometres != 2 && kilometres != 5) return false
         if (isActive()) return false
-        val id = vehicleId
-        if (id == null || store == null) {
-            _status.value = session.stopUnavailable("Подключите FT к проверенному автомобилю")
-            // An inactive session has no state to stop; expose a typed error.
-            _status.value = WheelCalibrationSession.Status(
-                WheelCalibrationSession.Phase.UNAVAILABLE, kilometres * 1_000,
-                reason = "Сначала подключите автомобиль через ICCOA")
-            return false
-        }
         if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) !=
             PackageManager.PERMISSION_GRANTED) {
             _status.value = WheelCalibrationSession.Status(
                 WheelCalibrationSession.Phase.UNAVAILABLE, kilometres * 1_000,
                 reason = "Разрешите точную геолокацию телефону")
             return false
+        }
+        val id = vehicleId
+        if (id == null || store == null) {
+            pendingStartKm = kilometres
+            val pendingGeneration = ++generation
+            _status.value = WheelCalibrationSession.Status(
+                WheelCalibrationSession.Phase.WAITING, kilometres * 1_000,
+                reason = "Ожидаем подключение FT к автомобилю")
+            FTApp.instance.scope.launch {
+                delay(20 * 60_000L)
+                synchronized(WheelCalibrationRuntime) {
+                    if (generation == pendingGeneration && pendingStartKm == kilometres) {
+                        pendingStartKm = null
+                        _status.value = WheelCalibrationSession.Status(
+                            WheelCalibrationSession.Phase.TIMED_OUT, kilometres * 1_000,
+                            reason = "Подключение не появилось за 20 минут")
+                    }
+                }
+            }
+            return true
         }
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         if (lm == null || !lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
@@ -164,7 +190,11 @@ internal object WheelCalibrationRuntime {
     @Synchronized fun stop(reason: String = "Калибровка остановлена") {
         generation++
         releaseGpsListener()
-        _status.value = session.stopUnavailable(reason)
+        val pending = pendingStartKm
+        pendingStartKm = null
+        _status.value = if (pending != null) WheelCalibrationSession.Status(
+            WheelCalibrationSession.Phase.UNAVAILABLE, pending * 1_000, reason = reason
+        ) else session.stopUnavailable(reason)
         saving = false
     }
 
