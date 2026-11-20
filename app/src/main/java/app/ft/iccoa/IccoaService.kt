@@ -33,6 +33,7 @@ import app.ft.core.VehicleMotionTelemetry
 import app.ft.dr.DrPathEvidence
 import app.ft.dr.FtDrRuntime
 import app.ft.dr.CarTunnelRuntime
+import app.ft.dr.WheelCalibrationRuntime
 import app.ft.core.VehicleTraceRecorder
 import app.ft.core.NavigationInfo
 import app.ft.projection.IccoaCalibrationScope
@@ -232,6 +233,8 @@ class IccoaService : Service() {
                 val gearReceiptMonoMs = android.os.SystemClock.elapsedRealtime()
                 IccoaDrInputBridge.rawGear(observed?.gearSpeedRaw, observed?.gearRaw,
                     gearReceiptMonoMs)
+                WheelCalibrationRuntime.onGear(observed?.gearSpeedRaw,
+                    observed?.gearRaw, gearReceiptMonoMs)
                 IccoaDrSourceGapEvidence.onGear(observed?.gearSpeedRaw, gearReceiptMonoMs)
                 // FT190: sensor silence during motion can mean a tunnel or
                 // underground parking, NOT a failed Carlink producer. Do not
@@ -655,7 +658,10 @@ class IccoaService : Service() {
                     // Crypto/CONTROL proves car identity; it does NOT qualify RAW IMU/GNSS units.
                     val drBound = FtDrRuntime.bindVerifiedVehicle(
                         this@IccoaService, receiverId, independentlyVerifiedIdentity = true)
-                    if (drBound) IccoaDrInputBridge.bindAuthenticatedReceiver(receiverId)
+                    if (drBound) {
+                        IccoaDrInputBridge.bindAuthenticatedReceiver(receiverId)
+                        WheelCalibrationRuntime.bindVerifiedCar(this@IccoaService, receiverId)
+                    }
                     else DiagLog.w("DR", "Authenticated receiver could not bind EKF calibration")
                     _state.update { it.copy(verifiedReceiverId = receiverId) }
                     lastBluetoothLinkSession = token
@@ -886,6 +892,7 @@ class IccoaService : Service() {
         // so the later field ZIP does not count offline phone time as loss.
         IccoaDrSourceGapEvidence.endSession(android.os.SystemClock.elapsedRealtime())
         CarTunnelRuntime.endSession()
+        WheelCalibrationRuntime.onCarDisconnect()
         gpsActivationRecovery.endSession()
         DrPathEvidence.endSession()
         IccoaTouchWelcome.cancel()
