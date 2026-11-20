@@ -76,23 +76,8 @@ internal object FtDrRuntime {
         }
 
         val calibration = wheelCalibration
-        val derivedAcceleration = wheelAcceleration.observe(
-            monotonicMs = motion.monotonicMs,
-            forwardWheelSpeedMps = motion.signedWheelSpeedMps,
-            verified = !motion.reverse
-        )
-        if (derivedAcceleration != null) {
-            calibration?.observeWheel(WheelSpeedAutoCalibration.WheelMotion(
-                monotonicMs = motion.monotonicMs,
-                forwardSpeedMps = motion.signedWheelSpeedMps,
-                yawRateRadPerSecond = motion.yawRateRadiansPerSecond,
-                longitudinalAccelerationMps2 = derivedAcceleration,
-                verifiedWheelAndYawUnits = true,
-                verifiedForwardGear = true
-            ))
-        } else {
-            calibration?.resetSegment()
-        }
+        // Do not feed routine motion into the legacy automatic learner.
+        // Stored factor is read-only until explicit one-shot calibration completes.
         // Drive with independently verified uncalibrated speed until multiple
         // quality-gated GNSS/wheel segments establish a correction coefficient.
         val coefficientSpeed = calibration?.correctedMps(abs(motion.signedWheelSpeedMps))
@@ -113,46 +98,9 @@ internal object FtDrRuntime {
             wheelCalibration?.resetSegment()
             return false
         }
-        if (fix.genuineCarFix && fix.accuracyVerified && fix.fixTimeVerified &&
-            fix.source == GpsSourceMode.CAR) {
-            val calibration = wheelCalibration
-            if (calibration != null) {
-                calibration.observeGnss(WheelSpeedAutoCalibration.IndependentGnss(
-                    fixMonotonicMs = fix.fixMonotonicMs,
-                    latitude = fix.latitude,
-                    longitude = fix.longitude,
-                    horizontalAccuracyMetres = fix.horizontalAccuracyMetres,
-                    independentCarGnssVerified = true,
-                    monotonicFixEpochVerified = true
-                ))
-                // A completed 1–2 km segment may require durable storage.
-                // Copy its immutable snapshot and commit on IO OUTSIDE the
-                // synchronized GNSS callback; never pause real-time navigation.
-                if (!calibrationCommitInFlight) {
-                    val snapshot = calibration.snapshotForPersistence()
-                    val store = calibrationStore
-                    val carId = verifiedVehicleId
-                    if (snapshot != null && store != null &&
-                        snapshot.vehicleId == carId) {
-                        calibrationCommitInFlight = true
-                        val epoch = calibrationEpoch
-                        FTApp.instance.scope.launch(Dispatchers.IO) {
-                            val saved = runCatching {
-                                store.persistSnapshot(snapshot)
-                            }.getOrDefault(false)
-                            synchronized(FtDrRuntime) {
-                                if (epoch == calibrationEpoch) {
-                                    if (saved && wheelCalibration === calibration &&
-                                        verifiedVehicleId == carId)
-                                        calibration.confirmPersisted(snapshot)
-                                    calibrationCommitInFlight = false
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Explicit owner start only: never retrain wheel factor from ordinary
+        // selected-GNSS navigation updates. WheelCalibrationRuntime owns one
+        // temporary Android GPS_PROVIDER reference during calibration.
         return true
     }
 
