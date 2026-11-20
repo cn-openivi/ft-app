@@ -81,8 +81,9 @@ data class CarStyle(
         const val WIDGET_COORDINATES = "coordinates"
         const val WIDGET_COURSE = "course"
         const val WIDGET_CALENDAR = "calendar"
+        const val WIDGET_CALIBRATION = "calibration"
         val WIDGETS = listOf(WIDGET_WEATHER, WIDGET_BATTERY, WIDGET_SPEED,
-            WIDGET_COORDINATES, WIDGET_COURSE, WIDGET_CALENDAR)
+            WIDGET_COORDINATES, WIDGET_COURSE, WIDGET_CALENDAR, WIDGET_CALIBRATION)
 
         fun parseWidgets(raw: String): List<String> =
             raw.split(',').map { it.trim() }.filter { it in WIDGETS }.distinct()
