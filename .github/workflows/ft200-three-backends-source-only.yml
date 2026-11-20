@@ -51,6 +51,11 @@ jobs:
           test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
           test -f app/src/test/java/app/ft/iccoa/IccoaDirectRecoveryPolicyTest.kt
           test -f app/src/test/java/app/ft/dr/CarTunnelKalmanTest.kt
+          test -f app/src/main/java/app/ft/dr/WheelCalibrationRuntime.kt
+          test -f app/src/test/java/app/ft/core/WheelCalibrationSessionTest.kt
+          grep -Fq 'WheelCalibrationRuntime.bindVerifiedCar(' app/src/main/java/app/ft/iccoa/IccoaService.kt
+          ! test -f app/src/main/res/values-b+ckb/strings.xml
+          ! test -f app/src/main/res/values-b+kmr+Arab/strings.xml
           echo "FT200_SOURCE_SHA=$GITHUB_SHA"
       - name: JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
@@ -118,7 +123,7 @@ jobs:
               'CarPlayTouchGeometryTest', 'CarPlayNmeaSubscriptionSessionTest',
               'CarPlayNmeaLatestOnlyBufferTest',
               'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
-              'CarTunnelKalmanTest', 'IccoaGpsActivationRecoveryTest',
+              'CarTunnelKalmanTest', 'WheelCalibrationSessionTest', 'IccoaGpsActivationRecoveryTest',
               'CarUiViewportTest', 'AaSensorSubscriptionsTest'
           )
           for name in names:

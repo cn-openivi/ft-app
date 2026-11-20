@@ -245,6 +245,10 @@ class Prefs(context: Context) {
     var carShowCarHome: Boolean get() = bool("carShowCarHome", true); set(v) = set("carShowCarHome", v)
 
     var carWidgets: String get() = str("carWidgets", ""); set(v) = set("carWidgets", v)
+    /** One-shot calibration distance; only supported choices, 2 km by default. */
+    var wheelCalibrationKm: Int
+        get() = if (int("wheelCalibrationKm", 2) == 5) 5 else 2
+        set(v) = set("wheelCalibrationKm", if (v == 5) 5 else 2)
     var weatherFahrenheit: Boolean get() = bool("weatherFahrenheit", false); set(v) = set("weatherFahrenheit", v)
     var speedMph: Boolean get() = bool("speedMph", false); set(v) = set("speedMph", v)
     var lastLatitude: Float get() = flt("lastLatitude", 0f); set(v) = set("lastLatitude", v)

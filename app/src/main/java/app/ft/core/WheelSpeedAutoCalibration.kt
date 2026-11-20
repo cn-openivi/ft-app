@@ -83,6 +83,7 @@ internal class WheelSpeedAutoCalibration(
     }
 
     fun observeWheel(sample: WheelMotion): Estimate {
+        if (confident) return estimate()
         if (vehicleId == null || !sample.verifiedWheelAndYawUnits ||
             !sample.verifiedForwardGear || sample.monotonicMs <= 0L ||
             !sample.forwardSpeedMps.isFinite() ||
@@ -121,6 +122,7 @@ internal class WheelSpeedAutoCalibration(
      * an unfinished calibration segment, unrelated to DR activation.
      */
     fun observeGnss(fix: IndependentGnss): Estimate {
+        if (confident) return estimate()
         val motion = previousWheel
         if (vehicleId == null || !fix.independentCarGnssVerified ||
             !fix.monotonicFixEpochVerified || fix.fixMonotonicMs <= 0L ||

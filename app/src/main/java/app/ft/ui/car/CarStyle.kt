@@ -81,11 +81,13 @@ data class CarStyle(
         const val WIDGET_COORDINATES = "coordinates"
         const val WIDGET_COURSE = "course"
         const val WIDGET_CALENDAR = "calendar"
+        const val WIDGET_CALIBRATION = "calibration"
         val WIDGETS = listOf(WIDGET_WEATHER, WIDGET_BATTERY, WIDGET_SPEED,
             WIDGET_COORDINATES, WIDGET_COURSE, WIDGET_CALENDAR)
 
         fun parseWidgets(raw: String): List<String> =
-            raw.split(',').map { it.trim() }.filter { it in WIDGETS }.distinct()
+            raw.split(',').map { it.trim() }
+                .filter { it in WIDGETS || it == WIDGET_CALIBRATION }.distinct()
 
         val PICTURES: List<Pair<String, Int>> = listOf(
             "blade" to R.drawable.car_bg_blade
