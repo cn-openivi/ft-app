@@ -20,6 +20,7 @@ import app.ft.ShareActivity
 import app.ft.aa.AaHeadUnitService
 import app.ft.aa.AaSteeringMediaKeys
 import app.ft.aa.AaSession
+import app.ft.aa.AaVideoSink
 import app.ft.aa.AaTouchViewport
 import app.ft.aa.AaViewport
 import app.ft.aa.AaTouchGestureViewport
@@ -90,6 +91,7 @@ class IccoaProjection(
     private var aaStartJob: Job? = null
     private var pendingLaunch: Pair<Intent, String>? = null
     private var touchFt = false
+    private var recoveringAaTouch = false
     private var touchBeside = false
     private var ignoreLetterboxGesture = false
     private val mirrorTouches = MirrorTouchSequence()
@@ -394,7 +396,16 @@ class IccoaProjection(
         val (mappedX2, mappedY2) = if (applyCalibration && second.first >= 0 && second.second >= 0)
             CarTouchCalibration.correct(context, second.first, second.second, display.width, display.height) else second
         val t = raw.copy(x = mappedX, y = mappedY, x2 = mappedX2, y2 = mappedY2)
-        if (t.action == CarTouch.DOWN) touchFt = CarTouchZones.hit(mappedX, mappedY)
+        if (t.action == CarTouch.DOWN) {
+            touchFt = CarTouchZones.hit(mappedX, mappedY)
+            val viewport = AaTouchViewport.bounds
+            // Before AA has a rendered frame, route touch to the FT recovery
+            // overlay, not into an unready AA input plane. Freeze per gesture.
+            recoveringAaTouch = state.value.aaOverlay && (
+                !AaVideoSink.firstRendered.value ||
+                AaVideoSink.surface.value?.isValid != true ||
+                viewport == null || viewport.width <= 0 || viewport.height <= 0)
+        }
         if (touchFt) {
             if (t.action == CarTouch.DOWN) {
                 cancelAaGestureOnRouteChange()
@@ -405,7 +416,18 @@ class IccoaProjection(
                 DiagLog.i("ICCOA", "touch route=FT ${touchDebug("content", mappedX, mappedY)}")
             }
             display.dispatchTouch(t)
-            if (t.action == CarTouch.UP || t.action == CarTouch.CANCEL) touchFt = false
+            if (t.action == CarTouch.UP || t.action == CarTouch.CANCEL) {
+                touchFt = false
+                recoveringAaTouch = false
+            }
+            return@onMain
+        }
+        if (recoveringAaTouch) {
+            if (t.action == CarTouch.DOWN)
+                DiagLog.i("ICCOA", "AA_PICTURE_NOT_READY_TOUCH_ROUTE_FT")
+            display.dispatchTouch(t)
+            if (t.action == CarTouch.UP || t.action == CarTouch.CANCEL)
+                recoveringAaTouch = false
             return@onMain
         }
         val aa = AaHeadUnitService.current

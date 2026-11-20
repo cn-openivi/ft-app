@@ -16,17 +16,24 @@ object AaVideoSink {
     val surface: StateFlow<Surface?> = _surface
     private val _frame = MutableStateFlow<Pair<Int, Int>?>(null)
     val frame: StateFlow<Pair<Int, Int>?> = _frame
+    private val _firstRendered = MutableStateFlow(false)
+    val firstRendered: StateFlow<Boolean> = _firstRendered
+    fun rendered(decoder: AaVideoDecoder, target: Surface?) {
+        if (activeDecoder === decoder && target != null && _surface.value === target && target.isValid)
+            _firstRendered.value = true
+    }
     var width = 0
     var height = 0
 
     fun attach(surface: Surface, width: Int, height: Int) {
         this.width = width
         this.height = height
+        _firstRendered.value = false
         _surface.value = surface
     }
 
     fun detach(surface: Surface?) {
-        if (surface != null) _surface.compareAndSet(surface, null)
+        if (surface != null && _surface.compareAndSet(surface, null)) _firstRendered.value = false
     }
 
     fun frameSize(width: Int, height: Int) {
@@ -37,10 +44,13 @@ object AaVideoSink {
     // Let the active decoder finish its in-flight render and retire the codec
     // BEFORE the view releases that SurfaceTexture; no blocking on the UI thread.
     @Volatile private var activeDecoder: AaVideoDecoder? = null
-    fun bind(decoder: AaVideoDecoder?) { activeDecoder = decoder }
+    fun bind(decoder: AaVideoDecoder?) {
+        activeDecoder = decoder
+        _firstRendered.value = false
+    }
     fun retire(s: Surface?, completed: () -> Unit) {
         if (s == null) { completed(); return }
-        _surface.compareAndSet(s, null)
+        if (_surface.compareAndSet(s, null)) _firstRendered.value = false
         val decoder = activeDecoder
         if (decoder == null) completed() else decoder.retireSurface(s, completed)
     }
@@ -260,7 +270,10 @@ class AaVideoDecoder(private val width: Int, private val height: Int) {
                         val render = running.get() && generation == mine &&
                             surface?.isValid == true
                         c.releaseOutputBuffer(idx, render)
-                        if (render) _frames.value = _frames.value + 1
+                        if (render) {
+                            _frames.value = _frames.value + 1
+                            AaVideoSink.rendered(this, surface)
+                        }
                     } finally {
                         outputLock.unlock()
                     }

@@ -23,6 +23,13 @@ internal object AaAudioFocusPolicy {
         else -> AaProtocol.AUDIO_FOCUS_LOSS
     }
 
+    /** FT relays a local player when AA's developer server runs on this phone. */
+    fun useAndroidFocus(selfHosted: Boolean, request: Int): Boolean =
+        !selfHosted && androidGain(request) != null
+
+    fun selfHostedResponse(request: Int, phoneCall: Boolean): Int =
+        if (phoneCall) AaProtocol.AUDIO_FOCUS_LOSS else grantedState(request)
+
     fun notification(change: Int): Int = when (change) {
         AudioManager.AUDIOFOCUS_GAIN -> AaProtocol.AUDIO_FOCUS_GAIN
         AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> AaProtocol.AUDIO_FOCUS_LOSS_TRANSIENT_CAN_DUCK
@@ -36,6 +43,7 @@ internal object AaAudioFocusPolicy {
  */
 internal class AaSystemAudioFocus(
     context: Context,
+    private val selfHosted: Boolean,
     private val report: (Int) -> Unit
 ) {
     private val manager = context.getSystemService(AudioManager::class.java)
@@ -59,6 +67,12 @@ internal class AaSystemAudioFocus(
             abandon()
             DiagLog.i("AA", "AUDIO_FOCUS_DEFERRED phone-call-priority=true")
             return AaProtocol.AUDIO_FOCUS_LOSS
+        }
+        if (!AaAudioFocusPolicy.useAndroidFocus(selfHosted, type)) {
+            // AA protocol grant is logical. A local music app owns Android focus.
+            abandon()
+            DiagLog.i("AA", "AUDIO_FOCUS_SELF_HOSTED_LOGICAL_ONLY request=$type")
+            return AaAudioFocusPolicy.selfHostedResponse(type, phoneCall = false)
         }
         abandon()
         val attrs = AudioAttributes.Builder()

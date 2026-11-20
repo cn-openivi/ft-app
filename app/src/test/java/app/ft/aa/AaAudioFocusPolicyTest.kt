@@ -20,6 +20,27 @@ class AaAudioFocusPolicyTest {
         assertEquals(AaProtocol.AUDIO_FOCUS_LOSS, AaAudioFocusPolicy.grantedState(4))
     }
 
+    @Test fun localAndroidAutoFocusDoesNotStealYandexOrOtherPlayers() {
+        for (request in 1..3) {
+            assertFalse(AaAudioFocusPolicy.useAndroidFocus(true, request))
+            assertTrue(AaAudioFocusPolicy.useAndroidFocus(false, request))
+        }
+        assertFalse(AaAudioFocusPolicy.useAndroidFocus(true, AaProtocol.AUDIO_REQUEST_RELEASE))
+        assertFalse(AaAudioFocusPolicy.useAndroidFocus(false, AaProtocol.AUDIO_REQUEST_RELEASE))
+        assertFalse(AaAudioFocusPolicy.useAndroidFocus(false, 999))
+    }
+
+    @Test fun localFocusStillReportsNavigationAndHfpCallPriority() {
+        assertEquals(AaProtocol.AUDIO_FOCUS_GAIN,
+            AaAudioFocusPolicy.selfHostedResponse(1, phoneCall = false))
+        assertEquals(AaProtocol.AUDIO_FOCUS_GAIN_TRANSIENT,
+            AaAudioFocusPolicy.selfHostedResponse(3, phoneCall = false))
+        assertEquals(AaProtocol.AUDIO_FOCUS_LOSS,
+            AaAudioFocusPolicy.selfHostedResponse(1, phoneCall = true))
+        assertEquals(AaProtocol.AUDIO_FOCUS_LOSS,
+            AaAudioFocusPolicy.selfHostedResponse(3, phoneCall = true))
+    }
+
     @Test fun androidFocusLossAndDuckHaveCorrectPhoneNotifications() {
         assertEquals(AaProtocol.AUDIO_FOCUS_GAIN,
             AaAudioFocusPolicy.notification(AudioManager.AUDIOFOCUS_GAIN))
