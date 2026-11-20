@@ -177,6 +177,7 @@ fun SettingsScreen(pad: PaddingValues, page: SettingsPage?, onPickAaFile: () -> 
                 item(key = "home") { Group { CarHomeSettings() } }
                 item(key = "buttons") { Group { CarButtonSettings() } }
                 item(key = "widgets") { Group { CarWidgetSettings() } }
+                item(key = "wheel-calibration") { Group { WheelCalibrationSettings() } }
                 item(key = "corner") { Group { CarCornerSettings(preview) } }
                 item(key = "connect") { Group { CarConnectSettings() } }
             }
