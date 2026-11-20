@@ -85,4 +85,52 @@ class CarPlayTrialProgressTest {
         assertFalse(s.realLinkObserved)
         assertFalse(s.carPlayAuthenticated)
     }
+
+    @Test fun physicalPeerEofAfterLinkIsTerminalWithoutClaimingCarPlay() {
+        var s = CarPlayTrialProgress.start()
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.ACTUAL_TOYOTA_RFCOMM_CONNECTED)
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.LINK_NEGOTIATED)
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.PEER_STREAM_CLOSED)
+        assertTrue(s.terminal)
+        assertEquals(CarPlayTrialProgress.Phase.IAP2_LINK_NEGOTIATED, s.phase)
+        assertEquals(CarPlayTrialProgress.Blocker.PEER_STREAM_CLOSED, s.blocker)
+        assertTrue(s.realLinkObserved)
+        assertFalse(s.carPlayAuthenticated)
+        assertFalse(s.carPlayActive)
+    }
+
+    @Test fun detectOnlyIsNotALinkAndBoundedReadEndsProbe() {
+        var onlyDetect = CarPlayTrialProgress.start()
+        onlyDetect = CarPlayTrialProgress.observe(onlyDetect,
+            CarPlayIncomingIapProbe.Observation.IAP2_DETECT_SEEN)
+        assertFalse(onlyDetect.realLinkObserved)
+        onlyDetect = CarPlayTrialProgress.observe(onlyDetect,
+            CarPlayIncomingIapProbe.Observation.NO_IAP2_LINK_FRAME)
+        assertTrue(onlyDetect.terminal)
+        assertEquals(CarPlayTrialProgress.Blocker.IAP2_LINK_FAILED, onlyDetect.blocker)
+
+        var bound = CarPlayTrialProgress.start()
+        bound = CarPlayTrialProgress.observe(bound,
+            CarPlayIncomingIapProbe.Observation.LINK_NEGOTIATED)
+        bound = CarPlayTrialProgress.observe(bound,
+            CarPlayIncomingIapProbe.Observation.READ_LIMIT_REACHED)
+        assertTrue(bound.terminal)
+        assertEquals(CarPlayTrialProgress.Blocker.READ_LIMIT_REACHED, bound.blocker)
+        assertTrue(bound.realLinkObserved)
+    }
+
+    @Test fun peerEofPreservesPreviouslyObservedUntrustedMfiCause() {
+        var s = CarPlayTrialProgress.start()
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.ACCESSORY_AUTH_CERTIFICATE_RECEIVED_UNTRUSTED)
+        s = CarPlayTrialProgress.observe(s,
+            CarPlayIncomingIapProbe.Observation.PEER_STREAM_CLOSED)
+        assertTrue(s.terminal)
+        assertEquals(CarPlayTrialProgress.Phase.MFI_TRUST_REQUIRED, s.phase)
+        assertEquals(CarPlayTrialProgress.Blocker.MFI_CERTIFICATE_UNTRUSTED, s.blocker)
+        assertFalse(s.carPlayAuthenticated)
+    }
 }
