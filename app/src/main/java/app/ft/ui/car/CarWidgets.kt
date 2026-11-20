@@ -35,6 +35,8 @@ import app.ft.core.CarProtocol
 import app.ft.core.GpsSourceMode
 import app.ft.dr.FtPositionTelemetry
 import app.ft.dr.CarTunnelRuntime
+import app.ft.dr.WheelCalibrationRuntime
+import app.ft.core.WheelCalibrationSession
 import app.ft.core.MotionSource
 import app.ft.core.MotionReading
 import app.ft.core.VehicleMotionTelemetry
@@ -91,6 +93,7 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
                 CarStyle.WIDGET_COORDINATES -> CoordinatesChip(reading)
                 CarStyle.WIDGET_COURSE -> CourseChip(reading)
                 CarStyle.WIDGET_CALENDAR -> EventChip(style.clock24, preview)
+                CarStyle.WIDGET_CALIBRATION -> WheelCalibrationChip(preview)
             }
         }
         if (showInertial) {
@@ -105,6 +108,29 @@ fun CarWidgets(style: CarStyle, modifier: Modifier = Modifier, preview: Boolean 
                 sensors?.acceleration, now)
         }
     }
+}
+
+/** Compact optional widget; never claims success before persistence. */
+@Composable
+private fun WheelCalibrationChip(preview: Boolean) {
+    val status by WheelCalibrationRuntime.status.collectAsState()
+    val saved = WheelCalibrationRuntime.savedCoefficient()
+    val value = when (status.phase) {
+        WheelCalibrationSession.Phase.MEASURING ->
+            "Калибр. ${status.measuredMetres} / ${status.targetMetres} м"
+        WheelCalibrationSession.Phase.WAITING -> "Калибр. · ожидание"
+        WheelCalibrationSession.Phase.SAVING -> "Калибр. · запись"
+        WheelCalibrationSession.Phase.COMPLETE ->
+            "Калибр. " + String.format(Locale.US, "%.5f", status.multiplier)
+        WheelCalibrationSession.Phase.UNAVAILABLE -> "Калибр. · недоступно"
+        WheelCalibrationSession.Phase.TIMED_OUT -> "Калибр. · не завершено"
+        WheelCalibrationSession.Phase.IDLE ->
+            if (saved != null) "Калибр. " + String.format(Locale.US, "%.5f", saved)
+            else if (preview) "Калибр. 0 / 2000 м" else "Калибр. · не выполнено"
+    }
+    Chip(CarIcons.Speed, value,
+        if (status.phase == WheelCalibrationSession.Phase.MEASURING) "GPS / GearInfo"
+        else null, wide = true)
 }
 
 /**
