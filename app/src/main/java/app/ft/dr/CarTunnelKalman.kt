@@ -202,10 +202,11 @@ internal class CarTunnelKalman {
                 heldCount++
             }
             canPredict -> {
-                val estimate = ekf.predictUnverifiedYaw(dt, speedKmh / 3.6) ?: return null
+                val corrected = speedKmh / 3.6 * WheelCalibrationRuntime.correctedSpeedFactor()
+                val estimate = ekf.predictUnverifiedYaw(dt, corrected) ?: return null
                 if (!estimate.horizontalUncertaintyMetres.isFinite()) return null
                 if (speedKmh > 0L) {
-                    modelDistance += speedKmh / 3.6 * dt
+                    modelDistance += corrected * dt
                     predictedCount++
                 }
             }
