@@ -42,6 +42,9 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
         CONTROL_MESSAGE_OBSERVED, CARPLAY_START_SESSION_OBSERVED,
         CARPLAY_START_SESSION_MALFORMED, CARPLAY_START_SESSION_UNKNOWN_SCHEMA,
         FLAT_WIFI_INFO_STRUCTURE_OBSERVED, FLAT_WIFI_INFO_UNVERIFIED,
+        LOCATION_GGA_RMC_NMEA, LOCATION_SPEED_PASCD_NMEA,
+        LOCATION_GYRO_PAGCD_OPAQUE, LOCATION_ACCEL_PAACD_OPAQUE,
+        LOCATION_NMEA_UNVERIFIED,
         IDENTIFICATION_REQUEST_SENT, IDENTIFICATION_UNSUPPORTED_CONTROL_VERSION,
         IDENTIFICATION_INFO_OBSERVED, IDENTIFICATION_INFO_EMPTY,
         IDENTIFICATION_INFO_UNKNOWN_PARAMETERS,
@@ -283,6 +286,23 @@ internal class CarPlayIncomingIapProbe(private val context: Context) : AutoClose
                                                 Iap2CarPlayStartSchema.Result.UNKNOWN_ONLY ->
                                                     Observation.CARPLAY_START_SESSION_UNKNOWN_SCHEMA
                                                 else -> Observation.CARPLAY_START_SESSION_MALFORMED
+                                            }
+                                        } else if (message.id ==
+                                            CarPlayLocationWireInspector.LOCATION_INFORMATION
+                                        ) {
+                                            // Real accepted CONTROL frame only.
+                                            // A sentence family is NOT GNSS/DR
+                                            // subscription, trust or proof of use.
+                                            when (CarPlayLocationWireInspector.inspect(message)) {
+                                                CarPlayLocationWireInspector.Kind.GPS_GGA_RMC_OPAQUE ->
+                                                    Observation.LOCATION_GGA_RMC_NMEA
+                                                CarPlayLocationWireInspector.Kind.SPEED_PASCD_OPAQUE ->
+                                                    Observation.LOCATION_SPEED_PASCD_NMEA
+                                                CarPlayLocationWireInspector.Kind.GYRO_PAGCD_OPAQUE ->
+                                                    Observation.LOCATION_GYRO_PAGCD_OPAQUE
+                                                CarPlayLocationWireInspector.Kind.ACCEL_PAACD_OPAQUE ->
+                                                    Observation.LOCATION_ACCEL_PAACD_OPAQUE
+                                                else -> Observation.LOCATION_NMEA_UNVERIFIED
                                             }
                                         } else if (message.id ==
                                             Iap2ControlSessionCodec.ACCESSORY_WIFI_CONFIG

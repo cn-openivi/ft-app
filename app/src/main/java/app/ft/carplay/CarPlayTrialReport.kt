@@ -25,6 +25,10 @@ internal object CarPlayTrialReport {
             "carplay_active=NO",
             "hfp_profile=${hfp.name}",
             "real_cellular_2way_voice=NOT_TESTED",
+            "vehicle_gnss_delivery=UNVERIFIED",
+            "vehicle_speed_delivery=UNVERIFIED",
+            "gyro_axes_units_timebase=UNKNOWN",
+            "accelerometer_axes_units_timebase=UNKNOWN",
             "events(last_14):"
         )
         for (event in events.takeLast(14)) {
