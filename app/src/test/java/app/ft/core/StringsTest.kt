@@ -93,6 +93,15 @@ class StringsTest {
     }
 
     @Test
+    fun arabicAdbPairingErrorIsNotEnglishFallback() {
+        val key = "wireless_pair_connect_failed"
+        val arabic = translations.getValue("Arabic").strings.getValue(key)
+        assertTrue("Arabic ADB failure reverted to English", arabic != english.strings.getValue(key))
+        assertTrue("Arabic ADB failure has no Arabic script",
+            arabic.any { it in '\u0600'..'\u06FF' })
+    }
+
+    @Test
     fun russianIsWrittenInCyrillic() {
         val t = translations.getValue("Russian")
         (t.strings.values + t.arrays.values.flatten()).forEach { s -> assertTrue("Arabic script in Russian: $s", s.none { it in '\u0600'..'\u06FF' }) }
