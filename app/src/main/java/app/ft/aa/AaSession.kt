@@ -61,7 +61,7 @@ import java.io.OutputStream
     private var locationCharacterizationAtDiscovery =
         AaLocationCharacterization.RAW_GNSS_ONLY
     private val audioRouteAudit = AaAudioRouteAudit()
-    private val systemAudioFocus: AaSystemAudioFocus = AaSystemAudioFocus(context) { state ->
+    private val systemAudioFocus: AaSystemAudioFocus = AaSystemAudioFocus(context, developerSelfMode) { state ->
         if (lifecycle.running)
             sendEnc(AaProtocol.CH_CONTROL, AaProtocol.AUDIO_FOCUS_NOTIFICATION,
                 AaMessages.audioFocusNotification(state))

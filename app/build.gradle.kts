@@ -19,8 +19,8 @@ android {
         applicationId = "app.ft.xa60"
         minSdk = 29
         targetSdk = 36
-        versionCode = 191
-        versionName = "3.9.77-xa60-ft191-stabilization-hotfix-candidate"
+        versionCode = 192
+        versionName = "3.9.77-xa60-ft191.1-audio-focus-surface-candidate"
     }
 
     signingConfigs {
