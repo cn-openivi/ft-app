@@ -57,6 +57,7 @@ internal object WheelCalibrationRuntime {
     }
 
     @Synchronized fun correctedSpeedFactor(): Double = coefficient ?: 1.0
+    @Synchronized fun savedCoefficient(): Double? = coefficient
 
     @Synchronized fun start(context: Context, kilometres: Int): Boolean {
         if (kilometres != 2 && kilometres != 5) return false
@@ -169,7 +170,8 @@ internal object WheelCalibrationRuntime {
 
     private fun isActive(): Boolean =
         _status.value.phase == WheelCalibrationSession.Phase.WAITING ||
-        _status.value.phase == WheelCalibrationSession.Phase.MEASURING
+        _status.value.phase == WheelCalibrationSession.Phase.MEASURING ||
+        _status.value.phase == WheelCalibrationSession.Phase.SAVING
 
     private fun releaseGpsListener() {
         listener?.let { l -> runCatching { manager?.removeUpdates(l) } }
