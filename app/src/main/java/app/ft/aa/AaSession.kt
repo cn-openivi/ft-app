@@ -438,6 +438,7 @@ import java.io.OutputStream
                 // Surface changes can request this while holding the decoder lock.
                 // Never wait for session cleanup from that callback.
                 decoder.askForAFreshPicture = { scope.launch { askForAFreshPicture() } }
+                AaVideoSink.expectNewVideoStream()
                 _phase.value = Phase.STREAMING
                 AaH264Tap.start(this)
                 DiagLog.i(tag, "video start session=$videoSession")

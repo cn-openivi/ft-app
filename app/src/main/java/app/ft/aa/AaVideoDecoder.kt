@@ -18,6 +18,7 @@ object AaVideoSink {
     val frame: StateFlow<Pair<Int, Int>?> = _frame
     private val _firstRendered = MutableStateFlow(false)
     val firstRendered: StateFlow<Boolean> = _firstRendered
+    fun expectNewVideoStream() { _firstRendered.value = false }
     fun rendered(decoder: AaVideoDecoder, target: Surface?) {
         if (activeDecoder === decoder && target != null && _surface.value === target && target.isValid)
             _firstRendered.value = true
