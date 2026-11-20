@@ -692,4 +692,5 @@
     <string name="iccoa_touch_edge_failed">دەستدان ل دەرڤەی ناڤەندێ نەگونجا. جارەکا دی نیشانا لایێ ڕاستێ تاقی بکە؛ دوبارە هەڵە ڕێکخستن دەست پێ دکەت.</string>
     <string name="iccoa_touch_center_failed">پشکنینا شوینا دەستدانێ سەرنەکەت: دەستدان نەکەتە سەر OK. FT ئەنجامێ وەک سەرکەفتی ناژمێریت و ڕێکخستن خۆکار نابیت. ڕاپۆرتێ تاقیکرنێ پارێزە.</string>
     <string name="ft191_return_to_ft_on_car">ڤەگەڕین بۆ FT ل سەر شاشەیا ئۆتۆمبێلێ</string>
+    <string name="wireless_pair_connect_failed">Pairing succeeded, but encrypted ADB connection failed. Check wireless debugging and reconnect; no new code is required yet.</string>
 </resources>
