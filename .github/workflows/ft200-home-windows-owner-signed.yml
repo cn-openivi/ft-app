@@ -25,7 +25,7 @@ jobs:
       APK_NAME: FT200_XA60_OWNER_SIGNED_cd7003d.apk
     defaults:
       run:
-        shell: pwsh
+        shell: powershell
 
     steps:
       - name: Checkout exact FT200 source
@@ -80,7 +80,7 @@ jobs:
           if ($bundle.format -ne 'openivi-ft-xa60-pkcs12-v1') { throw 'Signing bundle format mismatch' }
           if ($bundle.alias -ne 'openivi_ft_xa60') { throw 'Signing alias mismatch' }
           $bytes = [Convert]::FromBase64String([string]$bundle.keystore_b64)
-          $sha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+          $sha = ([BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
           if ($sha -ne [string]$bundle.keystore_sha256) { throw 'Signing keystore digest mismatch' }
           if ([string]$bundle.store_password -notmatch '^[0-9a-f]+$') { throw 'Signing password format mismatch' }
           $private = Join-Path $env:RUNNER_TEMP 'ft200-signing'
