@@ -66,9 +66,30 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK 36
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sdk = Join-Path $env:USERPROFILE '.android\sdk'
+          $archive = Join-Path $env:RUNNER_TEMP 'android-commandline-tools.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'android-commandline-tools-extract'
+          New-Item -ItemType Directory -Force -Path $sdk | Out-Null
+          Invoke-WebRequest -Uri 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' -OutFile $archive
+          if (!(Test-Path $archive) -or (Get-Item $archive).Length -lt 10000000) { throw 'Android command-line tools download is incomplete' }
+          if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+          $source = Join-Path $extract 'cmdline-tools'
+          if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout mismatch' }
+          $latest = Join-Path $sdk 'cmdline-tools\latest'
+          New-Item -ItemType Directory -Force -Path (Split-Path $latest) | Out-Null
+          if (Test-Path $latest) { Remove-Item $latest -Recurse -Force }
+          Move-Item $source $latest
+          $sdkmanager = Join-Path $latest 'bin\sdkmanager.bat'
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "ANDROID_HOME=$sdk`nANDROID_SDK_ROOT=$sdk`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$(Join-Path $latest 'bin')`n$(Join-Path $sdk 'platform-tools')`n", [Text.UTF8Encoding]::new($false))
+          1..50 | ForEach-Object { 'y' } | & $sdkmanager "--sdk_root=$sdk" --licenses
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed' }
+          & $sdkmanager "--sdk_root=$sdk" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
+          if (!(Test-Path (Join-Path $sdk 'build-tools\36.0.0\aapt.exe'))) { throw 'Android build-tools installation incomplete' }
 
       - name: Restore existing FT owner signing bundle
         env:
