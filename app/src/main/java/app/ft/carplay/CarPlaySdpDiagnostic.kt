@@ -343,6 +343,8 @@ private fun carPlayTrialStatus(s: CarPlayTrialProgress.State): String {
         CarPlayTrialProgress.Blocker.MFI_CERTIFICATE_UNTRUSTED -> " · сертификат не доверен"
         CarPlayTrialProgress.Blocker.MFI_SIGNATURE_UNVERIFIED -> " · подпись не проверена"
         CarPlayTrialProgress.Blocker.IO_OR_TIMEOUT -> " · тайм-аут или ошибка ввода/вывода"
+        CarPlayTrialProgress.Blocker.PEER_STREAM_CLOSED -> " · соединение закрыто удалённым устройством"
+        CarPlayTrialProgress.Blocker.READ_LIMIT_REACHED -> " · достигнут лимит чтения"
         CarPlayTrialProgress.Blocker.STOPPED_BY_OWNER -> " · остановлено"
     }
     return stage + failure
