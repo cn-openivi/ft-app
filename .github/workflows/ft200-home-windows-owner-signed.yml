@@ -85,8 +85,21 @@ jobs:
           $sdkmanager = Join-Path $latest 'bin\sdkmanager.bat'
           [IO.File]::AppendAllText($env:GITHUB_ENV, "ANDROID_HOME=$sdk`nANDROID_SDK_ROOT=$sdk`n", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_PATH, "$(Join-Path $latest 'bin')`n$(Join-Path $sdk 'platform-tools')`n", [Text.UTF8Encoding]::new($false))
-          1..50 | ForEach-Object { 'y' } | & $sdkmanager "--sdk_root=$sdk" --licenses
-          if ($LASTEXITCODE -ne 0) { throw 'Android SDK license acceptance failed' }
+          # Windows PowerShell 5.1 does not reliably forward pipeline input to sdkmanager.bat.
+          # Start cmd.exe with an explicitly redirected stdin and answer each license prompt.
+          $licenseInfo = New-Object System.Diagnostics.ProcessStartInfo
+          $licenseInfo.FileName = $env:ComSpec
+          $licenseInfo.Arguments = '/d /c ""{0}" --sdk_root="{1}" --licenses"' -f $sdkmanager, $sdk
+          $licenseInfo.UseShellExecute = $false
+          $licenseInfo.RedirectStandardInput = $true
+          $licenseInfo.CreateNoWindow = $true
+          $licenseProcess = New-Object System.Diagnostics.Process
+          $licenseProcess.StartInfo = $licenseInfo
+          if (!$licenseProcess.Start()) { throw 'Could not start Android SDK license acceptance' }
+          1..50 | ForEach-Object { $licenseProcess.StandardInput.WriteLine('y') }
+          $licenseProcess.StandardInput.Close()
+          $licenseProcess.WaitForExit()
+          if ($licenseProcess.ExitCode -ne 0) { throw "Android SDK license acceptance failed: $($licenseProcess.ExitCode)" }
           & $sdkmanager "--sdk_root=$sdk" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
           if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
           if (!(Test-Path (Join-Path $sdk 'build-tools\36.0.0\aapt.exe'))) { throw 'Android build-tools installation incomplete' }
