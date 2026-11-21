@@ -25,7 +25,7 @@ jobs:
       APK_NAME: FT200_XA60_OWNER_SIGNED_cd7003d.apk
     defaults:
       run:
-        shell: powershell
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
 
     steps:
       - name: Checkout exact FT200 source
