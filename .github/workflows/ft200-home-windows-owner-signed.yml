@@ -21,7 +21,7 @@ jobs:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 120
     env:
-      SOURCE_PIN: cd7003db636c228d7dc28f3dbb162559cb3fb15d
+      SOURCE_PIN: ca0d5c4789968df82094944ada6271967f74b84e
       CERT_PIN: e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c
       APK_NAME: FT200_XA60_OWNER_SIGNED_cd7003d.apk
     defaults:
