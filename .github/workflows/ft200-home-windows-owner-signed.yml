@@ -70,40 +70,51 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $sdk = Join-Path $env:USERPROFILE '.android\sdk'
-          $archive = Join-Path $env:RUNNER_TEMP 'android-commandline-tools.zip'
-          $extract = Join-Path $env:RUNNER_TEMP 'android-commandline-tools-extract'
-          New-Item -ItemType Directory -Force -Path $sdk | Out-Null
-          Invoke-WebRequest -Uri 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' -OutFile $archive
-          if (!(Test-Path $archive) -or (Get-Item $archive).Length -lt 10000000) { throw 'Android command-line tools download is incomplete' }
-          if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
-          Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
-          $source = Join-Path $extract 'cmdline-tools'
-          if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout mismatch' }
           $latest = Join-Path $sdk 'cmdline-tools\latest'
-          New-Item -ItemType Directory -Force -Path (Split-Path $latest) | Out-Null
-          if (Test-Path $latest) { Remove-Item $latest -Recurse -Force }
-          Move-Item $source $latest
           $sdkmanager = Join-Path $latest 'bin\sdkmanager.bat'
+          if (!(Test-Path $sdkmanager)) {
+            $archive = Join-Path $env:RUNNER_TEMP 'android-commandline-tools.zip'
+            $extract = Join-Path $env:RUNNER_TEMP 'android-commandline-tools-extract'
+            Invoke-WebRequest -Uri 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' -OutFile $archive
+            if (!(Test-Path $archive) -or (Get-Item $archive).Length -lt 10000000) { throw 'Android command-line tools download is incomplete' }
+            if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+            Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+            $source = Join-Path $extract 'cmdline-tools'
+            if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout mismatch' }
+            New-Item -ItemType Directory -Force -Path (Split-Path $latest) | Out-Null
+            if (Test-Path $latest) { Remove-Item $latest -Recurse -Force }
+            Move-Item $source $latest
+          }
+          if (!(Test-Path $sdkmanager)) { throw 'Android sdkmanager is unavailable after setup' }
           [IO.File]::AppendAllText($env:GITHUB_ENV, "ANDROID_HOME=$sdk`nANDROID_SDK_ROOT=$sdk`n", [Text.UTF8Encoding]::new($false))
           [IO.File]::AppendAllText($env:GITHUB_PATH, "$(Join-Path $latest 'bin')`n$(Join-Path $sdk 'platform-tools')`n", [Text.UTF8Encoding]::new($false))
-          # Windows PowerShell 5.1 does not reliably forward pipeline input to sdkmanager.bat.
-          # Start cmd.exe with an explicitly redirected stdin and answer each license prompt.
-          $licenseInfo = New-Object System.Diagnostics.ProcessStartInfo
-          $licenseInfo.FileName = $env:ComSpec
-          $licenseInfo.Arguments = '/d /c ""{0}" --sdk_root="{1}" --licenses"' -f $sdkmanager, $sdk
-          $licenseInfo.UseShellExecute = $false
-          $licenseInfo.RedirectStandardInput = $true
-          $licenseInfo.CreateNoWindow = $true
-          $licenseProcess = New-Object System.Diagnostics.Process
-          $licenseProcess.StartInfo = $licenseInfo
-          if (!$licenseProcess.Start()) { throw 'Could not start Android SDK license acceptance' }
-          1..50 | ForEach-Object { $licenseProcess.StandardInput.WriteLine('y') }
-          $licenseProcess.StandardInput.Close()
-          $licenseProcess.WaitForExit()
-          if ($licenseProcess.ExitCode -ne 0) { throw "Android SDK license acceptance failed: $($licenseProcess.ExitCode)" }
-          & $sdkmanager "--sdk_root=$sdk" 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
-          if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
-          if (!(Test-Path (Join-Path $sdk 'build-tools\36.0.0\aapt.exe'))) { throw 'Android build-tools installation incomplete' }
+          $missing = @()
+          if (!(Test-Path (Join-Path $sdk 'platform-tools\adb.exe'))) { $missing += 'platform-tools' }
+          if (!(Test-Path (Join-Path $sdk 'platforms\android-36\android.jar'))) { $missing += 'platforms;android-36' }
+          if (!(Test-Path (Join-Path $sdk 'build-tools\36.0.0\aapt.exe')) -or !(Test-Path (Join-Path $sdk 'build-tools\36.0.0\apksigner.bat'))) { $missing += 'build-tools;36.0.0' }
+          if ($missing.Count -gt 0) {
+            # Accept licenses only when a required SDK component is actually missing.
+            $licenseInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $licenseInfo.FileName = $env:ComSpec
+            $licenseInfo.Arguments = '/d /c ""{0}" --sdk_root="{1}" --licenses"' -f $sdkmanager, $sdk
+            $licenseInfo.UseShellExecute = $false
+            $licenseInfo.RedirectStandardInput = $true
+            $licenseInfo.CreateNoWindow = $true
+            $licenseProcess = New-Object System.Diagnostics.Process
+            $licenseProcess.StartInfo = $licenseInfo
+            if (!$licenseProcess.Start()) { throw 'Could not start Android SDK license acceptance' }
+            1..50 | ForEach-Object { $licenseProcess.StandardInput.WriteLine('y') }
+            $licenseProcess.StandardInput.Close()
+            $licenseProcess.WaitForExit()
+            if ($licenseProcess.ExitCode -ne 0) { throw "Android SDK license acceptance failed: $($licenseProcess.ExitCode)" }
+            & $sdkmanager "--sdk_root=$sdk" @missing
+            if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
+          }
+          foreach ($required in @('platform-tools\adb.exe','platforms\android-36\android.jar','build-tools\36.0.0\aapt.exe','build-tools\36.0.0\apksigner.bat')) {
+            if (!(Test-Path (Join-Path $sdk $required))) { throw "Android SDK component missing after setup: $required" }
+          }
+          "ANDROID_SDK_REUSED=$($missing.Count -eq 0)" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "ANDROID_SDK_MISSING_COMPONENTS=$($missing -join ',')" | Out-File $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Restore existing FT owner signing bundle
         env:
@@ -136,12 +147,34 @@ jobs:
           "FT_XA60_PINNED_SIGNER_SHA256=$cert" | Out-File $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Run release tests, lint and assemble owner-signed APK
-        env:
-          GRADLE_USER_HOME: ${{ runner.temp }}\gradle-ft200
         run: |
           $ErrorActionPreference = 'Stop'
-          .\gradlew.bat --no-daemon --max-workers=1 --console=plain '-Dorg.gradle.parallel=false' "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" '-Dkotlin.compiler.execution.strategy=in-process' '-Dkotlin.incremental=false' :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease --stacktrace
+          $gradleHome = Join-Path $env:USERPROFILE '.gradle-ft200'
+          New-Item -ItemType Directory -Force -Path $gradleHome | Out-Null
+          $env:GRADLE_USER_HOME = $gradleHome
+          $os = Get-CimInstance -ClassName Win32_OperatingSystem
+          $freeGiB = [double]$os.FreePhysicalMemory / 1MB
+          $logicalCpus = [Environment]::ProcessorCount
+          $workers = [int][Math]::Min(8, [Math]::Min($logicalCpus, [Math]::Max(2, [Math]::Floor(($freeGiB - 2.0) / 1.5))))
+          $heapGiB = [int][Math]::Min(4, [Math]::Max(2, [Math]::Floor(($freeGiB - 2.0) * 0.4)))
+          "GRADLE_USER_HOME=$gradleHome" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_LOGICAL_CPUS=$logicalCpus" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_FREE_RAM_GIB=$([Math]::Round($freeGiB,1))" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_MAX_WORKERS=$workers" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_HEAP_GIB=$heapGiB" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          .\gradlew.bat --no-daemon --build-cache "--max-workers=$workers" --console=plain '-Dorg.gradle.parallel=true' "-Dorg.gradle.jvmargs=-Xmx${heapGiB}g -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" '-Dkotlin.compiler.execution.strategy=in-process' '-Dkotlin.incremental=true' :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease --stacktrace
           if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FT200-JUnit-reports
+          path: |
+            app/build/test-results/testReleaseUnitTest/
+            app/build/reports/tests/testReleaseUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Verify APK identity, signature and provenance
         run: |

@@ -70,7 +70,8 @@ class StringsTest {
     fun newLocalesAreCompleteNotPartialEnglishFallbacks() {
         listOf("Turkish", "German", "French").forEach { name ->
             val locale = translations.getValue(name)
-            assertEquals("$name resource coverage", 664, locale.strings.size)
+            assertEquals("$name resource coverage", english.strings.size, locale.strings.size)
+            assertEquals("$name resource keys", english.strings.keys, locale.strings.keys)
             val unchanged = locale.strings.filter { (key, value) ->
                 value == english.strings.getValue(key)
             }.keys

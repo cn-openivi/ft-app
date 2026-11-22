@@ -11,6 +11,11 @@ import app.ft.core.Prefs
 import org.junit.Assert.*
 import org.junit.Test
 import org.mockito.Mockito.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 
 class CarDisplayTest {
     @Test fun stopRacingWithShowCannotLoseThePresentationOwner() {
@@ -93,12 +98,14 @@ class CarDisplayTest {
         fun runMain() { while (queue.isNotEmpty()) queue.removeFirst().run() }
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun fixture(failShow: Boolean = false, onShow: (() -> Unit)? = null, test: (Fixture) -> Unit) {
         val appField = FTApp::class.java.getDeclaredField("instance").apply { isAccessible = true }
         val previousApp = appField.get(null)
         val app = mock(FTApp::class.java)
         `when`(app.prefs).thenReturn(mock(Prefs::class.java))
         appField.set(null, app)
+        Dispatchers.setMain(UnconfinedTestDispatcher())
         val context = mock(Context::class.java)
         val manager = mock(DisplayManager::class.java)
         val vd = mock(VirtualDisplay::class.java)
@@ -132,6 +139,9 @@ class CarDisplayTest {
                     }
                 }
             }
-        } finally { appField.set(null, previousApp) }
+        } finally {
+            appField.set(null, previousApp)
+            Dispatchers.resetMain()
+        }
     }
 }
