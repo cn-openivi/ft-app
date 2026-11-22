@@ -41,18 +41,18 @@ jobs:
           if ($gradle -notmatch 'versionCode\s*=\s*200') { throw 'versionCode mismatch' }
           if ($gradle -notmatch 'versionName\s*=\s*"4\.0\.0-xa60-ft200-carplay-early-test"') { throw 'versionName mismatch' }
           $checks = @(
-            @('app/src/main/java/app/ft/core/CarProtocol.kt','CARPLAY("carplay", connectionReady = false)'),
-            @('app/src/main/java/app/ft/ui/components/OptionSheet.kt','enabled = option.enabled'),
-            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','Option("Apple CarPlay (тест)"'),
-            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','enabled = true'),
-            @('app/src/main/java/app/ft/core/CarConnection.kt','PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY'),
-            @('app/src/main/java/app/ft/core/Prefs.kt','carPlayExperimentalSelected'),
-            @('app/src/main/java/app/ft/ui/components/CarProtocolState.kt','CarPlayExperimentalSelectionPolicy.display'),
-            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','CarPlaySdpDiagnostic()'),
-            @('app/src/main/java/app/ft/iccoa/IccoaService.kt','WheelCalibrationRuntime.bindVerifiedCar(')
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/core/CarProtocol.kt'; Needle='CARPLAY("carplay", connectionReady = false)' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/ui/components/OptionSheet.kt'; Needle='enabled = option.enabled' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt'; Needle='Option("Apple CarPlay' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt'; Needle='enabled = true' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/core/CarConnection.kt'; Needle='PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/core/Prefs.kt'; Needle='carPlayExperimentalSelected' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/ui/components/CarProtocolState.kt'; Needle='CarPlayExperimentalSelectionPolicy.display' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt'; Needle='CarPlaySdpDiagnostic()' },
+            [pscustomobject]@{ Path='app/src/main/java/app/ft/iccoa/IccoaService.kt'; Needle='WheelCalibrationRuntime.bindVerifiedCar(' }
           )
           foreach ($check in $checks) {
-            if (-not (Select-String -Path $check[0] -SimpleMatch -Pattern $check[1] -Quiet)) { throw "Source guard failed: $($check[0]) / $($check[1])" }
+            if (-not (Select-String -Path $check.Path -SimpleMatch -Pattern $check.Needle -Quiet)) { throw "Source guard failed: $($check.Path) / $($check.Needle)" }
           }
           $required = @(
             'app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt',
@@ -188,7 +188,9 @@ jobs:
               $skipped += [int]$suite.GetAttribute('skipped')
             }
           }
-          "FT200_FULL_UNSIGNED_JUNIT tests=$tests failures=$failures errors=$errors skipped=$skipped" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          $summary = "FT200_FULL_UNSIGNED_JUNIT tests=$tests failures=$failures errors=$errors skipped=$skipped"
+          Write-Output $summary
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $summary
           if ($tests -lt 1052 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) { throw 'FT200 JUnit acceptance failed' }
           $apkFolder = 'app/build/outputs/apk'
           if ((Test-Path $apkFolder) -and (Get-ChildItem -Path $apkFolder -Filter '*.apk' -Recurse -ErrorAction SilentlyContinue)) { throw 'Source-only gate must not produce an APK' }
