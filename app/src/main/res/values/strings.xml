@@ -692,4 +692,5 @@
     <string name="ft191_return_to_ft_on_car">Return to FT on car screen</string>
     <string name="picture_aa_normal_video_priority">Video priority for Android Auto (Normal)</string>
     <string name="picture_aa_normal_video_priority_about">Manually keep full FPS while Android Auto is visible in ICCOA Normal mode. Resets at disconnect. Direct H.264 is unchanged; useful only with smart power saving enabled.</string>
+    <string name="ft200_build_parallelism">Parallel build</string>
 </resources>

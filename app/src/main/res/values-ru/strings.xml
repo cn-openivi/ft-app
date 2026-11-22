@@ -690,4 +690,5 @@
     <string name="ft191_return_to_ft_on_car">Вернуться в FT на ГУ</string>
     <string name="picture_aa_normal_video_priority">Приоритет видео Android Auto</string>
     <string name="picture_aa_normal_video_priority_about">Вручную сохраняет полную частоту кадров, пока Android Auto открыт в обычном режиме ICCOA. Сбрасывается при отключении. На Direct H.264 не влияет. Нужна включённая умная экономия.</string>
+    <string name="ft200_build_parallelism">Параллельная сборка</string>
 </resources>

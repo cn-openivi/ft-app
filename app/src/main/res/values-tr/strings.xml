@@ -690,4 +690,5 @@
     </string-array>
     <string name="picture_aa_normal_video_priority">Android Auto video önceliği (Normal)</string>
     <string name="picture_aa_normal_video_priority_about">ICCOA Normal modunda Android Auto görünürken tam kare hızını korur. Bağlantı kesilince sıfırlanır. Direct H.264 değişmez; akıllı güç tasarrufu açıkken geçerlidir.</string>
+    <string name="ft200_build_parallelism">Paralel derleme</string>
 </resources>
