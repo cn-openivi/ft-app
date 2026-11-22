@@ -39,7 +39,9 @@ jobs:
           test "$GITHUB_REF_NAME" = 'openivi/ft200-carplay-three-backends-20261117'
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           git merge-base --is-ancestor "$SOURCE_PIN" "$GITHUB_SHA"
-          test "$(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA")" = '.github/workflows/ft200-vps-owner-signed-drive.yml'
+          changed="$(git diff --name-only "$SOURCE_PIN" "$GITHUB_SHA")"
+          expected="$(printf '%s\\n' '.github/workflows/ft200-home-windows-owner-signed.yml' '.github/workflows/ft200-vps-owner-signed-drive.yml')"
+          test "$changed" = "$expected"
           git diff --quiet "$SOURCE_PIN" "$GITHUB_SHA" -- app/src/main app/src/test app/build.gradle.kts server/src/main server/src/test build.gradle.kts settings.gradle.kts
           grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
           grep -Fq 'versionCode = 200' app/build.gradle.kts
