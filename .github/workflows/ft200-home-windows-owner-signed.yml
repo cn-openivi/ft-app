@@ -1,3 +1,4 @@
+# Owner-approved activation marker: Windows self-hosted FT200 signed build; application source remains pinned.
 name: FT200 Windows home runner — owner-signed APK
 
 on:
