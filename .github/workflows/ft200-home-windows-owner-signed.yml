@@ -44,7 +44,7 @@ jobs:
           git merge-base --is-ancestor $env:SOURCE_PIN $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { throw 'Pinned FT200 source is not an ancestor' }
           $changed = @(git diff --name-only $env:SOURCE_PIN $env:GITHUB_SHA)
-          $allowed = @('.github/workflows/ft200-vps-owner-signed-drive.yml', '.github/workflows/ft200-home-windows-owner-signed.yml')
+          $allowed = @('.github/workflows/ft200-vps-owner-signed-drive.yml', '.github/workflows/ft200-home-windows-owner-signed.yml', '.github/workflows/ft200-three-backends-source-only.yml')
           foreach ($path in $changed) {
             if ($path -notin $allowed) { throw "Unexpected change since FT200 source pin: $path" }
           }
