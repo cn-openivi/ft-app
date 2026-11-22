@@ -1,0 +1,181 @@
+name: FT200 publish existing owner-signed artifact
+
+on:
+  push:
+    branches:
+      - openivi/ft200-carplay-three-backends-20261117
+    paths:
+      - '.github/workflows/ft200-publish-existing-signed-artifact.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: ft200-publish-existing-signed-artifact
+  cancel-in-progress: false
+
+jobs:
+  publish-existing-artifact:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+    steps:
+      - name: Download the exact already-signed FT200 artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: FT200-XA60-owner-signed
+          run-id: 45021482072
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifact
+
+      - name: Verify artifact provenance, APK digest and owner signature
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $apk = Join-Path $env:GITHUB_WORKSPACE 'artifact\FT200_XA60_OWNER_SIGNED_cd7003d.apk'
+          $provenance = Join-Path $env:GITHUB_WORKSPACE 'artifact\PROVENANCE.txt'
+          $signer = Join-Path $env:GITHUB_WORKSPACE 'artifact\apksigner.txt'
+          $badging = Join-Path $env:GITHUB_WORKSPACE 'artifact\apk-badging.txt'
+          foreach ($path in @($apk,$provenance,$signer,$badging)) {
+            if (!(Test-Path $path -PathType Leaf)) { throw "Required artifact member missing: $path" }
+          }
+          $expectedApkSha = '9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30'
+          $actualApkSha = (Get-FileHash $apk -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualApkSha -ne $expectedApkSha) { throw "APK SHA-256 mismatch: $actualApkSha" }
+          $p = Get-Content $provenance -Raw
+          foreach ($line in @(
+            'SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e',
+            'WORKFLOW_SHA=5047bf233719742428dce58d8b5db0dc9c5ed6d5',
+            'PACKAGE=app.ft.xa60',
+            'VERSION_CODE=200',
+            'VERSION_NAME=4.0.0-xa60-ft200-carplay-early-test',
+            'SIGNATURE=OWNER_SIGNED',
+            'CERT_SHA256=e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c',
+            "APK_SHA256=$expectedApkSha"
+          )) {
+            if ($p -notmatch [regex]::Escape($line)) { throw "Provenance mismatch: $line" }
+          }
+          $s = Get-Content $signer -Raw
+          if ($s -notmatch 'Verified using v2 scheme \(APK Signature Scheme v2\): true') { throw 'APK v2 signature verification missing' }
+          if ($s -notmatch 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c') { throw 'Owner signing certificate mismatch' }
+          $b = Get-Content $badging -Raw
+          if ($b -notmatch "package: name='app\.ft\.xa60' versionCode='200'") { throw 'APK package/versionCode mismatch' }
+          if ($b -notmatch "versionName='4\.0\.0-xa60-ft200-carplay-early-test'") { throw 'APK versionName mismatch' }
+          $sumLines = @()
+          foreach ($file in @($apk,$provenance,$signer,$badging)) {
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $sumLines += "$hash  $(Split-Path $file -Leaf)"
+          }
+          $sumPath = Join-Path $env:GITHUB_WORKSPACE 'artifact\SHA256SUMS'
+          [IO.File]::WriteAllLines($sumPath, $sumLines, [Text.UTF8Encoding]::new($false))
+          "FT200_APK_SHA256=$actualApkSha" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "FT200_SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "FT200_BUILD_RUN=45021482072" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "FT200_ARTIFACT_ID=14753784994" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Attach verified APK and provenance, then publish early-test release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const crypto = require('crypto');
+            const owner = 'cn-openivi';
+            const repo = 'ft-app';
+            const release_id = 453719576;
+            const expectedSource = 'ca0d5c4789968df82094944ada6271967f74b84e';
+            const tag = 'xa60-ft200-ca0d5c4';
+            const body = [
+              '## Статус',
+              '',
+              '**Подписанная тестовая сборка FT200.** Это ранний test release, а не подтверждение полевой приёмки CarPlay.',
+              '',
+              '- APK собран ранее в GitHub Actions run 45021482072 и повторно не собирался при публикации.',
+              '- Исходный commit: ' + expectedSource + '.',
+              '- CarPlay остаётся экспериментальным; feature flag выключен.',
+              '- Физическая проверка на Toyota и P0-A/P0-B/P0-C/P0-E не заявляются как пройденные.',
+              '- Сборка предназначена для ограниченного тестирования изменений FT200; Baidu CarLife и ICCOA должны сохранять прежнее поведение.',
+              '',
+              '## Что добавлено',
+              '',
+              '- Экспериментальная проверка CarPlay: запуск диагностической сессии iAP2 и отдельная проверка Bluetooth-профиля HFP с отображением текущего этапа и обнаруженных ограничений.',
+              '- Одноразовая калибровка коэффициента колёс по независимым данным GPS телефона. Дистанция измерения — 2 или 5 км; запуск выполняется вручную.',
+              '- Настройка приоритета видеокадров для Android Auto в режиме Normal. Режим Direct не затрагивается.',
+              '- Турецкая, немецкая и французская локализации интерфейса.',
+              '',
+              '## Что исправлено',
+              '',
+              '- Улучшено восстановление видеопотока Android Auto, включая повторное определение готовности первого кадра после переподключения.',
+              '- Исправлена обработка аудиофокуса и переходов между источниками звука.',
+              '- Уточнена обработка ошибок и завершения соединения CarPlay iAP2: диагностические состояния больше не маскируют реальные ограничения подключения.',
+              '- Усилена проверка параметров Wi-Fi-перехода и Bluetooth-идентификации при диагностике CarPlay.',
+              '- Исправлена проверка защищённого ADB-подключения: исключён переход на незашифрованное соединение при наличии современной TLS-пары.',
+              '- Удалены неподтверждённые курдские локализации.',
+              '',
+              '## Проверка',
+              '',
+              '- Package: app.ft.xa60; versionCode: 200.',
+              '- Version: 4.0.0-xa60-ft200-carplay-early-test.',
+              '- APK SHA-256: 9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30.',
+              '- Подпись проверена по закреплённому сертификату владельца.'
+            ].join('\n');
+
+            const current = await github.rest.repos.getRelease({ owner, repo, release_id });
+            if (current.data.id !== release_id || current.data.draft !== true) {
+              throw new Error('Expected existing FT200 draft release was not found in draft state');
+            }
+            const assetsBefore = await github.paginate(github.rest.repos.listReleaseAssets, { owner, repo, release_id });
+            const files = [
+              ['FT200_XA60_OWNER_SIGNED_cd7003d.apk', 'application/vnd.android.package-archive'],
+              ['PROVENANCE.txt', 'text/plain'],
+              ['apksigner.txt', 'text/plain'],
+              ['apk-badging.txt', 'text/plain'],
+              ['SHA256SUMS', 'text/plain']
+            ];
+            for (const [name, contentType] of files) {
+              const filePath = path.join(process.env.GITHUB_WORKSPACE, 'artifact', name);
+              if (!fs.existsSync(filePath)) throw new Error('Missing verified release asset: ' + name);
+              const data = fs.readFileSync(filePath);
+              const digest = 'sha256:' + crypto.createHash('sha256').update(data).digest('hex');
+              const existing = assetsBefore.find(a => a.name === name);
+              if (existing) {
+                if (existing.digest !== digest) throw new Error('Existing release asset has a different digest: ' + name);
+                continue;
+              }
+              await github.rest.repos.uploadReleaseAsset({
+                owner, repo, release_id, name, data,
+                headers: { 'content-type': contentType, 'content-length': data.length }
+              });
+            }
+
+            await github.rest.repos.updateRelease({
+              owner, repo, release_id,
+              tag_name: tag,
+              target_commitish: expectedSource,
+              name: 'OpenIVI FT200 — подписанная тестовая сборка',
+              body,
+              prerelease: true,
+              draft: false
+            });
+            const published = await github.rest.repos.getRelease({ owner, repo, release_id });
+            if (published.data.draft !== false || published.data.prerelease !== true ||
+                published.data.tag_name !== tag || published.data.target_commitish !== expectedSource) {
+              throw new Error('Published FT200 release readback mismatch');
+            }
+            const assetsAfter = await github.paginate(github.rest.repos.listReleaseAssets, { owner, repo, release_id });
+            for (const [name] of files) {
+              if (!assetsAfter.some(a => a.name === name)) throw new Error('Release asset readback missing: ' + name);
+            }
+            core.summary.addHeading('FT200 existing signed artifact published');
+            core.summary.addTable([
+              [{data:'Field',header:true},{data:'Verified value',header:true}],
+              ['Release', published.data.html_url],
+              ['Tag', published.data.tag_name],
+              ['Source', expectedSource],
+              ['APK SHA-256', '9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30'],
+              ['Assets', String(assetsAfter.length)],
+              ['Prerelease', String(published.data.prerelease)]
+            ]);
+            await core.summary.write();
