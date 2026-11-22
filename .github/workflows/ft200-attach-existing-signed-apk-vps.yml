@@ -1,0 +1,131 @@
+name: FT200 attach existing signed APK on VPS
+
+on:
+  push:
+    branches:
+      - openivi/ft200-carplay-three-backends-20261117
+    paths:
+      - '.github/workflows/ft200-attach-existing-signed-apk-vps.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: ft200-attach-existing-signed-apk-vps
+  cancel-in-progress: false
+
+jobs:
+  attach:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 20
+    steps:
+      - name: Download existing signed artifact from completed Windows build
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: FT200-XA60-owner-signed
+          run-id: 45021482072
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifact
+
+      - name: Verify APK and owner signature evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="artifact/FT200_XA60_OWNER_SIGNED_cd7003d.apk"
+          test -s "$apk"
+          expected='9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30'
+          actual="$(sha256sum "$apk" | awk '{print $1}')"
+          test "$actual" = "$expected"
+          grep -Fqx 'SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e' artifact/PROVENANCE.txt
+          grep -Fqx 'PACKAGE=app.ft.xa60' artifact/PROVENANCE.txt
+          grep -Fqx 'VERSION_CODE=200' artifact/PROVENANCE.txt
+          grep -Fqx 'VERSION_NAME=4.0.0-xa60-ft200-carplay-early-test' artifact/PROVENANCE.txt
+          grep -Fqx 'SIGNATURE=OWNER_SIGNED' artifact/PROVENANCE.txt
+          grep -Fqx "APK_SHA256=$expected" artifact/PROVENANCE.txt
+          grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' artifact/apksigner.txt
+          grep -Fq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' artifact/apksigner.txt
+          grep -Fq "package: name='app.ft.xa60' versionCode='200'" artifact/apk-badging.txt
+          grep -Fq "versionName='4.0.0-xa60-ft200-carplay-early-test'" artifact/apk-badging.txt
+          (
+            cd artifact
+            sha256sum FT200_XA60_OWNER_SIGNED_cd7003d.apk PROVENANCE.txt apksigner.txt apk-badging.txt > SHA256SUMS
+            sha256sum -c SHA256SUMS
+          )
+          echo "APK_SHA256=$actual" >> "$GITHUB_STEP_SUMMARY"
+          echo "SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e" >> "$GITHUB_STEP_SUMMARY"
+          echo "BUILD_RUN=45021482072" >> "$GITHUB_STEP_SUMMARY"
+          echo "RUNNER=$RUNNER_NAME" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach APK and proof files to the existing FT200 draft release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const crypto = require('crypto');
+            const owner = 'cn-openivi';
+            const repo = 'ft-app';
+            const release_id = 453719576;
+            const expectedSource = 'ca0d5c4789968df82094944ada6271967f74b84e';
+            const tag = 'xa60-ft200-ca0d5c4';
+            const release = await github.rest.repos.getRelease({ owner, repo, release_id });
+            if (release.data.draft !== true) throw new Error('FT200 release is not a draft; refusing to modify published release');
+            const assets = await github.paginate(github.rest.repos.listReleaseAssets, { owner, repo, release_id });
+            const files = [
+              ['FT200_XA60_OWNER_SIGNED_cd7003d.apk', 'application/vnd.android.package-archive'],
+              ['PROVENANCE.txt', 'text/plain'],
+              ['apksigner.txt', 'text/plain'],
+              ['apk-badging.txt', 'text/plain'],
+              ['SHA256SUMS', 'text/plain']
+            ];
+            for (const [name, contentType] of files) {
+              const filePath = path.join(process.env.GITHUB_WORKSPACE, 'artifact', name);
+              const data = fs.readFileSync(filePath);
+              const digest = 'sha256:' + crypto.createHash('sha256').update(data).digest('hex');
+              const existing = assets.find(a => a.name === name);
+              if (existing) {
+                if (existing.digest !== digest) throw new Error('Existing asset digest differs: ' + name);
+                continue;
+              }
+              await github.rest.repos.uploadReleaseAsset({
+                owner, repo, release_id, name, data,
+                headers: { 'content-type': contentType, 'content-length': data.length }
+              });
+            }
+            await github.rest.repos.updateRelease({
+              owner, repo, release_id,
+              tag_name: tag,
+              target_commitish: expectedSource,
+              name: 'OpenIVI FT200 — подписанная тестовая сборка',
+              body: [
+                'Подписанная тестовая сборка FT200. Черновик для проверки; полевой приёмки CarPlay не заявляем.',
+                '',
+                '- APK взят из ранее завершённого Actions artifact; повторной сборки не было.',
+                '- Source commit: ' + expectedSource,
+                '- APK SHA-256: 9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30',
+                '- Package: app.ft.xa60; versionCode: 200.',
+                '- CarPlay экспериментальный, feature flag остаётся выключенным.',
+                '- P0 field gates не заявляются как пройденные.'
+              ].join('\\n'),
+              draft: true,
+              prerelease: true
+            });
+            const readback = await github.rest.repos.getRelease({ owner, repo, release_id });
+            const after = await github.paginate(github.rest.repos.listReleaseAssets, { owner, repo, release_id });
+            if (!readback.data.draft || readback.data.tag_name !== tag ||
+                readback.data.target_commitish !== expectedSource) throw new Error('Draft release readback mismatch');
+            for (const [name] of files) {
+              if (!after.some(a => a.name === name)) throw new Error('Missing release asset after upload: ' + name);
+            }
+            core.summary.addHeading('FT200 APK attached to draft release');
+            core.summary.addTable([
+              [{data:'Field',header:true},{data:'Readback',header:true}],
+              ['Draft release', readback.data.html_url],
+              ['Tag', readback.data.tag_name],
+              ['Source commit', expectedSource],
+              ['APK SHA-256', '9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30'],
+              ['APK asset', 'present'],
+              ['Draft remains unpublished', String(readback.data.draft)]
+            ]);
+            await core.summary.write();
