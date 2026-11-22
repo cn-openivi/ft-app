@@ -140,7 +140,7 @@ jobs:
           GRADLE_USER_HOME: ${{ runner.temp }}\gradle-ft200
         run: |
           $ErrorActionPreference = 'Stop'
-          .\gradlew.bat --no-daemon --max-workers=1 --console=plain -Dorg.gradle.parallel=false "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" -Dkotlin.compiler.execution.strategy=in-process -Dkotlin.incremental=false :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease --stacktrace
+          .\gradlew.bat --no-daemon --max-workers=1 --console=plain '-Dorg.gradle.parallel=false' "-Dorg.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" '-Dkotlin.compiler.execution.strategy=in-process' '-Dkotlin.incremental=false' :app:testReleaseUnitTest :app:lintVitalRelease :app:assembleRelease --stacktrace
           if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
 
       - name: Verify APK identity, signature and provenance
