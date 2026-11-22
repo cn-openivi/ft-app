@@ -18,138 +18,200 @@ concurrency:
 
 jobs:
   source-only:
-    runs-on: [self-hosted, linux]
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 70
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
     steps:
       - name: Checkout exact source without credential persistence
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - name: Enforce FT200 branch and unsigned-only policy
-        shell: bash
+
+      - name: Enforce FT200 branch, source identity and unsigned-only policy
         run: |
-          set -euo pipefail
-          test "$(id -u)" -ne 0
-          test "$GITHUB_REPOSITORY" = "cn-openivi/ft-app"
-          test "$GITHUB_REF_NAME" = "openivi/ft200-carplay-three-backends-20261117"
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          grep -Fq 'applicationId = "app.ft.xa60"' app/build.gradle.kts
-          grep -Fq 'versionCode = 200' app/build.gradle.kts
-          grep -Fq 'versionName = "4.0.0-xa60-ft200-carplay-early-test"' app/build.gradle.kts
-          grep -Fq 'CARPLAY("carplay", connectionReady = false)' app/src/main/java/app/ft/core/CarProtocol.kt
-          grep -Fq 'enabled = option.enabled' app/src/main/java/app/ft/ui/components/OptionSheet.kt
-          grep -Fq 'Option("Apple CarPlay (тест)"' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
-          grep -Fq 'enabled = true' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
-          grep -Fq 'PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY' app/src/main/java/app/ft/core/CarConnection.kt
-          grep -Fq 'carPlayExperimentalSelected' app/src/main/java/app/ft/core/Prefs.kt
-          grep -Fq 'CarPlayExperimentalSelectionPolicy.display' app/src/main/java/app/ft/ui/components/CarProtocolState.kt
-          test -f app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt
-          test -f app/src/test/java/app/ft/carplay/CarPlayHfpContinuityLedgerTest.kt
-          test -f app/src/test/java/app/ft/carplay/CarPlayNmeaLatestOnlyBufferTest.kt
-          test -f app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt
-          grep -Fq 'CarPlaySdpDiagnostic()' app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt
-          test -f app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt
-          test -f app/src/test/java/app/ft/iccoa/IccoaDirectRecoveryPolicyTest.kt
-          test -f app/src/test/java/app/ft/dr/CarTunnelKalmanTest.kt
-          test -f app/src/main/java/app/ft/dr/WheelCalibrationRuntime.kt
-          test -f app/src/test/java/app/ft/core/WheelCalibrationSessionTest.kt
-          grep -Fq 'WheelCalibrationRuntime.bindVerifiedCar(' app/src/main/java/app/ft/iccoa/IccoaService.kt
-          ! test -f app/src/main/res/values-b+ckb/strings.xml
-          ! test -f app/src/main/res/values-b+kmr+Arab/strings.xml
-          echo "FT200_SOURCE_SHA=$GITHUB_SHA"
-      - name: JDK 17
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REPOSITORY -ne 'cn-openivi/ft-app') { throw 'Repository mismatch' }
+          if ($env:GITHUB_REF_NAME -ne 'openivi/ft200-carplay-three-backends-20261117') { throw 'Branch mismatch' }
+          if ((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Checkout SHA mismatch' }
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') { throw "Wrong runner: $env:RUNNER_OS/$env:RUNNER_ARCH" }
+          $gradle = Get-Content 'app/build.gradle.kts' -Raw
+          if ($gradle -notmatch 'applicationId\s*=\s*"app\.ft\.xa60"') { throw 'Package mismatch' }
+          if ($gradle -notmatch 'versionCode\s*=\s*200') { throw 'versionCode mismatch' }
+          if ($gradle -notmatch 'versionName\s*=\s*"4\.0\.0-xa60-ft200-carplay-early-test"') { throw 'versionName mismatch' }
+          $checks = @(
+            @('app/src/main/java/app/ft/core/CarProtocol.kt','CARPLAY("carplay", connectionReady = false)'),
+            @('app/src/main/java/app/ft/ui/components/OptionSheet.kt','enabled = option.enabled'),
+            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','Option("Apple CarPlay (тест)"'),
+            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','enabled = true'),
+            @('app/src/main/java/app/ft/core/CarConnection.kt','PRESERVE_LIVE_BACKEND_EXPERIMENT_ONLY'),
+            @('app/src/main/java/app/ft/core/Prefs.kt','carPlayExperimentalSelected'),
+            @('app/src/main/java/app/ft/ui/components/CarProtocolState.kt','CarPlayExperimentalSelectionPolicy.display'),
+            @('app/src/main/java/app/ft/ui/components/CarProtocolSetting.kt','CarPlaySdpDiagnostic()'),
+            @('app/src/main/java/app/ft/iccoa/IccoaService.kt','WheelCalibrationRuntime.bindVerifiedCar(')
+          )
+          foreach ($check in $checks) {
+            if (-not (Select-String -Path $check[0] -SimpleMatch -Pattern $check[1] -Quiet)) { throw "Source guard failed: $($check[0]) / $($check[1])" }
+          }
+          $required = @(
+            'app/src/test/java/app/ft/core/CarPlayExperimentalSelectionPolicyTest.kt',
+            'app/src/test/java/app/ft/carplay/CarPlayHfpContinuityLedgerTest.kt',
+            'app/src/test/java/app/ft/carplay/CarPlayNmeaLatestOnlyBufferTest.kt',
+            'app/src/test/java/app/ft/carplay/CarPlayPhoneIdentityTest.kt',
+            'app/src/test/java/app/ft/core/CarProtocolFt200CompatibilityTest.kt',
+            'app/src/test/java/app/ft/iccoa/IccoaDirectRecoveryPolicyTest.kt',
+            'app/src/test/java/app/ft/dr/CarTunnelKalmanTest.kt',
+            'app/src/main/java/app/ft/dr/WheelCalibrationRuntime.kt',
+            'app/src/test/java/app/ft/core/WheelCalibrationSessionTest.kt'
+          )
+          foreach ($file in $required) { if (!(Test-Path $file)) { throw "Required FT200 regression source missing: $file" } }
+          foreach ($file in @('app/src/main/res/values-b+ckb/strings.xml','app/src/main/res/values-b+kmr+Arab/strings.xml')) {
+            if (Test-Path $file) { throw "Unexpected locale resource: $file" }
+          }
+          "FT200_SOURCE_SHA=$env:GITHUB_SHA" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "FT200_RUNNER=$env:RUNNER_NAME" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "FT200_RUNNER_OS=$env:RUNNER_OS/$env:RUNNER_ARCH" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Set up JDK 17
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: '17'
-      - name: Check existing verified Android 36 SDK before network setup
-        id: sdk_cache
-        shell: bash
+
+      - name: Reuse Android SDK 36; install only missing components
         run: |
-          set -euo pipefail
-          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/srv/openivi-ci/.android/sdk}}"
-          # Avoid false cache success: both the actual platform and build
-          # tools used by Gradle must exist locally and be executable.
-          if test -f "$sdk/platforms/android-36/android.jar" &&
-             test -x "$sdk/build-tools/36.0.0/aapt2" &&
-             test -x "$sdk/platform-tools/adb"; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-            echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
-            echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
-            echo "FT200_ANDROID36_PREINSTALLED_VERIFIED=true"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "FT200_ANDROID36_PREINSTALLED_VERIFIED=false"
-          fi
-      - name: Android SDK 36
-        if: steps.sdk_cache.outputs.ready != 'true'
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
-        with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          $ErrorActionPreference = 'Stop'
+          $sdk = Join-Path $env:USERPROFILE '.android\sdk'
+          $latest = Join-Path $sdk 'cmdline-tools\latest'
+          $sdkmanager = Join-Path $latest 'bin\sdkmanager.bat'
+          if (!(Test-Path $sdkmanager)) {
+            $archive = Join-Path $env:RUNNER_TEMP 'android-commandline-tools.zip'
+            $extract = Join-Path $env:RUNNER_TEMP 'android-commandline-tools-extract'
+            Invoke-WebRequest -Uri 'https://dl.google.com/android/repository/commandlinetools-win-15859902_latest.zip' -OutFile $archive
+            if (!(Test-Path $archive) -or (Get-Item $archive).Length -lt 10000000) { throw 'Android command-line tools download is incomplete' }
+            if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+            Expand-Archive -LiteralPath $archive -DestinationPath $extract -Force
+            $source = Join-Path $extract 'cmdline-tools'
+            if (!(Test-Path (Join-Path $source 'bin\sdkmanager.bat'))) { throw 'Android command-line tools archive layout mismatch' }
+            New-Item -ItemType Directory -Force -Path (Split-Path $latest) | Out-Null
+            if (Test-Path $latest) { Remove-Item $latest -Recurse -Force }
+            Move-Item $source $latest
+          }
+          if (!(Test-Path $sdkmanager)) { throw 'Android sdkmanager unavailable' }
+          [IO.File]::AppendAllText($env:GITHUB_ENV, "ANDROID_HOME=$sdk`nANDROID_SDK_ROOT=$sdk`n", [Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_PATH, "$(Join-Path $latest 'bin')`n$(Join-Path $sdk 'platform-tools')`n", [Text.UTF8Encoding]::new($false))
+          $missing = @()
+          if (!(Test-Path (Join-Path $sdk 'platform-tools\adb.exe'))) { $missing += 'platform-tools' }
+          if (!(Test-Path (Join-Path $sdk 'platforms\android-36\android.jar'))) { $missing += 'platforms;android-36' }
+          if (!(Test-Path (Join-Path $sdk 'build-tools\36.0.0\aapt2.exe'))) { $missing += 'build-tools;36.0.0' }
+          if ($missing.Count -gt 0) {
+            $licenseInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $licenseInfo.FileName = $env:ComSpec
+            $licenseInfo.Arguments = '/d /c ""{0}" --sdk_root="{1}" --licenses"' -f $sdkmanager, $sdk
+            $licenseInfo.UseShellExecute = $false
+            $licenseInfo.RedirectStandardInput = $true
+            $licenseInfo.CreateNoWindow = $true
+            $licenseProcess = New-Object System.Diagnostics.Process
+            $licenseProcess.StartInfo = $licenseInfo
+            if (!$licenseProcess.Start()) { throw 'Could not start Android SDK license acceptance' }
+            1..50 | ForEach-Object { $licenseProcess.StandardInput.WriteLine('y') }
+            $licenseProcess.StandardInput.Close()
+            $licenseProcess.WaitForExit()
+            if ($licenseProcess.ExitCode -ne 0) { throw "Android SDK license acceptance failed: $($licenseProcess.ExitCode)" }
+            & $sdkmanager "--sdk_root=$sdk" @missing
+            if ($LASTEXITCODE -ne 0) { throw 'Android SDK package installation failed' }
+          }
+          foreach ($required in @('platform-tools\adb.exe','platforms\android-36\android.jar','build-tools\36.0.0\aapt2.exe')) {
+            if (!(Test-Path (Join-Path $sdk $required))) { throw "Android SDK component missing: $required" }
+          }
+          "ANDROID_SDK_REUSED=$($missing.Count -eq 0)" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "ANDROID_SDK_MISSING_COMPONENTS=$($missing -join ',')" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
       - name: Compile Kotlin and run complete existing unsigned unit suite
-        shell: bash
-        env:
-          GRADLE_USER_HOME: /srv/openivi-ci/.gradle-ci
         run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew --no-daemon --max-workers=1 --console=plain \
-            -Dorg.gradle.parallel=false \
-            -Dorg.gradle.jvmargs='-Xmx1536m -XX:MaxMetaspaceSize=512m -Dfile.encoding=UTF-8' \
-            -Dkotlin.compiler.execution.strategy=in-process \
-            -Dkotlin.incremental=false \
-            :app:compileUnsignedTransitKotlin \
-            :app:testUnsignedTransitUnitTest --stacktrace
+          $ErrorActionPreference = 'Stop'
+          $gradleHome = Join-Path $env:USERPROFILE '.gradle-ft200'
+          New-Item -ItemType Directory -Force -Path $gradleHome | Out-Null
+          $env:GRADLE_USER_HOME = $gradleHome
+          $os = Get-CimInstance -ClassName Win32_OperatingSystem
+          $freeGiB = [double]$os.FreePhysicalMemory / 1MB
+          $logicalCpus = [Environment]::ProcessorCount
+          $workers = [int][Math]::Min(8, [Math]::Min($logicalCpus, [Math]::Max(2, [Math]::Floor(($freeGiB - 2.0) / 1.5))))
+          $heapGiB = [int][Math]::Min(4, [Math]::Max(2, [Math]::Floor(($freeGiB - 2.0) * 0.4)))
+          "GRADLE_USER_HOME=$gradleHome" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_LOGICAL_CPUS=$logicalCpus" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_FREE_RAM_GIB=$([Math]::Round($freeGiB,1))" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_MAX_WORKERS=$workers" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          "GRADLE_HEAP_GIB=$heapGiB" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          .\gradlew.bat --no-daemon --build-cache "--max-workers=$workers" --console=plain '-Dorg.gradle.parallel=true' "-Dorg.gradle.jvmargs=-Xmx${heapGiB}g -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" '-Dkotlin.compiler.execution.strategy=in-process' '-Dkotlin.incremental=true' :app:compileUnsignedTransitKotlin :app:testUnsignedTransitUnitTest --stacktrace
+          if ($LASTEXITCODE -ne 0) { throw "Gradle failed with exit code $LASTEXITCODE" }
+
       - name: Require FT200 tests and full P0 regression without APK
-        shell: bash
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-          folder = Path('app/build/test-results/testUnsignedTransitUnitTest')
-          names = (
-              'CarProtocolFt200CompatibilityTest', 'CarPlayExperimentalSelectionPolicyTest',
-              'CarPlayHfpContinuityLedgerTest', 'CarPlayTrialProgressTest', 'CarPlayTrialPermissionPolicyTest', 'CarPlayLocationWireInspectorTest', 'CarPlayTrialReportTest', 'CarPlaySdpObservationEpochTest',
-              'CarPlayPhoneIdentityTest',
-              'CarPlayHandshakeLedgerTest', 'Iap2LinkFrameCodecTest',
-              'Iap2ControlSessionCodecTest', 'Iap2ControlStreamParserTest',
-              'Iap2PhoneIdentificationProbeTest', 'Iap2IdentificationInfoInspectorTest', 'Iap2CarPlayStartSchemaTest',
-              'Iap2PhoneWireObserverTest', 'Iap2LinkNegotiatorTest',
-              'Iap2SynPayloadParserTest', 'Iap2ReliableLinkWindowTest', 'Iap2RetryDeadlineTest',
-              'Iap2Ft200SafetyPolicyTest', 'Iap2CertificatePathFixtureTest', 'CarPlayMediaPreflightTest', 'CarPlayNmeaSentencesTest', 'CarPlayRtspCodecTest', 'CarPlayAirPlayEndpointPolicyTest', 'CarPlayWifiStartExtractorTest', 'CarPlayAudioFocusPolicyTest', 'CarPlayAudioFocusGenerationFenceTest', 'CarPlayAvcPassthroughTest',
-              'CarPlayAirPlayNsdPolicyTest', 'CarPlayAirPlayNsdResolutionFenceTest',
-              'CarPlayWifiDialectPolicyTest', 'CarPlayWifiRequestSessionTest', 'CarPlayWifiCallbackGateTest', 'CarPlayFlatWifiInfoExtractorTest', 'CarPlayFlatWifiInfoInspectorTest',
-              'CarPlayTouchGeometryTest', 'CarPlayNmeaSubscriptionSessionTest',
-              'CarPlayNmeaLatestOnlyBufferTest',
-              'CarProtocolTest', 'IccoaDirectRecoveryPolicyTest', 'IccoaBindFailureReasonTest',
-              'CarTunnelKalmanTest', 'WheelCalibrationSessionTest', 'IccoaGpsActivationRecoveryTest',
-              'CarUiViewportTest', 'AaSensorSubscriptionsTest'
+          $ErrorActionPreference = 'Stop'
+          $folder = 'app/build/test-results/testUnsignedTransitUnitTest'
+          $names = @(
+            'CarProtocolFt200CompatibilityTest','CarPlayExperimentalSelectionPolicyTest',
+            'CarPlayHfpContinuityLedgerTest','CarPlayTrialProgressTest','CarPlayTrialPermissionPolicyTest',
+            'CarPlayLocationWireInspectorTest','CarPlayTrialReportTest','CarPlaySdpObservationEpochTest',
+            'CarPlayPhoneIdentityTest','CarPlayHandshakeLedgerTest','Iap2LinkFrameCodecTest',
+            'Iap2ControlSessionCodecTest','Iap2ControlStreamParserTest','Iap2PhoneIdentificationProbeTest',
+            'Iap2IdentificationInfoInspectorTest','Iap2CarPlayStartSchemaTest','Iap2PhoneWireObserverTest',
+            'Iap2LinkNegotiatorTest','Iap2SynPayloadParserTest','Iap2ReliableLinkWindowTest','Iap2RetryDeadlineTest',
+            'Iap2Ft200SafetyPolicyTest','Iap2CertificatePathFixtureTest','CarPlayMediaPreflightTest',
+            'CarPlayNmeaSentencesTest','CarPlayRtspCodecTest','CarPlayAirPlayEndpointPolicyTest',
+            'CarPlayWifiStartExtractorTest','CarPlayAudioFocusPolicyTest','CarPlayAudioFocusGenerationFenceTest',
+            'CarPlayAvcPassthroughTest','CarPlayAirPlayNsdPolicyTest','CarPlayAirPlayNsdResolutionFenceTest',
+            'CarPlayWifiDialectPolicyTest','CarPlayWifiRequestSessionTest','CarPlayWifiCallbackGateTest',
+            'CarPlayFlatWifiInfoExtractorTest','CarPlayFlatWifiInfoInspectorTest','CarPlayTouchGeometryTest',
+            'CarPlayNmeaSubscriptionSessionTest','CarPlayNmeaLatestOnlyBufferTest','CarProtocolTest',
+            'IccoaDirectRecoveryPolicyTest','IccoaBindFailureReasonTest','CarTunnelKalmanTest',
+            'WheelCalibrationSessionTest','IccoaGpsActivationRecoveryTest','CarUiViewportTest','AaSensorSubscriptionsTest'
           )
-          for name in names:
-              assert list(folder.glob('TEST-*' + name + '.xml')), name + ': missing JUnit XML'
-          all_paths = list(folder.glob('TEST-*.xml'))
-          assert all_paths, 'No JUnit XML results'
-          suites = [ET.parse(p).getroot() for p in all_paths]
-          totals = {k: sum(int(s.get(k,0)) for s in suites) for k in
-                    ('tests','failures','errors','skipped')}
-          print('FT200_FULL_UNSIGNED_JUNIT=' + str(totals))
-          assert totals['tests'] >= 1052
-          assert totals['failures'] == 0
-          assert totals['errors'] == 0
-          assert totals['skipped'] == 0
-          PY
-          if find app/build/outputs/apk -type f -name '*.apk' -print -quit 2>/dev/null | grep -q .; then
-            echo 'FT200 source-only gate MUST NOT produce an APK' >&2
-            exit 1
-          fi
-          echo "FT200_FULL_SOURCE_ONLY_PASS=$GITHUB_SHA"
-          echo "SIGNED_APK=NOT_BUILT; HU_FIELD=NOT_TESTED"
+          foreach ($name in $names) {
+            $match = Get-ChildItem -Path $folder -Filter ("TEST-*" + $name + ".xml") -ErrorAction SilentlyContinue
+            if (!$match) { throw "Required JUnit XML missing: $name" }
+          }
+          $files = @(Get-ChildItem -Path $folder -Filter 'TEST-*.xml' -ErrorAction Stop)
+          if ($files.Count -eq 0) { throw 'No JUnit XML results' }
+          [int]$tests = 0; [int]$failures = 0; [int]$errors = 0; [int]$skipped = 0
+          foreach ($file in $files) {
+            [xml]$doc = Get-Content -LiteralPath $file.FullName -Raw
+            $suites = @()
+            if ($doc.DocumentElement.LocalName -eq 'testsuite') { $suites = @($doc.DocumentElement) }
+            else { $suites = @($doc.SelectNodes("//*[local-name()='testsuite']")) }
+            foreach ($suite in $suites) {
+              $tests += [int]$suite.GetAttribute('tests')
+              $failures += [int]$suite.GetAttribute('failures')
+              $errors += [int]$suite.GetAttribute('errors')
+              $skipped += [int]$suite.GetAttribute('skipped')
+            }
+          }
+          "FT200_FULL_UNSIGNED_JUNIT tests=$tests failures=$failures errors=$errors skipped=$skipped" | Tee-Object -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          if ($tests -lt 1052 -or $failures -ne 0 -or $errors -ne 0 -or $skipped -ne 0) { throw 'FT200 JUnit acceptance failed' }
+          $apkFolder = 'app/build/outputs/apk'
+          if ((Test-Path $apkFolder) -and (Get-ChildItem -Path $apkFolder -Filter '*.apk' -Recurse -ErrorAction SilentlyContinue)) { throw 'Source-only gate must not produce an APK' }
+          "FT200_FULL_SOURCE_ONLY_PASS=$env:GITHUB_SHA" | Out-File $env:GITHUB_STEP_SUMMARY -Append
+          'SIGNED_APK=NOT_BUILT; HU_FIELD=NOT_TESTED' | Out-File $env:GITHUB_STEP_SUMMARY -Append
+
+      - name: Upload JUnit reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FT200-source-only-JUnit-reports
+          path: |
+            app/build/test-results/testUnsignedTransitUnitTest/
+            app/build/reports/tests/testUnsignedTransitUnitTest/
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Clear workspace build outputs
         if: always()
-        shell: bash
         run: |
-          set -euo pipefail
-          for p in app/build server/build; do
-            if test -d "$p" && test ! -L "$p"; then rm -rf -- "$p"; fi
-          done
+          $ErrorActionPreference = 'Continue'
+          foreach ($p in @('app/build','server/build')) {
+            if ((Test-Path $p) -and -not (Get-Item $p).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+              Remove-Item -LiteralPath $p -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
