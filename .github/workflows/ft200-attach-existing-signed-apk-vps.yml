@@ -37,12 +37,14 @@ jobs:
           expected='9a942ce039d8a7709a6b27031234842edc399f259f06c22613669eae5d6afe30'
           actual="$(sha256sum "$apk" | awk '{print $1}')"
           test "$actual" = "$expected"
-          grep -Fqx 'SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e' artifact/PROVENANCE.txt
-          grep -Fqx 'PACKAGE=app.ft.xa60' artifact/PROVENANCE.txt
-          grep -Fqx 'VERSION_CODE=200' artifact/PROVENANCE.txt
-          grep -Fqx 'VERSION_NAME=4.0.0-xa60-ft200-carplay-early-test' artifact/PROVENANCE.txt
-          grep -Fqx 'SIGNATURE=OWNER_SIGNED' artifact/PROVENANCE.txt
-          grep -Fqx "APK_SHA256=$expected" artifact/PROVENANCE.txt
+          # Normalize CRLF for line comparisons; preserve the original evidence file bytes.
+          tr -d '\r' < artifact/PROVENANCE.txt > "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx 'SOURCE_SHA=ca0d5c4789968df82094944ada6271967f74b84e' "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx 'PACKAGE=app.ft.xa60' "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx 'VERSION_CODE=200' "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx 'VERSION_NAME=4.0.0-xa60-ft200-carplay-early-test' "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx 'SIGNATURE=OWNER_SIGNED' "$RUNNER_TEMP/PROVENANCE.normalized.txt"
+          grep -Fqx "APK_SHA256=$expected" "$RUNNER_TEMP/PROVENANCE.normalized.txt"
           grep -Fq 'Verified using v2 scheme (APK Signature Scheme v2): true' artifact/apksigner.txt
           grep -Fq 'e877ebac8f7938789b6fbac36248a866aeb4803370fe46ad9bd8f397a07f691c' artifact/apksigner.txt
           grep -Fq "package: name='app.ft.xa60' versionCode='200'" artifact/apk-badging.txt
